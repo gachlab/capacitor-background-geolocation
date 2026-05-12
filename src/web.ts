@@ -295,6 +295,10 @@ export class BackgroundGeolocationWeb
     });
   }
 
+  async headlessTask(): Promise<void> {
+    throw this.unimplemented(NOT_AVAILABLE);
+  }
+
   // ---------------- Config & logs ----------------
 
   async getConfig(): Promise<ConfigureOptions> {

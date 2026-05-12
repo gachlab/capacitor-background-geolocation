@@ -617,6 +617,18 @@ public class BackgroundGeolocationPlugin extends Plugin implements PluginDelegat
         call.resolve(ret);
     }
 
+    @PluginMethod
+    public void registerHeadlessTask(PluginCall call) {
+        String taskJs = call.getString("task");
+        if (taskJs == null || taskJs.length() == 0) {
+            rejectWith(call, "task body is required", null, PluginException.JSON_ERROR);
+            return;
+        }
+        HeadlessTaskRegistry.getInstance().registerHeadlessTask(taskJs);
+        facade.registerHeadlessTask(JsEvaluatorTaskRunner.class.getName());
+        call.resolve();
+    }
+
     @Override
     @PluginMethod
     public void removeAllListeners(PluginCall call) {

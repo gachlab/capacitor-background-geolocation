@@ -191,6 +191,7 @@ sub.remove();
 | `startTask()` | iOS: begin a background task; returns `{ taskKey }`. |
 | `endTask({ taskKey })` | iOS: end the background task. |
 | `triggerSOS(payload?)` | Emit an `sos` event with the latest known location. |
+| `headlessTask(fn)` | Android: register a JS callback that runs even when the activity has been killed. iOS no-op. |
 
 ### Config & logs
 
@@ -241,6 +242,129 @@ detaches a single listener.
 | `possibleCrash` | `{ location, value, source }` | Heuristic crash detection. |
 | `phoneUsageWhileDriving` | `{ location? }` | Sustained phone interaction during a trip. |
 
+## Headless task (Android)
+
+When `stopOnTerminate: false` and the user swipes the app away, Android
+keeps the foreground service alive but kills the host activity. In that
+state your regular `addListener` callbacks won't fire — the JS bridge no
+longer exists.
+
+`headlessTask` registers a small JS function that the plugin runs inside
+a hidden Android WebView every time a `location`, `stationary`, or
+`activity` event fires while the activity is gone.
+
+```ts
+import { BackgroundGeolocation } from '@josuelmm/capacitor-background-geolocation';
+
+await BackgroundGeolocation.configure({
+  stopOnTerminate: false,
+  startOnBoot: true,
+  // ...other options
+});
+
+await BackgroundGeolocation.headlessTask(function (event) {
+  // event.name   : 'location' | 'stationary' | 'activity'
+  // event.params : the corresponding payload
+  if (event.name === 'location' || event.name === 'stationary') {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', 'https://example.com/headless');
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.send(JSON.stringify(event.params));
+  }
+  return 'processed: ' + event.name;
+});
+
+await BackgroundGeolocation.start();
+```
+
+Caveats:
+
+- **Android only.** On iOS the call resolves immediately — Apple does not
+  allow running JS in a killed-app scenario. Use the regular
+  `addListener('location', …)` flow on iOS.
+- **Isolated scope.** The function body is serialised via `fn.toString()`
+  and re-evaluated inside a fresh WebView. Closures, imports, and outer
+  variables are NOT available. Only `XMLHttpRequest`, `fetch`, `JSON`,
+  and the language built-ins.
+- **Prefer `url` / `syncUrl`.** Configuring an HTTP endpoint on the
+  native side is more reliable than headless JS — the native sync layer
+  handles retries, batching, and OS-level battery throttling.
+
+## Driving events
+
+Set `drivingEvents.enabled: true` in `configure()` to turn on the
+GPS-derived driver-insight pipeline. The native core then emits:
+
+- `tripStart`, `tripEnd`, `moving`, `stopped` — sustained-speed state machine.
+- `speeding` — when speed crosses `drivingEvents.speedLimit` (km/h).
+- `providerChange` — OS switched between GPS / network / fused.
+- `hardBrake`, `rapidAcceleration`, `sharpTurn` — sensor-free heuristics
+  from speed / bearing deltas.
+- `possibleCrash` — sudden velocity drop or accelerometer impact. The
+  payload carries `source: 'gps' | 'sensor'`. **Always confirm with the
+  user before notifying anyone** — false positives are possible.
+- `phoneUsageWhileDriving` — only when `drivingEvents.sensorFusion: true`,
+  via accelerometer + gyroscope jitter.
+
+```ts
+await BackgroundGeolocation.configure({
+  // ...tracking options
+  drivingEvents: {
+    enabled: true,
+    speedLimit: 90,          // km/h, 0 to disable
+    minTripSpeed: 3.0,       // m/s
+    minTripDuration: 30000,  // ms
+    sensorFusion: false,     // true → accel/gyro pipeline
+  },
+});
+
+BackgroundGeolocation.addListener('tripStart', (loc) => console.log('trip', loc));
+BackgroundGeolocation.addListener('tripEnd', (e) =>
+  console.log('trip end', e.distance, 'm in', e.durationMs, 'ms'),
+);
+BackgroundGeolocation.addListener('speeding', (e) =>
+  console.warn('over limit', e.speedKmh, 'vs', e.limitKmh),
+);
+```
+
+## Configuration reference
+
+`ConfigureOptions` covers 60+ fields. Highlights:
+
+- **Provider & accuracy**: `locationProvider`, `desiredAccuracy`,
+  `distanceFilter`, `stationaryRadius`, `maxAcceptedAccuracy`,
+  `activityConfidenceThreshold`.
+- **Cadence**: `interval`, `fastestInterval`, `activitiesInterval`,
+  `heartbeatInterval`, `stationaryTimeout`, `stationaryPollInterval`,
+  `stationaryPollFast`.
+- **Service lifecycle**: `stopOnTerminate`, `startOnBoot`,
+  `enableWatchdog`, `wakeLockMode`.
+- **Notifications (Android)**: `notificationsEnabled`, `startForeground`,
+  `notificationTitle`, `notificationText`, `notificationIconColor`,
+  `notificationIconSmall`, `notificationIconLarge`,
+  `notificationSyncTitle`, `notificationSyncText`, `showTime`,
+  `showDistance`.
+- **iOS-only**: `activityType`, `pauseLocationUpdates`,
+  `saveBatteryOnBackground`, `showsBackgroundLocationIndicator`.
+- **HTTP transport**: `url`, `syncUrl`, `syncThreshold`, `sync`,
+  `headers`, `httpMethod`, `syncHttpMethod`, `httpMode`, `syncMode`,
+  `postTemplate`, `bodyTemplate`, `queryParams`, `maxLocations`.
+- **Data quality**: `mockLocationPolicy` (`'allow' | 'flag' | 'drop'`),
+  `includeBattery`.
+- **Driver insights**: `drivingEvents.{enabled, speedLimit, minTripSpeed,
+  hardBrakeMps2, rapidAccelMps2, sharpTurnDegPerSec, crashImpactKmh,
+  sensorFusion, crashImpactG, phoneUsageWindowMs, …}`.
+
+Inspect `src/definitions.ts` (or the generated `.d.ts` in `dist/esm/`)
+for the full annotated list with default values and JSDoc.
+
+## Compatibility
+
+- Capacitor `>=8.0.0`
+- iOS `>=14.0`
+- Android API `>=23` (Android 6.0)
+- Web: foreground only via `navigator.geolocation`
+
 ## Migration from `@josuelmm/cordova-background-geolocation`
 
 The TypeScript surface is intentionally identical in shape, with two
@@ -267,10 +391,10 @@ Type names from the Cordova plugin (`ConfigureOptions`, `Location`,
 `BackgroundGeolocationLocationProvider`, etc.) are also re-exported so most
 codebases compile with only the import-path swap.
 
-> **Note (v1.0):** `headlessTask` is not yet exposed on the Capacitor side.
-> The Cordova plugin's Android `headlessTask` runs JS in a separate context;
-> the equivalent Capacitor pattern (`BackgroundFetch`-style hooks) will land
-> in v1.1.
+`headlessTask(fn)` is supported on Android with the same signature as the
+Cordova plugin — see [Headless task (Android)](#headless-task-android).
+On iOS the call resolves as a no-op (Apple does not allow JS execution
+while the host process is killed).
 
 ## License
 

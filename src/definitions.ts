@@ -812,6 +812,32 @@ export interface BackgroundGeolocationPlugin {
     minLevel?: LogLevel;
   }): Promise<{ entries: LogEntry[] }>;
 
+  // ---------------- Headless task (Android) ----------------
+
+  /**
+   * **Android only.** Register a JS callback that runs on `location`,
+   * `stationary`, and `activity` events even when the host activity has
+   * been killed by the system — as long as `stopOnTerminate: false` and
+   * the foreground service is still alive.
+   *
+   * The function body is serialised with `task.toString()` and evaluated
+   * inside a hidden Android WebView via the upstream `JsEvaluator`
+   * pipeline. Variables from the outer scope CANNOT be referenced — the
+   * callback runs in an isolated context. Plain `XMLHttpRequest`,
+   * `fetch`, and `JSON` are available.
+   *
+   * On iOS this call resolves immediately as a no-op (Apple does not
+   * allow running JS in a killed-app scenario). On Web it throws
+   * `unimplemented`. Prefer the regular `addListener` flow whenever
+   * possible — `headlessTask` is only useful when the app has been
+   * killed by the OS but the service must still react to GPS events.
+   *
+   * @since 1.0.0
+   */
+  headlessTask(
+    task: (event: HeadlessTaskEvent) => unknown,
+  ): Promise<void>;
+
   // ---------------- Lifecycle ----------------
 
   /**

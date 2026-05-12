@@ -59,13 +59,14 @@ First public release. Full TypeScript-API parity with
 - Tightened `LogEntry` shape to match the Cordova spec (`timestamp`, `level`,
   `message`, `stackTrace`).
 
+- **Android headless task** (`headlessTask(fn)`) — port of the upstream
+  Cordova feature. The callback runs in an isolated WebView context when
+  the host activity has been killed (`stopOnTerminate: false`). iOS resolves
+  the call as a no-op; Web throws `unimplemented`.
+
 ### Removed
 - Placeholder `watchLocationMode` / `stopWatchingLocationMode` methods (not
   present in the Cordova spec).
-
-### Deferred
-- `headlessTask`: a Capacitor-idiomatic replacement (`BackgroundFetch`-style
-  hooks) will land in v1.1.
 
 ## [0.1.0] - 2026-05-12
 

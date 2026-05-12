@@ -56,6 +56,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         CAPPluginMethod(name: "requestNotificationPermission", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "registerHeadlessTask", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise)
     ]
 
@@ -450,6 +451,16 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
             call.resolve(["granted": granted, "notRequired": false])
         }
+    }
+
+    /// Android-only feature. iOS does not allow running JS in a killed-app
+    /// scenario the way Android's `JsEvaluator` does. The call resolves so
+    /// cross-platform code stays portable. Use the regular `addListener`
+    /// callbacks on iOS — they are delivered as long as the app is running
+    /// in the background (which on iOS is the only state where locations
+    /// are produced anyway).
+    @objc func registerHeadlessTask(_ call: CAPPluginCall) {
+        call.resolve()
     }
 
     @objc override public func removeAllListeners(_ call: CAPPluginCall) {
