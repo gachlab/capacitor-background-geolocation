@@ -9,21 +9,39 @@
     <style>
       body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 16px; }
       h1 { font-size: 1.2rem; margin: 0 0 12px; }
-      button { display: inline-block; margin: 4px 4px 4px 0; padding: 8px 12px; }
+      h2 { font-size: 0.9rem; margin: 12px 0 4px; color: #555; }
+      button { display: inline-block; margin: 4px 4px 4px 0; padding: 6px 10px; font-size: 13px; }
       #log { background: #111; color: #eee; padding: 8px; height: 50vh; overflow: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
-      .row { margin-bottom: 8px; }
+      .row { margin-bottom: 6px; }
     </style>
   </head>
   <body>
     <h1>@josuelmm/capacitor-background-geolocation</h1>
+    <h2>Tracking</h2>
     <div class="row">
       <button id="configure">Configure</button>
       <button id="start">Start</button>
       <button id="stop">Stop</button>
-      <button id="current">Get Current</button>
-      <button id="valid">Get Valid Locations</button>
-      <button id="clear">Clear All</button>
-      <button id="perm">Request Permission</button>
+      <button id="status">checkStatus</button>
+      <button id="current">getCurrentLocation</button>
+    </div>
+    <h2>Locations</h2>
+    <div class="row">
+      <button id="valid">getValidLocations</button>
+      <button id="clear">deleteAllLocations</button>
+    </div>
+    <h2>Diagnostics</h2>
+    <div class="row">
+      <button id="diag">getDiagnostics</button>
+      <button id="ver">getPluginVersion</button>
+      <button id="sos">triggerSOS</button>
+    </div>
+    <h2>Permissions</h2>
+    <div class="row">
+      <button id="perm">requestPermissions</button>
+      <button id="bgperm">requestBackground</button>
+      <button id="actperm">requestActivity</button>
+      <button id="notifperm">requestNotification</button>
     </div>
     <div id="log"></div>
     <script type="module" src="./main.js"></script>

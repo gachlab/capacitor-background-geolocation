@@ -6,6 +6,67 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-05-12
+
+First public release. Full TypeScript-API parity with
+`@josuelmm/cordova-background-geolocation`.
+
+### Added
+- **40 plugin methods** mirroring the Cordova spec. New entries since 0.1.0:
+  `switchMode`, `getLocations`, `getValidLocationsAndDelete`, `clearSync`,
+  `getPendingSyncCount`, `startSession`, `getSessionLocations`, `clearSession`,
+  `getSessionLocationsCount`, `getDiagnostics`,
+  `isIgnoringBatteryOptimizations`, `requestIgnoreBatteryOptimizations`,
+  `openBatterySettings`, `openAutoStartSettings`, `getManufacturerHelp`,
+  `getPluginVersion`, `requestBackgroundLocationPermission`,
+  `requestActivityRecognitionPermission`, `requestNotificationPermission`,
+  `openSettings`, `triggerSOS`.
+- **28 event-listener overloads** covering the v3.5/v4.x driver-insight surface:
+  `heartbeat`, `syncStart`, `syncProgress`, `syncSuccess`, `syncError`,
+  `tripStart`, `tripEnd`, `moving`, `stopped`, `speeding`, `providerChange`,
+  `sos`, `hardBrake`, `rapidAcceleration`, `sharpTurn`, `possibleCrash`,
+  `phoneUsageWhileDriving` in addition to the existing 11 lifecycle events.
+- Full `ConfigureOptions` interface (60+ fields) including sync transport
+  (`headers`, `httpMethod`, `httpMode`, `bodyTemplate`, …), heartbeat,
+  mock-location policy, battery stamping, WakeLock policy, stationary tuning,
+  accuracy filtering, and the `drivingEvents` configuration block.
+- New TS types: `ConfigureOptions` (with `LocationOptions` alias),
+  `StationaryLocation`, `LocationError`, `BackgroundGeolocationError`,
+  `Activity`, `ServiceStatus` (with `Status` alias), `Diagnostics`,
+  `HeadlessTaskEvent`, `PermissionRequestResult`, `ActivityType`,
+  `LocationErrorCode`, `HeadlessTaskEventName`.
+- `@awesome-cordova-plugins`-style compatibility enums and aliases:
+  `BackgroundGeolocationEvents`, `BackgroundGeolocationLocationCode`,
+  `BackgroundGeolocationNativeProvider`,
+  `BackgroundGeolocationLocationProvider`,
+  `BackgroundGeolocationAuthorizationStatus`,
+  `BackgroundGeolocationLogLevel`, `BackgroundGeolocationProvider`,
+  `BackgroundGeolocationAccuracy`, `BackgroundGeolocationMode`,
+  `BackgroundGeolocationIOSActivity`, plus `BackgroundGeolocationConfig`,
+  `BackgroundGeolocationResponse`,
+  `BackgroundGeolocationCurrentPositionConfig`,
+  `BackgroundGeolocationLogEntry`.
+- Web fallback implementations for diagnostics, OEM helpers, sync/session
+  count queries, notification-permission probing, plugin-version reporting,
+  and `triggerSOS` emission.
+- Example app coverage for `getDiagnostics`, `getPluginVersion`, `triggerSOS`,
+  and additional event subscriptions (`activity`, `authorization`,
+  `heartbeat`, `tripStart`, `tripEnd`, `speeding`, `sos`).
+
+### Changed
+- Renamed `LocationOptions` → `ConfigureOptions` (with a back-compat alias).
+- Renamed `Status` → `ServiceStatus` (with a back-compat alias).
+- Tightened `LogEntry` shape to match the Cordova spec (`timestamp`, `level`,
+  `message`, `stackTrace`).
+
+### Removed
+- Placeholder `watchLocationMode` / `stopWatchingLocationMode` methods (not
+  present in the Cordova spec).
+
+### Deferred
+- `headlessTask`: a Capacitor-idiomatic replacement (`BackgroundFetch`-style
+  hooks) will land in v1.1.
+
 ## [0.1.0] - 2026-05-12
 
 Initial scaffold and native bridges.

@@ -9,14 +9,16 @@ import { WebPlugin } from '@capacitor/core';
 import type { PermissionState } from '@capacitor/core';
 
 import type {
+  BackgroundGeolocationError,
   BackgroundGeolocationPlugin,
+  ConfigureOptions,
   CurrentLocationOptions,
-  ErrorEvent,
+  Diagnostics,
   Location,
-  LocationOptions,
   LogEntry,
-  Status,
-  Task,
+  PermissionRequestResult,
+  ServiceStatus,
+  StationaryLocation,
 } from './definitions';
 import { AuthorizationStatus } from './definitions';
 
@@ -31,22 +33,29 @@ export class BackgroundGeolocationWeb
   implements BackgroundGeolocationPlugin
 {
   private watchId: number | null = null;
-  private config: LocationOptions = {};
+  private config: ConfigureOptions = {};
+  private lastLocation: Location | null = null;
 
-  async configure(options: LocationOptions): Promise<void> {
+  // ---------------- Tracking control ----------------
+
+  async configure(options: ConfigureOptions): Promise<void> {
     this.config = { ...this.config, ...options };
   }
 
   async start(): Promise<void> {
     if (!('geolocation' in navigator)) {
-      throw this.unavailable('Geolocation API is not available in this browser.');
+      throw this.unavailable(
+        'Geolocation API is not available in this browser.',
+      );
     }
     if (this.watchId !== null) {
       return;
     }
     this.watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        this.notifyListeners('location', this.toLocation(pos));
+        const loc = this.toLocation(pos);
+        this.lastLocation = loc;
+        this.notifyListeners('location', loc);
       },
       (err) => {
         this.notifyListeners('error', this.toError(err));
@@ -68,9 +77,25 @@ export class BackgroundGeolocationWeb
     }
   }
 
+  async switchMode(_options: { mode: 0 | 1 }): Promise<void> {
+    throw this.unimplemented(NOT_AVAILABLE);
+  }
+
+  async checkStatus(): Promise<ServiceStatus> {
+    return {
+      isRunning: this.watchId !== null,
+      locationServicesEnabled: 'geolocation' in navigator,
+      authorization: AuthorizationStatus.AUTHORIZED_FOREGROUND,
+    };
+  }
+
+  // ---------------- Locations ----------------
+
   getCurrentLocation(options?: CurrentLocationOptions): Promise<Location> {
     if (!('geolocation' in navigator)) {
-      throw this.unavailable('Geolocation API is not available in this browser.');
+      throw this.unavailable(
+        'Geolocation API is not available in this browser.',
+      );
     }
     return new Promise((resolve, reject) => {
       navigator.geolocation.getCurrentPosition(
@@ -85,16 +110,20 @@ export class BackgroundGeolocationWeb
     });
   }
 
-  async getStationaryLocation(): Promise<Location | null> {
+  async getStationaryLocation(): Promise<StationaryLocation | null> {
     return null;
+  }
+
+  async getLocations(): Promise<{ locations: Location[] }> {
+    return { locations: [] };
   }
 
   async getValidLocations(): Promise<{ locations: Location[] }> {
     return { locations: [] };
   }
 
-  async getConfig(): Promise<LocationOptions> {
-    return { ...this.config };
+  async getValidLocationsAndDelete(): Promise<{ locations: Location[] }> {
+    return { locations: [] };
   }
 
   async deleteLocation(_options: { locationId: number }): Promise<void> {
@@ -105,52 +134,81 @@ export class BackgroundGeolocationWeb
     throw this.unimplemented(NOT_AVAILABLE);
   }
 
-  async isLocationEnabled(): Promise<{ enabled: boolean }> {
-    return { enabled: 'geolocation' in navigator };
-  }
-
-  async showAppSettings(): Promise<void> {
-    throw this.unimplemented(NOT_AVAILABLE);
-  }
-
-  async showLocationSettings(): Promise<void> {
-    throw this.unimplemented(NOT_AVAILABLE);
-  }
-
-  async watchLocationMode(): Promise<void> {
-    throw this.unimplemented(NOT_AVAILABLE);
-  }
-
-  async stopWatchingLocationMode(): Promise<void> {
-    throw this.unimplemented(NOT_AVAILABLE);
-  }
-
-  async getLogEntries(_options: {
-    limit: number;
-    fromId?: number;
-  }): Promise<{ entries: LogEntry[] }> {
-    return { entries: [] };
-  }
-
-  async checkStatus(): Promise<Status> {
-    return {
-      isRunning: this.watchId !== null,
-      locationServicesEnabled: 'geolocation' in navigator,
-      authorization: AuthorizationStatus.AUTHORIZED_FOREGROUND,
-    };
-  }
-
-  async startTask(): Promise<Task> {
-    return { taskKey: 0 };
-  }
-
-  async endTask(_options: { taskKey: number }): Promise<void> {
-    /* no-op */
-  }
+  // ---------------- Sync queue ----------------
 
   async forceSync(): Promise<void> {
     throw this.unimplemented(NOT_AVAILABLE);
   }
+
+  async clearSync(): Promise<void> {
+    throw this.unimplemented(NOT_AVAILABLE);
+  }
+
+  async getPendingSyncCount(): Promise<{ count: number }> {
+    return { count: 0 };
+  }
+
+  // ---------------- Sessions ----------------
+
+  async startSession(): Promise<void> {
+    throw this.unimplemented(NOT_AVAILABLE);
+  }
+
+  async getSessionLocations(): Promise<{ locations: Location[] }> {
+    return { locations: [] };
+  }
+
+  async clearSession(): Promise<void> {
+    throw this.unimplemented(NOT_AVAILABLE);
+  }
+
+  async getSessionLocationsCount(): Promise<{ count: number }> {
+    return { count: 0 };
+  }
+
+  // ---------------- Diagnostics & OEMs ----------------
+
+  async getDiagnostics(): Promise<Diagnostics> {
+    return {
+      isRunning: this.watchId !== null,
+      locationServicesEnabled: 'geolocation' in navigator,
+      lastLocationAt: this.lastLocation?.time ?? null,
+      manufacturer: 'web',
+    };
+  }
+
+  async isIgnoringBatteryOptimizations(): Promise<{ whitelisted: boolean }> {
+    return { whitelisted: true };
+  }
+
+  async requestIgnoreBatteryOptimizations(): Promise<{ whitelisted: boolean }> {
+    return { whitelisted: true };
+  }
+
+  async openBatterySettings(): Promise<void> {
+    /* no-op */
+  }
+
+  async openAutoStartSettings(): Promise<{
+    opened: boolean;
+    manufacturer: string;
+    screen: string;
+  }> {
+    return { opened: false, manufacturer: 'web', screen: '' };
+  }
+
+  async getManufacturerHelp(): Promise<{
+    manufacturer: string;
+    steps: string[];
+  }> {
+    return { manufacturer: 'web', steps: [] };
+  }
+
+  async getPluginVersion(): Promise<{ version: string }> {
+    return { version: '1.0.0' };
+  }
+
+  // ---------------- Permissions ----------------
 
   async checkPermissions(): Promise<{ location: PermissionState }> {
     const perms = (navigator as unknown as { permissions?: BrowserPermissions })
@@ -183,6 +241,75 @@ export class BackgroundGeolocationWeb
     });
   }
 
+  async requestBackgroundLocationPermission(): Promise<PermissionRequestResult> {
+    return { granted: true, notRequired: true };
+  }
+
+  async requestActivityRecognitionPermission(): Promise<PermissionRequestResult> {
+    return { granted: true, notRequired: true };
+  }
+
+  async requestNotificationPermission(): Promise<PermissionRequestResult> {
+    if (typeof Notification === 'undefined') {
+      return { granted: true, notRequired: true };
+    }
+    if (Notification.permission === 'granted') {
+      return { granted: true };
+    }
+    try {
+      const result = await Notification.requestPermission();
+      return result === 'granted'
+        ? { granted: true }
+        : { granted: false, denied: ['notifications'] };
+    } catch {
+      return { granted: false, denied: ['notifications'] };
+    }
+  }
+
+  async showAppSettings(): Promise<void> {
+    throw this.unimplemented(NOT_AVAILABLE);
+  }
+
+  async openSettings(): Promise<void> {
+    throw this.unimplemented(NOT_AVAILABLE);
+  }
+
+  async showLocationSettings(): Promise<void> {
+    throw this.unimplemented(NOT_AVAILABLE);
+  }
+
+  // ---------------- Tasks ----------------
+
+  async startTask(): Promise<{ taskKey: number }> {
+    return { taskKey: 0 };
+  }
+
+  async endTask(_options: { taskKey: number }): Promise<void> {
+    /* no-op */
+  }
+
+  async triggerSOS(payload?: Record<string, unknown>): Promise<void> {
+    this.notifyListeners('sos', {
+      ...(payload ?? {}),
+      location: this.lastLocation ?? undefined,
+    });
+  }
+
+  // ---------------- Config & logs ----------------
+
+  async getConfig(): Promise<ConfigureOptions> {
+    return { ...this.config };
+  }
+
+  async getLogEntries(_options: {
+    limit: number;
+    fromId?: number;
+  }): Promise<{ entries: LogEntry[] }> {
+    return { entries: [] };
+  }
+
+  // ---------------- Helpers ----------------
+
   private toLocation(pos: GeolocationPosition): Location {
     const c = pos.coords;
     return {
@@ -199,7 +326,7 @@ export class BackgroundGeolocationWeb
     };
   }
 
-  private toError(err: GeolocationPositionError): ErrorEvent {
+  private toError(err: GeolocationPositionError): BackgroundGeolocationError {
     return { code: err.code, message: err.message };
   }
 }

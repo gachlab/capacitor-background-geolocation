@@ -1,7 +1,7 @@
 {
   "name": "@josuelmm/capacitor-background-geolocation",
-  "version": "0.1.0",
-  "description": "Capacitor plugin for accurate background geolocation tracking on iOS and Android. Derived from the @josuelmm/cordova-background-geolocation core (fork of mauron85).",
+  "version": "1.0.0",
+  "description": "Capacitor 8+ plugin for accurate background geolocation tracking, driving-event detection, sync queue and OEM diagnostics on iOS and Android. Derived from @josuelmm/cordova-background-geolocation (fork of mauron85).",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
   "types": "dist/esm/index.d.ts",

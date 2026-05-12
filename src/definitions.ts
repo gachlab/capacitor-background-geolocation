@@ -2,9 +2,9 @@
 // Copyright (c) 2026 JosueLMM
 //
 // Capacitor plugin definitions for @josuelmm/capacitor-background-geolocation.
-// Translated from the Cordova plugin's www/BackgroundGeolocation.d.ts.
-// Cordova-style success/fail callbacks have been collapsed into Promises and
-// `on(eventName, cb)` has been replaced by Capacitor's `addListener` overloads.
+// Mirrors @josuelmm/cordova-background-geolocation's www/BackgroundGeolocation.d.ts
+// 1:1 for v1.0.0 parity. Cordova success/fail callbacks are collapsed into
+// Promises; `on(eventName, cb)` becomes Capacitor's `addListener` overloads.
 
 import type { PermissionState, PluginListenerHandle } from '@capacitor/core';
 
@@ -13,21 +13,23 @@ import type { PermissionState, PluginListenerHandle } from '@capacitor/core';
 // ---------------------------------------------------------------------------
 
 /**
- * Location provider name. Strings are preferred in the Capacitor API; numeric
- * values are accepted via {@link LocationProviderValue} for back-compat with
- * the Cordova plugin.
+ * Location provider strategy. Strings are preferred in the Capacitor API.
+ * Numeric ids `0 | 1 | 2` are accepted for back-compat with the Cordova plugin.
  *
- * @since 0.1.0
+ * @since 1.0.0
  */
 export type LocationProvider =
   | 'DISTANCE_FILTER'
   | 'ACTIVITY_PROVIDER'
-  | 'RAW_PROVIDER';
+  | 'RAW_PROVIDER'
+  | 0
+  | 1
+  | 2;
 
 /**
  * Numeric mapping of {@link LocationProvider} matching the Cordova plugin.
  *
- * @since 0.1.0
+ * @since 1.0.0
  */
 export const LocationProviderValue = {
   DISTANCE_FILTER: 0,
@@ -36,36 +38,35 @@ export const LocationProviderValue = {
 } as const;
 
 /**
- * Desired accuracy. Strings are preferred; the corresponding meters value is
- * available via {@link AccuracyValue}.
+ * Desired accuracy. Strings or the corresponding meters value (`0 | 100 | 1000 | 10000`).
  *
- * @since 0.1.0
+ * @since 1.0.0
  */
-export type Accuracy = 'HIGH' | 'MEDIUM' | 'LOW' | 'PASSIVE';
+export type Accuracy = 'HIGH' | 'MEDIUM' | 'LOW' | 'PASSIVE' | number;
 
 /**
- * Meters mapping of {@link Accuracy}.
+ * Meters mapping of {@link Accuracy} (matches the Cordova plugin's `AccuracyLevel`).
  *
- * @since 0.1.0
+ * @since 1.0.0
  */
 export const AccuracyValue = {
   HIGH: 0,
-  MEDIUM: 10,
-  LOW: 100,
-  PASSIVE: 1000,
+  MEDIUM: 100,
+  LOW: 1000,
+  PASSIVE: 10000,
 } as const;
 
 /**
  * Hex string (e.g. `'#4CAF50'`) used for the Android notification accent color.
  *
- * @since 0.1.0
+ * @since 1.0.0
  */
 export type NotificationIconColor = string;
 
 /**
  * Service authorization state, mirroring the Cordova plugin constants.
  *
- * @since 0.1.0
+ * @since 1.0.0
  */
 export enum AuthorizationStatus {
   NOT_AUTHORIZED = 0,
@@ -76,21 +77,21 @@ export enum AuthorizationStatus {
 /**
  * Log levels accepted by {@link BackgroundGeolocationPlugin.getLogEntries}.
  *
- * @since 0.1.0
+ * @since 1.0.0
  */
-export type LogLevel = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
+export type LogLevel = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
 /**
  * Native location source reported by the OS.
  *
- * @since 0.1.0
+ * @since 1.0.0
  */
 export type NativeProvider = 'gps' | 'network' | 'passive' | 'fused';
 
 /**
  * iOS `CLActivityType` mapping.
  *
- * @since 0.1.0
+ * @since 1.0.0
  */
 export type IOSActivityType =
   | 'AutomotiveNavigation'
@@ -100,13 +101,46 @@ export type IOSActivityType =
 
 /**
  * Service mode used by {@link BackgroundGeolocationPlugin.switchMode}.
+ * `0 = BACKGROUND`, `1 = FOREGROUND`.
  *
- * @since 0.1.0
+ * @since 1.0.0
  */
 export type ServiceMode = 0 | 1;
 
+/**
+ * Activity type reported by the activity-recognition provider.
+ *
+ * @since 1.0.0
+ */
+export type ActivityType =
+  | 'IN_VEHICLE'
+  | 'ON_BICYCLE'
+  | 'ON_FOOT'
+  | 'RUNNING'
+  | 'STILL'
+  | 'TILTING'
+  | 'UNKNOWN'
+  | 'WALKING';
+
+/**
+ * Numeric error code emitted with `LocationError`.
+ *  - `1` PERMISSION_DENIED
+ *  - `2` LOCATION_UNAVAILABLE
+ *  - `3` TIMEOUT
+ *
+ * @since 1.0.0
+ */
+export type LocationErrorCode = 1 | 2 | 3;
+
+/**
+ * Headless task event name. Reserved for a future `BackgroundFetch`-style hook.
+ *
+ * @since 1.0.0
+ */
+export type HeadlessTaskEventName = 'location' | 'stationary' | 'activity';
+
 // ---------------------------------------------------------------------------
-// LocationOptions (a.k.a. ConfigureOptions in the Cordova plugin)
+// ConfigureOptions (a.k.a. LocationOptions in <1.0)
 // ---------------------------------------------------------------------------
 
 /**
@@ -114,35 +148,33 @@ export type ServiceMode = 0 | 1;
  * `ConfigureOptions` 1:1. Every field is optional; the native side uses safe
  * defaults documented inline.
  *
- * @since 0.1.0
+ * @since 1.0.0
  */
-export interface LocationOptions {
+export interface ConfigureOptions {
   /** Location provider strategy. @default 'DISTANCE_FILTER' */
-  locationProvider?: LocationProvider | 0 | 1 | 2;
+  locationProvider?: LocationProvider;
   /** Desired accuracy in meters. @default 'MEDIUM' */
-  desiredAccuracy?: Accuracy | number;
+  desiredAccuracy?: Accuracy;
   /** Stationary radius in meters. @default 50 */
   stationaryRadius?: number;
-  /** Minimum horizontal distance (meters) between location updates. @default 500 */
-  distanceFilter?: number;
   /** Emit debugging sounds for life-cycle events. @default false */
   debug?: boolean;
+  /** Minimum horizontal distance (meters) between location updates. @default 500 */
+  distanceFilter?: number;
+  /** Stop tracking when the app is terminated. @default true */
+  stopOnTerminate?: boolean;
+  /** Start tracking on device boot. Android. @default false */
+  startOnBoot?: boolean;
   /** Minimum time interval between location updates (ms). Android. @default 600000 */
   interval?: number;
   /** Fastest rate (ms) at which updates may be delivered. Android. @default 120000 */
   fastestInterval?: number;
   /** Activity recognition cadence (ms). Android ACTIVITY provider. @default 10000 */
   activitiesInterval?: number;
-  /** Stop tracking when the app is terminated. @default true */
-  stopOnTerminate?: boolean;
-  /** Start tracking on device boot. Android. @default false */
-  startOnBoot?: boolean;
   /** @deprecated Stop on STILL activity. */
   stopOnStillActivity?: boolean;
   /** Restart the provider if no update is received for ~60s. Android. @default false */
   enableWatchdog?: boolean;
-  /** Watchdog timeout in ms when {@link enableWatchdog} is `true`. */
-  watchdogTimeout?: number;
   /** Show local notifications during tracking/sync. Android. @default true */
   notificationsEnabled?: boolean;
   /** Run the sync service in foreground (Android requires a notification). @default false */
@@ -169,8 +201,6 @@ export interface LocationOptions {
   notificationIconLarge?: string;
   /** Custom small notification icon (drawable name). Android. */
   notificationIconSmall?: string;
-  /** Notification channel name. Android 8+. */
-  notificationChannelName?: string;
   /** iOS activity type hint. @default 'OtherNavigation' */
   activityType?: IOSActivityType;
   /** Allow iOS to pause location updates. @default false */
@@ -211,8 +241,6 @@ export interface LocationOptions {
   heartbeatInterval?: number;
   /** Policy for samples flagged as mock locations. @default 'allow' */
   mockLocationPolicy?: 'allow' | 'flag' | 'drop';
-  /** Compatibility alias for {@link mockLocationPolicy}. */
-  mockPolicy?: 'allow' | 'flag' | 'drop';
   /** Stamp battery level / charging state on every fix. @default true */
   includeBattery?: boolean;
   /** Android WakeLock policy. @default 'posting' */
@@ -227,34 +255,53 @@ export interface LocationOptions {
   activityConfidenceThreshold?: number;
   /** Drop fixes whose reported accuracy is worse than this (meters). */
   maxAcceptedAccuracy?: number;
-  /** Hint that the host registered a headless task (Android only). */
-  headlessMode?: boolean;
-  /** Convenience flag mirroring `activityConfidenceThreshold` usage. */
-  useActivityDetection?: boolean;
   /** Driver-insights state machine configuration. */
   drivingEvents?: {
+    /** Master switch. When `false` (default) no driver-insight events are emitted. */
     enabled?: boolean;
+    /** Speed limit (km/h) for the `speeding` event. `0` disables. */
     speedLimit?: number;
+    /** m/s threshold below which the user is considered stopped. */
     minMovingSpeed?: number;
+    /** ms of continuous below-threshold speed needed to confirm `stopped`. */
     stoppedDuration?: number;
+    /** m/s threshold to start counting a trip. */
     minTripSpeed?: number;
+    /** ms of continuous above-threshold speed needed to confirm `tripStart`. */
     minTripDuration?: number;
+    /** Deceleration threshold (m/s²) for `hardBrake`. */
     hardBrakeMps2?: number;
+    /** Acceleration threshold (m/s²) for `rapidAcceleration`. */
     rapidAccelMps2?: number;
+    /** Bearing change rate (deg/s) for `sharpTurn`. */
     sharpTurnDegPerSec?: number;
+    /** Velocity drop (km/h) within `crashWindowMs` to trigger `possibleCrash`. */
     crashImpactKmh?: number;
+    /** Window (ms) used to evaluate the crash impact. */
     crashWindowMs?: number;
+    /** Enable accelerometer/gyroscope sensor fusion. @default false */
     sensorFusion?: boolean;
+    /** Crash impact threshold in g for the sensor pipeline. */
     crashImpactG?: number;
+    /** Cooldown (ms) between sensor-driven crash detections. */
     sensorCrashCooldownMs?: number;
+    /** Sustained jitter window (ms) for `phoneUsageWhileDriving`. */
     phoneUsageWindowMs?: number;
+    /** Cooldown (ms) between `phoneUsageWhileDriving` events. */
     phoneUsageCooldownMs?: number;
   };
   /** Forward-compatible escape hatch for new native options. */
   [extra: string]: unknown;
 }
 
-/** Options for {@link BackgroundGeolocationPlugin.getCurrentLocation}. @since 0.1.0 */
+/**
+ * Backwards-compatible alias for {@link ConfigureOptions} (v0.x name).
+ *
+ * @since 1.0.0
+ */
+export type LocationOptions = ConfigureOptions;
+
+/** Options for {@link BackgroundGeolocationPlugin.getCurrentLocation}. @since 1.0.0 */
 export interface CurrentLocationOptions {
   /** Max time the device will wait for a fix (ms). */
   timeout?: number;
@@ -271,7 +318,7 @@ export interface CurrentLocationOptions {
 /**
  * A single location fix delivered by the native provider.
  *
- * @since 0.1.0
+ * @since 1.0.0
  */
 export interface Location {
   /** DB id (`null`/`undefined` for synthetic fixes). */
@@ -280,8 +327,6 @@ export interface Location {
   provider: NativeProvider;
   /** Configured location provider id. */
   locationProvider: number;
-  /** Service provider (`'gps' | 'fused'` etc.) when known. */
-  serviceProvider?: string;
   /** UTC timestamp in ms. */
   time: number;
   /** Latitude in degrees. */
@@ -302,36 +347,46 @@ export interface Location {
   mockLocationsEnabled?: boolean;
   /** iOS 15+: simulator-generated fix. */
   simulated?: boolean;
-  /** Stationary radius (only on stationary events). */
-  radius?: number;
-  /** Battery percentage (0–100) when {@link LocationOptions.includeBattery} is on. */
-  battery?: number;
-  /** Charging state when {@link LocationOptions.includeBattery} is on. */
-  isCharging?: boolean;
   /** Driving events anchored to this fix. */
   events?: Array<{ type: string; time: number; [key: string]: unknown }>;
+  /** Battery percentage (0–100) when {@link ConfigureOptions.includeBattery} is on. */
+  battery?: number;
+  /** Charging state when {@link ConfigureOptions.includeBattery} is on. */
+  isCharging?: boolean;
 }
 
-/** Persisted log entry returned by {@link BackgroundGeolocationPlugin.getLogEntries}. @since 0.1.0 */
-export interface LogEntry {
-  /** DB id. */
-  id: number;
-  /** Free-form context tag. */
-  context?: string;
-  /** Severity. */
-  level: LogLevel;
-  /** Message body. */
+/** Stationary location adds a `radius` (meters) to {@link Location}. @since 1.0.0 */
+export interface StationaryLocation extends Location {
+  /** Stationary radius in meters. */
+  radius: number;
+}
+
+/** Geolocation error shape. @since 1.0.0 */
+export interface LocationError {
+  /** Reason code. */
+  code: LocationErrorCode;
+  /** Human-readable description. */
   message: string;
-  /** UTC timestamp (ms). */
-  timestamp: number;
-  /** Logger name. */
-  logger?: string;
-  /** Stack trace (Android only — iOS folds it into `message`). */
-  stackTrace?: string;
 }
 
-/** Service status returned by {@link BackgroundGeolocationPlugin.checkStatus}. @since 0.1.0 */
-export interface Status {
+/** Generic native plugin error. @since 1.0.0 */
+export interface BackgroundGeolocationError {
+  /** Numeric error code. */
+  code: number;
+  /** Human-readable description. */
+  message: string;
+}
+
+/** Activity recognition payload. @since 1.0.0 */
+export interface Activity {
+  /** Recognised activity type. */
+  type: ActivityType;
+  /** Confidence percentage (0–100). */
+  confidence: number;
+}
+
+/** Service status returned by {@link BackgroundGeolocationPlugin.checkStatus}. @since 1.0.0 */
+export interface ServiceStatus {
   /** Service is currently running. */
   isRunning: boolean;
   /** OS-level location services are enabled. */
@@ -340,46 +395,107 @@ export interface Status {
   authorization: AuthorizationStatus;
 }
 
-/** iOS background task handle returned by {@link BackgroundGeolocationPlugin.startTask}. @since 0.1.0 */
+/** Backwards-compatible alias for {@link ServiceStatus}. @since 1.0.0 */
+export type Status = ServiceStatus;
+
+/**
+ * Extended diagnostics returned by {@link BackgroundGeolocationPlugin.getDiagnostics}.
+ *
+ * @since 1.0.0
+ */
+export interface Diagnostics {
+  // ---- common ----
+  /** TRUE if the native service is currently running. */
+  isRunning: boolean;
+  /** TRUE if the OS-level location services are enabled. */
+  locationServicesEnabled: boolean;
+  /** Configured `startOnBoot` flag. */
+  startOnBoot?: boolean;
+  /** Number of locations queued for sync. */
+  pendingSyncCount?: number;
+  /** UTC ms of the last received location, or `null` if none yet. */
+  lastLocationAt?: number | null;
+
+  // ---- Android ----
+  /** Android: TRUE if `ACCESS_FINE_LOCATION` is granted. */
+  fineLocationGranted?: boolean;
+  /** Android: TRUE if `ACCESS_COARSE_LOCATION` is granted. */
+  coarseLocationGranted?: boolean;
+  /** Android 10+: TRUE if `ACCESS_BACKGROUND_LOCATION` is granted. */
+  backgroundLocationGranted?: boolean;
+  /** Android 13+: TRUE if `POST_NOTIFICATIONS` is granted. */
+  notificationPermissionGranted?: boolean;
+  /** Android 10+: TRUE if `ACTIVITY_RECOGNITION` is granted. */
+  activityRecognitionGranted?: boolean;
+  /** Android: TRUE if the app is on the battery optimisation whitelist. */
+  batteryOptimizationIgnored?: boolean;
+  /** Android: device manufacturer (`Build.MANUFACTURER`). */
+  manufacturer?: string;
+  /** Android: declared `foregroundServiceType` (numeric). */
+  foregroundServiceType?: number;
+
+  // ---- iOS ----
+  /** iOS 14+: TRUE if the user granted Precise Location. */
+  preciseLocationEnabled?: boolean;
+  /** iOS: status of system-wide Background App Refresh. */
+  backgroundRefreshStatus?: 'available' | 'denied' | 'restricted';
+  /** iOS: TRUE if Low Power Mode is currently enabled. */
+  lowPowerModeEnabled?: boolean;
+  /** iOS: status of the Motion & Fitness permission. */
+  motionPermissionStatus?:
+    | 'authorized'
+    | 'denied'
+    | 'restricted'
+    | 'notDetermined';
+  /** iOS: human-readable label of the current `CLAuthorizationStatus`. */
+  authorizationStatusText?: string;
+}
+
+/** Persisted log entry returned by {@link BackgroundGeolocationPlugin.getLogEntries}. @since 1.0.0 */
+export interface LogEntry {
+  /** DB id. */
+  id: number;
+  /** UTC timestamp (ms). */
+  timestamp: number;
+  /** Severity. */
+  level: LogLevel;
+  /** Message body. */
+  message: string;
+  /** Stack trace (Android only — iOS folds it into `message`). */
+  stackTrace: string;
+}
+
+/**
+ * Headless task event payload (reserved for a future v1.1 hook).
+ *
+ * @since 1.0.0
+ */
+export interface HeadlessTaskEvent {
+  /** Event name. */
+  name: HeadlessTaskEventName;
+  /** Event parameters. */
+  params: unknown;
+}
+
+/** iOS background task handle returned by {@link BackgroundGeolocationPlugin.startTask}. @since 1.0.0 */
 export interface Task {
   /** Native task identifier — pass back to `endTask`. */
   taskKey: number;
 }
 
 // ---------------------------------------------------------------------------
-// Event payload types
+// Permission-request result
 // ---------------------------------------------------------------------------
 
-/** Location event payload. @since 0.1.0 */
-export type LocationEvent = Location;
-
-/** Stationary event payload (location with radius). @since 0.1.0 */
-export type StationaryEvent = Location;
-
-/** Activity recognition event. @since 0.1.0 */
-export interface ActivityEvent {
-  /** Recognised activity type (`IN_VEHICLE`, `ON_FOOT`, etc.). */
-  type: string;
-  /** Confidence percentage (0–100). */
-  confidence: number;
+/** Result of an Android runtime permission request. @since 1.0.0 */
+export interface PermissionRequestResult {
+  /** TRUE if all requested permissions were granted. */
+  granted: boolean;
+  /** Names of any permissions that were denied. */
+  denied?: string[];
+  /** TRUE when the OS version made the request a no-op (e.g. iOS, old Android). */
+  notRequired?: boolean;
 }
-
-/** Error event payload. @since 0.1.0 */
-export interface ErrorEvent {
-  /** Numeric error code (1 PERMISSION_DENIED, 2 LOCATION_UNAVAILABLE, 3 TIMEOUT, …). */
-  code: number;
-  /** Human-readable description. */
-  message: string;
-}
-
-/** Authorization state change. @since 0.1.0 */
-export interface AuthorizationEvent {
-  /** New authorization state. */
-  status: AuthorizationStatus;
-}
-
-/** HTTP 401 received from sync endpoint. @since 0.1.0 */
-export type HttpAuthorizationEvent = Record<string, never>;
 
 // ---------------------------------------------------------------------------
 // Main plugin interface
@@ -388,111 +504,304 @@ export type HttpAuthorizationEvent = Record<string, never>;
 /**
  * Public contract of the `BackgroundGeolocation` plugin.
  *
- * @since 0.1.0
+ * @since 1.0.0
  */
 export interface BackgroundGeolocationPlugin {
+  // ---------------- Tracking control ----------------
+
   /**
    * Configure the native plugin. Must be called at least once before `start`.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
-  configure(options: LocationOptions): Promise<void>;
+  configure(options: ConfigureOptions): Promise<void>;
 
   /**
    * Start the native background location service.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
   start(): Promise<void>;
 
   /**
    * Stop the native background location service.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
   stop(): Promise<void>;
 
   /**
-   * One-shot location request. Resolves with the latest acceptable fix.
+   * Switch plugin operation mode (iOS).
+   * `0` = BACKGROUND, `1` = FOREGROUND.
    *
-   * @since 0.1.0
+   * @since 1.0.0
+   */
+  switchMode(options: { mode: ServiceMode }): Promise<void>;
+
+  /**
+   * Service status snapshot.
+   *
+   * @since 1.0.0
+   */
+  checkStatus(): Promise<ServiceStatus>;
+
+  // ---------------- Locations ----------------
+
+  /**
+   * One-shot location request.
+   *
+   * @since 1.0.0
    */
   getCurrentLocation(options?: CurrentLocationOptions): Promise<Location>;
 
   /**
    * Returns the last stationary location if any, otherwise `null`.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
-  getStationaryLocation(): Promise<Location | null>;
+  getStationaryLocation(): Promise<StationaryLocation | null>;
+
+  /**
+   * Return all stored locations.
+   *
+   * @since 1.0.0
+   */
+  getLocations(): Promise<{ locations: Location[] }>;
 
   /**
    * Locations stored locally that have not yet been delivered.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
   getValidLocations(): Promise<{ locations: Location[] }>;
 
   /**
-   * Retrieve the persisted configuration.
+   * Like {@link getValidLocations} but also deletes the rows returned.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
-  getConfig(): Promise<LocationOptions>;
+  getValidLocationsAndDelete(): Promise<{ locations: Location[] }>;
 
   /**
    * Delete a single stored location by DB id.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
   deleteLocation(options: { locationId: number }): Promise<void>;
 
   /**
    * Delete every stored location.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
   deleteAllLocations(): Promise<void>;
 
+  // ---------------- Sync queue ----------------
+
   /**
-   * Whether OS-level location services are enabled.
+   * Force an immediate sync of pending locations to `syncUrl`.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
-  isLocationEnabled(): Promise<{ enabled: boolean }>;
+  forceSync(): Promise<void>;
+
+  /**
+   * Discard every pending sync-queue location.
+   *
+   * @since 1.0.0
+   */
+  clearSync(): Promise<void>;
+
+  /**
+   * Number of locations pending to be synced.
+   *
+   * @since 1.0.0
+   */
+  getPendingSyncCount(): Promise<{ count: number }>;
+
+  // ---------------- Sessions ----------------
+
+  /**
+   * Begin a recording session (clears the session table and starts collecting).
+   *
+   * @since 1.0.0
+   */
+  startSession(): Promise<void>;
+
+  /**
+   * Return every location stored in the current session.
+   *
+   * @since 1.0.0
+   */
+  getSessionLocations(): Promise<{ locations: Location[] }>;
+
+  /**
+   * Clear the session table and stop collecting.
+   *
+   * @since 1.0.0
+   */
+  clearSession(): Promise<void>;
+
+  /**
+   * Count of locations in the current session.
+   *
+   * @since 1.0.0
+   */
+  getSessionLocationsCount(): Promise<{ count: number }>;
+
+  // ---------------- Diagnostics & OEMs ----------------
+
+  /**
+   * Extended diagnostics (permissions, battery optimisation, OEM, iOS flags).
+   *
+   * @since 1.0.0
+   */
+  getDiagnostics(): Promise<Diagnostics>;
+
+  /**
+   * Android: TRUE if the app is on the battery optimisation whitelist.
+   * iOS: resolves `{ whitelisted: true }`.
+   *
+   * @since 1.0.0
+   */
+  isIgnoringBatteryOptimizations(): Promise<{ whitelisted: boolean }>;
+
+  /**
+   * Android: prompt the user to add the app to the battery optimisation whitelist.
+   * iOS: resolves `{ whitelisted: true }`.
+   *
+   * @since 1.0.0
+   */
+  requestIgnoreBatteryOptimizations(): Promise<{ whitelisted: boolean }>;
+
+  /**
+   * Android: open the battery-related settings screen.
+   * iOS: no-op.
+   *
+   * @since 1.0.0
+   */
+  openBatterySettings(): Promise<void>;
+
+  /**
+   * Android: open the OEM-specific auto-start / background-activity screen.
+   *
+   * @since 1.0.0
+   */
+  openAutoStartSettings(): Promise<{
+    opened: boolean;
+    manufacturer: string;
+    screen: string;
+  }>;
+
+  /**
+   * Return OEM-specific guidance steps to surface in the UI.
+   *
+   * @since 1.0.0
+   */
+  getManufacturerHelp(): Promise<{ manufacturer: string; steps: string[] }>;
+
+  /**
+   * Get the plugin version from native code.
+   *
+   * @since 1.0.0
+   */
+  getPluginVersion(): Promise<{ version: string }>;
+
+  // ---------------- Permissions ----------------
+
+  /**
+   * Capacitor-style permission check. Resolves to the current location permission.
+   *
+   * @since 1.0.0
+   */
+  checkPermissions(): Promise<{ location: PermissionState }>;
+
+  /**
+   * Capacitor-style permission request. Prompts the user if needed.
+   *
+   * @since 1.0.0
+   */
+  requestPermissions(): Promise<{ location: PermissionState }>;
+
+  /**
+   * Request `ACCESS_BACKGROUND_LOCATION` (Android 10+).
+   *
+   * @since 1.0.0
+   */
+  requestBackgroundLocationPermission(): Promise<PermissionRequestResult>;
+
+  /**
+   * Request `ACTIVITY_RECOGNITION` (Android 10+).
+   *
+   * @since 1.0.0
+   */
+  requestActivityRecognitionPermission(): Promise<PermissionRequestResult>;
+
+  /**
+   * Request `POST_NOTIFICATIONS` (Android 13+).
+   *
+   * @since 1.0.0
+   */
+  requestNotificationPermission(): Promise<PermissionRequestResult>;
 
   /**
    * Open this app's settings screen so the user can change permissions.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
   showAppSettings(): Promise<void>;
 
   /**
-   * Open the system Location settings screen.
+   * Convenience alias for {@link showAppSettings}.
    *
-   * @since 0.1.0
+   * @since 1.0.0
+   */
+  openSettings(): Promise<void>;
+
+  /**
+   * Open the system Location settings screen (Android).
+   *
+   * @since 1.0.0
    */
   showLocationSettings(): Promise<void>;
 
-  /**
-   * Subscribe to provider-state changes (location services toggled, etc.).
-   *
-   * @since 0.1.0
-   */
-  watchLocationMode(): Promise<void>;
+  // ---------------- Tasks ----------------
 
   /**
-   * Stop watching provider-state changes.
+   * iOS: begin a background task. Pair every call with {@link endTask}.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
-  stopWatchingLocationMode(): Promise<void>;
+  startTask(): Promise<{ taskKey: number }>;
+
+  /**
+   * iOS: end a background task started by {@link startTask}.
+   *
+   * @since 1.0.0
+   */
+  endTask(options: { taskKey: number }): Promise<void>;
+
+  /**
+   * Trigger an SOS event from JS. The plugin emits an `sos` event carrying
+   * the latest known location plus the user-supplied payload.
+   *
+   * @since 1.0.0
+   */
+  triggerSOS(payload?: Record<string, unknown>): Promise<void>;
+
+  // ---------------- Config & logs ----------------
+
+  /**
+   * Retrieve the persisted configuration.
+   *
+   * @since 1.0.0
+   */
+  getConfig(): Promise<ConfigureOptions>;
 
   /**
    * Return logged plugin events (useful for diagnostics).
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
   getLogEntries(options: {
     /** Maximum entries to return. */
@@ -503,52 +812,12 @@ export interface BackgroundGeolocationPlugin {
     minLevel?: LogLevel;
   }): Promise<{ entries: LogEntry[] }>;
 
-  /**
-   * Service status snapshot.
-   *
-   * @since 0.1.0
-   */
-  checkStatus(): Promise<Status>;
-
-  /**
-   * iOS: begin a background task. Pair every call with {@link endTask}.
-   *
-   * @since 0.1.0
-   */
-  startTask(): Promise<Task>;
-
-  /**
-   * iOS: end a background task started by {@link startTask}.
-   *
-   * @since 0.1.0
-   */
-  endTask(options: { taskKey: number }): Promise<void>;
-
-  /**
-   * Force an immediate sync of pending locations to `syncUrl`.
-   *
-   * @since 0.1.0
-   */
-  forceSync(): Promise<void>;
-
-  /**
-   * Capacitor permission check. Resolves to the current location permission.
-   *
-   * @since 0.1.0
-   */
-  checkPermissions(): Promise<{ location: PermissionState }>;
-
-  /**
-   * Capacitor permission request. Prompts the user if needed.
-   *
-   * @since 0.1.0
-   */
-  requestPermissions(): Promise<{ location: PermissionState }>;
+  // ---------------- Lifecycle ----------------
 
   /**
    * Remove every registered listener attached to this plugin instance.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
   removeAllListeners(): Promise<void>;
 
@@ -557,57 +826,37 @@ export interface BackgroundGeolocationPlugin {
   /**
    * New location fix.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
   addListener(
     eventName: 'location',
-    listener: (event: LocationEvent) => void,
+    listener: (event: Location) => void,
   ): Promise<PluginListenerHandle> & PluginListenerHandle;
 
   /**
-   * Stationary state entered (Android distance-filter provider).
+   * Stationary state entered.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
   addListener(
     eventName: 'stationary',
-    listener: (event: StationaryEvent) => void,
+    listener: (event: StationaryLocation) => void,
   ): Promise<PluginListenerHandle> & PluginListenerHandle;
 
   /**
    * Activity recognition update.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
   addListener(
     eventName: 'activity',
-    listener: (event: ActivityEvent) => void,
+    listener: (event: Activity) => void,
   ): Promise<PluginListenerHandle> & PluginListenerHandle;
 
   /**
-   * Recoverable or fatal native error.
+   * Service started.
    *
-   * @since 0.1.0
-   */
-  addListener(
-    eventName: 'error',
-    listener: (event: ErrorEvent) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
-
-  /**
-   * User changed authorization or toggled location services.
-   *
-   * @since 0.1.0
-   */
-  addListener(
-    eventName: 'authorization',
-    listener: (event: AuthorizationEvent) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
-
-  /**
-   * Service started successfully.
-   *
-   * @since 0.1.0
+   * @since 1.0.0
    */
   addListener(
     eventName: 'start',
@@ -615,9 +864,9 @@ export interface BackgroundGeolocationPlugin {
   ): Promise<PluginListenerHandle> & PluginListenerHandle;
 
   /**
-   * Service stopped successfully.
+   * Service stopped.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
   addListener(
     eventName: 'stop',
@@ -625,9 +874,29 @@ export interface BackgroundGeolocationPlugin {
   ): Promise<PluginListenerHandle> & PluginListenerHandle;
 
   /**
+   * Recoverable or fatal native error.
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'error',
+    listener: (event: BackgroundGeolocationError) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * User changed authorization or toggled location services.
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'authorization',
+    listener: (event: { status: AuthorizationStatus }) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
    * App entered the foreground.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
   addListener(
     eventName: 'foreground',
@@ -637,7 +906,7 @@ export interface BackgroundGeolocationPlugin {
   /**
    * App entered the background.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
   addListener(
     eventName: 'background',
@@ -645,9 +914,9 @@ export interface BackgroundGeolocationPlugin {
   ): Promise<PluginListenerHandle> & PluginListenerHandle;
 
   /**
-   * Server responded with `285 Updates Not Required`.
+   * Server returned `285 Updates Not Required`.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
   addListener(
     eventName: 'abort_requested',
@@ -655,12 +924,314 @@ export interface BackgroundGeolocationPlugin {
   ): Promise<PluginListenerHandle> & PluginListenerHandle;
 
   /**
-   * Server responded with `401 Unauthorized`.
+   * Server returned `401 Unauthorized`.
    *
-   * @since 0.1.0
+   * @since 1.0.0
    */
   addListener(
     eventName: 'http_authorization',
     listener: () => void,
   ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * Periodic tick with the latest known location. Receives a {@link Location}
+   * once the native service has at least one fix. Early ticks (before any GPS
+   * fix) deliver an empty object — guard with `if ('latitude' in event)`.
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'heartbeat',
+    listener: (event: Location) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * A batch upload to `syncUrl` started.
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'syncStart',
+    listener: () => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * Sync upload progress (0..100).
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'syncProgress',
+    listener: (event: { progress: number }) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * Sync upload completed successfully.
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'syncSuccess',
+    listener: (event: { sent: number }) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * Sync upload failed.
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'syncError',
+    listener: (event: { httpStatus: number; message: string }) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * A trip started (driver insights).
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'tripStart',
+    listener: (event: Location) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * A trip ended (driver insights).
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'tripEnd',
+    listener: (event: {
+      location: Location;
+      distance: number;
+      durationMs: number;
+    }) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * User started moving (driver insights).
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'moving',
+    listener: (event: Location) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * User stopped (driver insights).
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'stopped',
+    listener: (event: Location) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * Speed crossed above `drivingEvents.speedLimit`.
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'speeding',
+    listener: (event: {
+      location: Location;
+      speedKmh: number;
+      limitKmh: number;
+    }) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * Native location provider changed (gps ↔ network ↔ fused).
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'providerChange',
+    listener: (event: { provider: string }) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * `triggerSOS()` was invoked.
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'sos',
+    listener: (event: {
+      location?: Location;
+      [key: string]: unknown;
+    }) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * GPS-derived hard brake.
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'hardBrake',
+    listener: (event: { location: Location; value: number }) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * GPS-derived rapid acceleration.
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'rapidAcceleration',
+    listener: (event: { location: Location; value: number }) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * GPS-derived sharp turn.
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'sharpTurn',
+    listener: (event: { location: Location; value: number }) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * Heuristic possible-crash detection (GPS or sensor pipeline).
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'possibleCrash',
+    listener: (event: {
+      location: Location;
+      value: number;
+      source: 'gps' | 'sensor';
+    }) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+
+  /**
+   * Sustained phone interaction during an active trip.
+   *
+   * @since 1.0.0
+   */
+  addListener(
+    eventName: 'phoneUsageWhileDriving',
+    listener: (event: { location?: Location }) => void,
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
 }
+
+// ---------------------------------------------------------------------------
+// @awesome-cordova-plugins compatibility re-exports
+// ---------------------------------------------------------------------------
+
+/** Event name strings (compatibility with `@awesome-cordova-plugins` style). @since 1.0.0 */
+export enum BackgroundGeolocationEvents {
+  http_authorization = 'http_authorization',
+  abort_requested = 'abort_requested',
+  background = 'background',
+  foreground = 'foreground',
+  authorization = 'authorization',
+  error = 'error',
+  stop = 'stop',
+  start = 'start',
+  activity = 'activity',
+  stationary = 'stationary',
+  location = 'location',
+  heartbeat = 'heartbeat',
+  syncStart = 'syncStart',
+  syncProgress = 'syncProgress',
+  syncSuccess = 'syncSuccess',
+  syncError = 'syncError',
+  tripStart = 'tripStart',
+  tripEnd = 'tripEnd',
+  moving = 'moving',
+  stopped = 'stopped',
+  speeding = 'speeding',
+  providerChange = 'providerChange',
+  sos = 'sos',
+  hardBrake = 'hardBrake',
+  rapidAcceleration = 'rapidAcceleration',
+  sharpTurn = 'sharpTurn',
+  possibleCrash = 'possibleCrash',
+  phoneUsageWhileDriving = 'phoneUsageWhileDriving',
+}
+
+/** Location error codes. @since 1.0.0 */
+export enum BackgroundGeolocationLocationCode {
+  PERMISSION_DENIED = 1,
+  LOCATION_UNAVAILABLE = 2,
+  TIMEOUT = 3,
+}
+
+/** Native provider strings. @since 1.0.0 */
+export enum BackgroundGeolocationNativeProvider {
+  gps = 'gps',
+  network = 'network',
+  passive = 'passive',
+  fused = 'fused',
+}
+
+/** Location provider IDs. @since 1.0.0 */
+export enum BackgroundGeolocationLocationProvider {
+  DISTANCE_FILTER_PROVIDER = 0,
+  ACTIVITY_PROVIDER = 1,
+  RAW_PROVIDER = 2,
+}
+
+/** Authorization status. @since 1.0.0 */
+export enum BackgroundGeolocationAuthorizationStatus {
+  NOT_AUTHORIZED = 0,
+  AUTHORIZED = 1,
+  AUTHORIZED_FOREGROUND = 2,
+}
+
+/** Log levels. @since 1.0.0 */
+export enum BackgroundGeolocationLogLevel {
+  TRACE = 'TRACE',
+  DEBUG = 'DEBUG',
+  INFO = 'INFO',
+  WARN = 'WARN',
+  ERROR = 'ERROR',
+}
+
+/** Provider enum (compatibility with `@awesome-cordova-plugins` style). @since 1.0.0 */
+export enum BackgroundGeolocationProvider {
+  ANDROID_DISTANCE_FILTER_PROVIDER = 0,
+  ANDROID_ACTIVITY_PROVIDER = 1,
+  RAW_PROVIDER = 2,
+}
+
+/** Desired accuracy in meters. @since 1.0.0 */
+export enum BackgroundGeolocationAccuracy {
+  HIGH = 0,
+  MEDIUM = 100,
+  LOW = 1000,
+  PASSIVE = 10000,
+}
+
+/** Mode for `switchMode`. @since 1.0.0 */
+export enum BackgroundGeolocationMode {
+  BACKGROUND = 0,
+  FOREGROUND = 1,
+}
+
+/** iOS activity type. @since 1.0.0 */
+export enum BackgroundGeolocationIOSActivity {
+  AutomotiveNavigation = 'AutomotiveNavigation',
+  OtherNavigation = 'OtherNavigation',
+  Fitness = 'Fitness',
+  Other = 'Other',
+}
+
+/** Alias for {@link ConfigureOptions}. @since 1.0.0 */
+export type BackgroundGeolocationConfig = ConfigureOptions;
+
+/** Alias for {@link Location}. @since 1.0.0 */
+export type BackgroundGeolocationResponse = Location;
+
+/** Alias for {@link CurrentLocationOptions}. @since 1.0.0 */
+export type BackgroundGeolocationCurrentPositionConfig = CurrentLocationOptions;
+
+/** Alias for {@link LogEntry}. @since 1.0.0 */
+export type BackgroundGeolocationLogEntry = LogEntry;
