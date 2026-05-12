@@ -14,9 +14,27 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "MAURBackgroundGeolocation",
+            path: "ios/common/BackgroundGeolocation",
+            publicHeadersPath: ".",
+            cSettings: [
+                .headerSearchPath("."),
+                .headerSearchPath("INTULocationManager"),
+                .headerSearchPath("SQLQueryBuilder/ext"),
+                .headerSearchPath("SQLQueryBuilder/sql")
+            ],
+            linkerSettings: [
+                .linkedLibrary("sqlite3"),
+                .linkedFramework("CoreLocation"),
+                .linkedFramework("CoreMotion"),
+                .linkedFramework("UIKit")
+            ]
+        ),
+        .target(
             name: "BackgroundGeolocationPlugin",
             dependencies: [
-                .product(name: "Capacitor", package: "capacitor-swift-pm")
+                .product(name: "Capacitor", package: "capacitor-swift-pm"),
+                "MAURBackgroundGeolocation"
             ],
             path: "ios/Sources/BackgroundGeolocationPlugin"),
         .testTarget(

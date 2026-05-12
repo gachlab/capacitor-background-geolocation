@@ -1,0 +1,84 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 JosueLMM
+
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web (lint + build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run lint
+
+  android:
+    name: Android (assembleDebug)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: web
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm ci
+      - name: Check for Gradle wrapper
+        id: gradle
+        run: |
+          if [ -x android/gradlew ]; then
+            echo "wrapper=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wrapper=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::android/gradlew not present, skipping assembleDebug"
+          fi
+      - if: steps.gradle.outputs.wrapper == 'true'
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+  ios:
+    name: iOS (xcodebuild)
+    runs-on: macos-14
+    timeout-minutes: 30
+    needs: web
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Check for Package.swift
+        id: spm
+        run: |
+          if [ -f Package.swift ]; then
+            echo "spm=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "spm=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Package.swift not present, skipping xcodebuild"
+          fi
+      - if: steps.spm.outputs.spm == 'true'
+        run: xcodebuild -scheme JosuelmmCapacitorBackgroundGeolocation -destination 'generic/platform=iOS' build

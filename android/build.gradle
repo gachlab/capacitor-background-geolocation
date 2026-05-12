@@ -6,6 +6,12 @@ ext {
     androidxLocalbroadcastmanagerVersion = project.hasProperty('androidxLocalbroadcastmanagerVersion') ? rootProject.ext.androidxLocalbroadcastmanagerVersion : '1.1.0'
     androidxWorkRuntimeVersion = project.hasProperty('androidxWorkRuntimeVersion') ? rootProject.ext.androidxWorkRuntimeVersion : '2.9.1'
     playServicesLocationVersion = project.hasProperty('playServicesLocationVersion') ? rootProject.ext.playServicesLocationVersion : '21.3.0'
+    // Pulled in by the copied native core (com.marianhello.bgloc.*).
+    gsonVersion = project.hasProperty('gsonVersion') ? rootProject.ext.gsonVersion : '2.11.0'
+    slf4jVersion = project.hasProperty('slf4jVersion') ? rootProject.ext.slf4jVersion : '1.7.36'
+    logbackAndroidVersion = project.hasProperty('logbackAndroidVersion') ? rootProject.ext.logbackAndroidVersion : '3.0.0'
+    androidPermissionsVersion = project.hasProperty('androidPermissionsVersion') ? rootProject.ext.androidPermissionsVersion : '2.1.8'
+    jparkiePromiseVersion = project.hasProperty('jparkiePromiseVersion') ? rootProject.ext.jparkiePromiseVersion : '1.0.3'
 }
 
 buildscript {
@@ -48,6 +54,8 @@ android {
 repositories {
     google()
     mavenCentral()
+    // jparkie/promise lives on JitPack — required by the native core.
+    maven { url 'https://jitpack.io' }
 }
 
 dependencies {
@@ -57,6 +65,14 @@ dependencies {
     implementation "androidx.localbroadcastmanager:localbroadcastmanager:$androidxLocalbroadcastmanagerVersion"
     implementation "androidx.work:work-runtime:$androidxWorkRuntimeVersion"
     implementation "com.google.android.gms:play-services-location:$playServicesLocationVersion"
+    // Required by the copied com.marianhello.bgloc.* native core.
+    implementation "com.google.code.gson:gson:$gsonVersion"
+    implementation "org.slf4j:slf4j-api:$slf4jVersion"
+    implementation "com.github.tony19:logback-android:$logbackAndroidVersion"
+    implementation("io.github.nishkarsh:android-permissions:$androidPermissionsVersion") {
+        exclude group: 'com.android.support', module: 'appcompat-v7'
+    }
+    implementation "com.github.jparkie:promise:$jparkiePromiseVersion"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

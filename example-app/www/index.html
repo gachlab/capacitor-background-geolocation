@@ -1,0 +1,31 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Copyright (c) 2026 JosueLMM -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Background Geolocation Example</title>
+    <style>
+      body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 16px; }
+      h1 { font-size: 1.2rem; margin: 0 0 12px; }
+      button { display: inline-block; margin: 4px 4px 4px 0; padding: 8px 12px; }
+      #log { background: #111; color: #eee; padding: 8px; height: 50vh; overflow: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
+      .row { margin-bottom: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>@josuelmm/capacitor-background-geolocation</h1>
+    <div class="row">
+      <button id="configure">Configure</button>
+      <button id="start">Start</button>
+      <button id="stop">Stop</button>
+      <button id="current">Get Current</button>
+      <button id="valid">Get Valid Locations</button>
+      <button id="clear">Clear All</button>
+      <button id="perm">Request Permission</button>
+    </div>
+    <div id="log"></div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

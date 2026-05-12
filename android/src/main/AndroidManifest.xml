@@ -1,6 +1,83 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<!--
+    SPDX-License-Identifier: Apache-2.0
+    Copyright (c) 2026 JosueLMM
 
-    <!-- Phase 1 — minimal manifest. Real permissions wired in Phase 3. -->
+    Mirrors the Cordova `android/common/src/main/AndroidManifest.xml` from the
+    upstream plugin (`com.marianhello.bgloc`) so the copied native core works
+    unchanged. ACCESS_BACKGROUND_LOCATION is intentionally NOT declared here;
+    consumer apps that want the "Allow all the time" tier must opt in by
+    declaring it in their own AndroidManifest.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_LOCATION_EXTRA_COMMANDS" />
+    <uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.READ_SYNC_SETTINGS" />
+    <uses-permission android:name="android.permission.WRITE_SYNC_SETTINGS" />
+    <uses-permission android:name="android.permission.AUTHENTICATE_ACCOUNTS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <!-- Foreground location service (the core implementation). -->
+        <service
+            android:name="com.marianhello.bgloc.service.LocationServiceImpl"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <!-- SyncAdapter (runs in its own :sync process to honor Android's sync framework). -->
+        <service
+            android:name="com.marianhello.bgloc.sync.SyncService"
+            android:exported="true"
+            android:process=":sync">
+            <intent-filter>
+                <action android:name="android.content.SyncAdapter" />
+            </intent-filter>
+            <meta-data
+                android:name="android.content.SyncAdapter"
+                android:resource="@xml/syncadapter" />
+        </service>
+
+        <!-- Account authenticator stub required by the sync framework. -->
+        <service
+            android:name="com.marianhello.bgloc.sync.AuthenticatorService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.accounts.AccountAuthenticator" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accounts.AccountAuthenticator"
+                android:resource="@xml/authenticator" />
+        </service>
+
+        <!-- Local content provider backing the location queue. -->
+        <provider
+            android:name="com.marianhello.bgloc.data.provider.LocationContentProvider"
+            android:authorities="@string/plugin_bgloc_content_authority"
+            android:exported="false"
+            android:syncable="true" />
+
+        <!-- Restart the service after device reboot when `startOnBoot` is enabled. -->
+        <receiver
+            android:name="com.marianhello.bgloc.BootCompletedReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+    </application>
 </manifest>
