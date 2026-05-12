@@ -203,17 +203,6 @@ public class BackgroundGeolocationPlugin extends Plugin implements PluginDelegat
     }
 
     @PluginMethod
-    public void getLocations(PluginCall call) {
-        try {
-            JSObject ret = new JSObject();
-            ret.put("locations", locationsToJsonArray(facade.getLocations()));
-            call.resolve(ret);
-        } catch (JSONException e) {
-            rejectWith(call, "Converting locations to JSON failed", e, PluginException.JSON_ERROR);
-        }
-    }
-
-    @PluginMethod
     public void getConfig(PluginCall call) {
         try {
             Config config = facade.getConfig();
@@ -317,67 +306,6 @@ public class BackgroundGeolocationPlugin extends Plugin implements PluginDelegat
     public void forceSync(PluginCall call) {
         facade.forceSync();
         call.resolve();
-    }
-
-    @PluginMethod
-    public void clearSync(PluginCall call) {
-        facade.clearSync();
-        call.resolve();
-    }
-
-    @PluginMethod
-    public void getPendingSyncCount(PluginCall call) {
-        JSObject ret = new JSObject();
-        ret.put("count", facade.getPendingSyncCount());
-        call.resolve(ret);
-    }
-
-    @PluginMethod
-    public void switchMode(PluginCall call) {
-        Integer mode = call.getInt("mode");
-        if (mode == null) {
-            rejectWith(call, "mode is required", null, PluginException.JSON_ERROR);
-            return;
-        }
-        facade.switchMode(mode);
-        call.resolve();
-    }
-
-    @PluginMethod
-    public void startSession(PluginCall call) {
-        facade.startSession();
-        call.resolve();
-    }
-
-    @PluginMethod
-    public void clearSession(PluginCall call) {
-        facade.clearSession();
-        call.resolve();
-    }
-
-    @PluginMethod
-    public void getSessionLocations(PluginCall call) {
-        try {
-            JSObject ret = new JSObject();
-            ret.put("locations", locationsToJsonArray(facade.getSessionLocations()));
-            call.resolve(ret);
-        } catch (JSONException e) {
-            rejectWith(call, "getSessionLocations failed", e, PluginException.JSON_ERROR);
-        }
-    }
-
-    @PluginMethod
-    public void getSessionLocationsCount(PluginCall call) {
-        JSObject ret = new JSObject();
-        ret.put("count", facade.getSessionLocationsCount());
-        call.resolve(ret);
-    }
-
-    @PluginMethod
-    public void getPluginVersion(PluginCall call) {
-        JSObject ret = new JSObject();
-        ret.put("version", PLUGIN_VERSION);
-        call.resolve(ret);
     }
 
     @Override

@@ -1,15 +1,20 @@
 require 'json'
 
 package = JSON.parse(File.read(File.join(__dir__, 'package.json')))
+repo_url = package['repository']['url']
+# `pod spec lint` rejects `git+` URLs and `.git` suffixes for `homepage`,
+# but tolerates them in `source[:git]`. Normalize once here.
+homepage_url = repo_url.sub(/^git\+/, '').sub(/\.git$/, '')
+source_git = repo_url.sub(/^git\+/, '')
 
 Pod::Spec.new do |s|
   s.name = 'JosuelmmCapacitorBackgroundGeolocation'
   s.version = package['version']
   s.summary = package['description']
   s.license = package['license']
-  s.homepage = package['repository']['url']
+  s.homepage = homepage_url
   s.author = package['author']
-  s.source = { :git => package['repository']['url'], :tag => s.version.to_s }
+  s.source = { :git => source_git, :tag => s.version.to_s }
   s.source_files = [
     'ios/Sources/**/*.{swift,h,m,c,cc,mm,cpp}',
     'ios/common/**/*.{swift,h,m,c,cc,mm,cpp}'

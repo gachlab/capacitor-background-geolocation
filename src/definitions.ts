@@ -562,7 +562,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'location',
     listener: (event: LocationEvent) => void,
-  ): Promise<PluginListenerHandle>;
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
 
   /**
    * Stationary state entered (Android distance-filter provider).
@@ -572,7 +572,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'stationary',
     listener: (event: StationaryEvent) => void,
-  ): Promise<PluginListenerHandle>;
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
 
   /**
    * Activity recognition update.
@@ -582,7 +582,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'activity',
     listener: (event: ActivityEvent) => void,
-  ): Promise<PluginListenerHandle>;
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
 
   /**
    * Recoverable or fatal native error.
@@ -592,7 +592,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'error',
     listener: (event: ErrorEvent) => void,
-  ): Promise<PluginListenerHandle>;
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
 
   /**
    * User changed authorization or toggled location services.
@@ -602,7 +602,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'authorization',
     listener: (event: AuthorizationEvent) => void,
-  ): Promise<PluginListenerHandle>;
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
 
   /**
    * Service started successfully.
@@ -612,7 +612,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'start',
     listener: () => void,
-  ): Promise<PluginListenerHandle>;
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
 
   /**
    * Service stopped successfully.
@@ -622,7 +622,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'stop',
     listener: () => void,
-  ): Promise<PluginListenerHandle>;
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
 
   /**
    * App entered the foreground.
@@ -632,7 +632,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'foreground',
     listener: () => void,
-  ): Promise<PluginListenerHandle>;
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
 
   /**
    * App entered the background.
@@ -642,7 +642,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'background',
     listener: () => void,
-  ): Promise<PluginListenerHandle>;
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
 
   /**
    * Server responded with `285 Updates Not Required`.
@@ -652,7 +652,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'abort_requested',
     listener: () => void,
-  ): Promise<PluginListenerHandle>;
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
 
   /**
    * Server responded with `401 Unauthorized`.
@@ -662,5 +662,5 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'http_authorization',
     listener: () => void,
-  ): Promise<PluginListenerHandle>;
+  ): Promise<PluginListenerHandle> & PluginListenerHandle;
 }

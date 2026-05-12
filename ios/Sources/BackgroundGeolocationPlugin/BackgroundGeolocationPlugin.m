@@ -24,5 +24,7 @@ CAP_PLUGIN(BackgroundGeolocationPlugin, "BackgroundGeolocation",
     CAP_PLUGIN_METHOD(startTask, CAPPluginReturnPromise);
     CAP_PLUGIN_METHOD(endTask, CAPPluginReturnPromise);
     CAP_PLUGIN_METHOD(forceSync, CAPPluginReturnPromise);
+    CAP_PLUGIN_METHOD(checkPermissions, CAPPluginReturnPromise);
+    CAP_PLUGIN_METHOD(requestPermissions, CAPPluginReturnPromise);
     CAP_PLUGIN_METHOD(removeAllListeners, CAPPluginReturnPromise);
 )

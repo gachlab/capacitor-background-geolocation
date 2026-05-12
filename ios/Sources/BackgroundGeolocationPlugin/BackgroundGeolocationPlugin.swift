@@ -6,9 +6,7 @@ import Capacitor
 import CoreLocation
 import CoreMotion
 import UIKit
-#if canImport(MAURBackgroundGeolocation)
 import MAURBackgroundGeolocation
-#endif
 
 @objc(BackgroundGeolocationPlugin)
 public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProviderDelegate {
@@ -34,11 +32,14 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         CAPPluginMethod(name: "startTask", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "endTask", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "forceSync", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise)
     ]
 
     private var facade: MAURBackgroundGeolocationFacade?
     private var currentConfig: MAURConfig?
+    private var permissionHelper: PermissionRequestHelper?
 
     override public func load() {
         let f = MAURBackgroundGeolocationFacade()
@@ -84,7 +85,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         guard let facade = facade else { call.reject("facade not initialized"); return }
         do {
             try facade.start()
-            notifyListeners("start", data: [:])
+            // `start` event is emitted by MAURProviderDelegate.onLocationResume.
             call.resolve()
         } catch {
             let nsErr = error as NSError
@@ -96,7 +97,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         guard let facade = facade else { call.reject("facade not initialized"); return }
         do {
             try facade.stop()
-            notifyListeners("stop", data: [:])
+            // `stop` event is emitted by MAURProviderDelegate.onLocationPause.
             call.resolve()
         } catch {
             let nsErr = error as NSError
@@ -123,7 +124,9 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         if let loc = facade.getStationaryLocation() {
             call.resolve(loc.toDictionary() as? [String: Any] ?? [:])
         } else {
-            call.resolve([:])
+            // TS contract is `Location | null` — resolve with no payload so the
+            // JS bridge surfaces `null`, matching Android's `call.resolve()`.
+            call.resolve()
         }
     }
 
@@ -232,6 +235,43 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         super.removeAllListeners(call)
     }
 
+    // MARK: - Permissions
+
+    @objc override public func checkPermissions(_ call: CAPPluginCall) {
+        let status = Self.currentAuthorizationStatus()
+        call.resolve(["location": Self.permissionState(for: status)])
+    }
+
+    @objc override public func requestPermissions(_ call: CAPPluginCall) {
+        let status = Self.currentAuthorizationStatus()
+        if status != .notDetermined {
+            call.resolve(["location": Self.permissionState(for: status)])
+            return
+        }
+        let helper = PermissionRequestHelper { [weak self] result in
+            call.resolve(["location": BackgroundGeolocationPlugin.permissionState(for: result)])
+            self?.permissionHelper = nil
+        }
+        permissionHelper = helper
+        helper.start()
+    }
+
+    private static func currentAuthorizationStatus() -> CLAuthorizationStatus {
+        if #available(iOS 14.0, *) {
+            return CLLocationManager().authorizationStatus
+        }
+        return CLLocationManager.authorizationStatus()
+    }
+
+    private static func permissionState(for status: CLAuthorizationStatus) -> String {
+        switch status {
+        case .notDetermined: return "prompt"
+        case .denied, .restricted: return "denied"
+        case .authorizedAlways, .authorizedWhenInUse: return "granted"
+        @unknown default: return "prompt"
+        }
+    }
+
     // MARK: - MAURProviderDelegate
 
     public func onAuthorizationChanged(_ authStatus: MAURLocationAuthorizationStatus) {
@@ -275,5 +315,39 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
             "code": nsErr?.code ?? -1,
             "message": nsErr?.localizedDescription ?? "unknown error"
         ])
+    }
+}
+
+// MARK: - Permission helper
+
+/// Wraps `CLLocationManager` for a single permission prompt.
+private final class PermissionRequestHelper: NSObject, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+    private let completion: (CLAuthorizationStatus) -> Void
+    private var done = false
+
+    init(completion: @escaping (CLAuthorizationStatus) -> Void) {
+        self.completion = completion
+        super.init()
+        manager.delegate = self
+    }
+
+    func start() {
+        manager.requestWhenInUseAuthorization()
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        finish(with: manager.authorizationStatus)
+    }
+
+    // iOS 13 fallback (kept for SDK completeness; deployment target is 14+).
+    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        finish(with: status)
+    }
+
+    private func finish(with status: CLAuthorizationStatus) {
+        if status == .notDetermined || done { return }
+        done = true
+        completion(status)
     }
 }
