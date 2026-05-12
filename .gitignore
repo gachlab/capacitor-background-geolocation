@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+package-lock.json
+bun.lock
+yarn.lock
+
+# Build output
+dist/
+*.tgz
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Android
+android/.gradle/
+android/build/
+android/local.properties
+android/captures/
+android/.externalNativeBuild/
+android/.cxx/
+android/app/release/
+
+# iOS
+ios/.build/
+ios/Pods/
+ios/Podfile.lock
+ios/*.xcworkspace/xcuserdata/
+ios/*.xcodeproj/xcuserdata/
+ios/*.xcodeproj/project.xcworkspace/xcuserdata/
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+xcuserdata/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Misc
+.env
+.env.local
+*.log
