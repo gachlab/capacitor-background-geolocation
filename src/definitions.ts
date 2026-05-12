@@ -831,7 +831,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'location',
     listener: (event: Location) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * Stationary state entered.
@@ -841,7 +841,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'stationary',
     listener: (event: StationaryLocation) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * Activity recognition update.
@@ -851,7 +851,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'activity',
     listener: (event: Activity) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * Service started.
@@ -861,7 +861,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'start',
     listener: () => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * Service stopped.
@@ -871,7 +871,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'stop',
     listener: () => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * Recoverable or fatal native error.
@@ -881,7 +881,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'error',
     listener: (event: BackgroundGeolocationError) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * User changed authorization or toggled location services.
@@ -891,7 +891,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'authorization',
     listener: (event: { status: AuthorizationStatus }) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * App entered the foreground.
@@ -901,7 +901,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'foreground',
     listener: () => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * App entered the background.
@@ -911,7 +911,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'background',
     listener: () => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * Server returned `285 Updates Not Required`.
@@ -921,7 +921,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'abort_requested',
     listener: () => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * Server returned `401 Unauthorized`.
@@ -931,7 +931,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'http_authorization',
     listener: () => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * Periodic tick with the latest known location. Receives a {@link Location}
@@ -943,7 +943,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'heartbeat',
     listener: (event: Location) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * A batch upload to `syncUrl` started.
@@ -953,7 +953,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'syncStart',
     listener: () => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * Sync upload progress (0..100).
@@ -963,7 +963,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'syncProgress',
     listener: (event: { progress: number }) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * Sync upload completed successfully.
@@ -973,7 +973,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'syncSuccess',
     listener: (event: { sent: number }) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * Sync upload failed.
@@ -983,7 +983,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'syncError',
     listener: (event: { httpStatus: number; message: string }) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * A trip started (driver insights).
@@ -993,7 +993,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'tripStart',
     listener: (event: Location) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * A trip ended (driver insights).
@@ -1007,7 +1007,7 @@ export interface BackgroundGeolocationPlugin {
       distance: number;
       durationMs: number;
     }) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * User started moving (driver insights).
@@ -1017,7 +1017,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'moving',
     listener: (event: Location) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * User stopped (driver insights).
@@ -1027,7 +1027,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'stopped',
     listener: (event: Location) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * Speed crossed above `drivingEvents.speedLimit`.
@@ -1041,7 +1041,7 @@ export interface BackgroundGeolocationPlugin {
       speedKmh: number;
       limitKmh: number;
     }) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * Native location provider changed (gps ↔ network ↔ fused).
@@ -1051,7 +1051,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'providerChange',
     listener: (event: { provider: string }) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * `triggerSOS()` was invoked.
@@ -1064,7 +1064,7 @@ export interface BackgroundGeolocationPlugin {
       location?: Location;
       [key: string]: unknown;
     }) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * GPS-derived hard brake.
@@ -1074,7 +1074,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'hardBrake',
     listener: (event: { location: Location; value: number }) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * GPS-derived rapid acceleration.
@@ -1084,7 +1084,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'rapidAcceleration',
     listener: (event: { location: Location; value: number }) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * GPS-derived sharp turn.
@@ -1094,7 +1094,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'sharpTurn',
     listener: (event: { location: Location; value: number }) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * Heuristic possible-crash detection (GPS or sensor pipeline).
@@ -1108,7 +1108,7 @@ export interface BackgroundGeolocationPlugin {
       value: number;
       source: 'gps' | 'sensor';
     }) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 
   /**
    * Sustained phone interaction during an active trip.
@@ -1118,7 +1118,7 @@ export interface BackgroundGeolocationPlugin {
   addListener(
     eventName: 'phoneUsageWhileDriving',
     listener: (event: { location?: Location }) => void,
-  ): Promise<PluginListenerHandle> & PluginListenerHandle;
+  ): Promise<PluginListenerHandle>;
 }
 
 // ---------------------------------------------------------------------------

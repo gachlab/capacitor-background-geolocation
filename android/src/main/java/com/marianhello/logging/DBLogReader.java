@@ -20,7 +20,10 @@ import ch.qos.logback.classic.db.names.DBNameResolver;
 import ch.qos.logback.classic.db.names.DefaultDBNameResolver;
 import ch.qos.logback.classic.db.names.TableName;
 import ch.qos.logback.core.CoreConstants;
-import ch.qos.logback.core.android.CommonPathUtil;
+// NOTE: logback-android 2.x / 3.x dropped `ch.qos.logback.core.android.CommonPathUtil`.
+// The dropped util only computed `/data/data/<pkg>/databases`, so we inline that
+// path below. Adjusted from the upstream `mauron85/cordova-plugin-background-geolocation`
+// source for Capacitor 8+ compatibility. Apache-2.0.
 
 public class DBLogReader {
 
@@ -124,7 +127,9 @@ public class DBLogReader {
         }
 
         try {
-            File dbfile = new File(CommonPathUtil.getDatabaseDirectoryPath(packageName), DB_FILENAME);
+            // Android stores app-private databases at `/data/data/<package>/databases`.
+            File dbDir = new File("/data/data/" + packageName + "/databases");
+            File dbfile = new File(dbDir, DB_FILENAME);
             mDatabase = SQLiteDatabase.openDatabase(dbfile.getPath(), null, SQLiteDatabase.OPEN_READONLY);
         } catch (SQLiteException e) {
             throw new SQLException("Cannot open database", e);

@@ -115,7 +115,7 @@ public class BackgroundGeolocationPlugin extends Plugin implements PluginDelegat
         return getBridge().getActivity().getApplicationContext();
     }
 
-    private void rejectWith(PluginCall call, String message, Throwable cause, int code) {
+    private void rejectWith(PluginCall call, String message, Exception cause, int code) {
         JSObject details = new JSObject();
         details.put("code", code);
         if (cause != null && cause.getMessage() != null) {
