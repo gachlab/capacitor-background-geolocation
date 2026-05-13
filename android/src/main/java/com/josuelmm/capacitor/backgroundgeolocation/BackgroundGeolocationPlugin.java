@@ -77,7 +77,7 @@ public class BackgroundGeolocationPlugin extends Plugin implements PluginDelegat
     private static final String HTTP_AUTHORIZATION_EVENT = "http_authorization";
     private static final String ERROR_EVENT              = "error";
 
-    public static final String PLUGIN_VERSION = "1.0.0";
+    public static final String PLUGIN_VERSION = "1.0.1";
 
     private BackgroundGeolocationFacade facade;
     private org.slf4j.Logger logger;

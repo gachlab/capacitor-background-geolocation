@@ -243,7 +243,23 @@ static MAURLocationTransform s_locationTransform = nil;
             if (dict) {
                 NSMutableArray *parts = [NSMutableArray array];
                 for (NSString *key in dict) {
-                    NSString *value = [NSString stringWithFormat:@"%@", dict[key]];
+                    // v4.5.4: skip null / NSNull values. Previously they were
+                    // serialized as the literal "<null>" string, which servers
+                    // like Traccar reject (HTTP 400 — OsmAndProtocolDecoder
+                    // throws NumberFormatException on "speed=null"). Placeholders
+                    // that resolve to no value (@speed, @events, @battery, etc.)
+                    // end up as NSNull in the parsed dict and must be omitted
+                    // from form-urlencoded bodies.
+                    id raw = dict[key];
+                    if (raw == nil || raw == [NSNull null]) {
+                        continue;
+                    }
+                    NSString *value = [NSString stringWithFormat:@"%@", raw];
+                    // Extra safety: some stringifications produce the literal
+                    // "null" or "<null>" string. Treat as missing value.
+                    if ([@"null" isEqualToString:value] || [@"<null>" isEqualToString:value]) {
+                        continue;
+                    }
                     NSString *encodedKey = [key stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
                     NSString *encodedValue = [value stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
                     NSString *part = [NSString stringWithFormat:@"%@=%@", encodedKey, encodedValue];

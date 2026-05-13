@@ -205,7 +205,7 @@ export class BackgroundGeolocationWeb
   }
 
   async getPluginVersion(): Promise<{ version: string }> {
-    return { version: '1.0.0' };
+    return { version: '1.0.1' };
   }
 
   // ---------------- Permissions ----------------

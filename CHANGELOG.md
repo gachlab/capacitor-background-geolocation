@@ -6,6 +6,21 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-05-13
+
+Pulled in the v4.5.4 native bug-fix from `@josuelmm/cordova-background-geolocation`.
+
+### Fixed
+- **HTTP POST: skip null / `JSONObject.NULL` / `NSNull` values when
+  serialising form-urlencoded bodies.** Previously these were sent as the
+  literal string `"null"` (or `"<null>"` on iOS), which Traccar's
+  `OsmAndProtocolDecoder` rejects with HTTP 400 / `NumberFormatException`
+  on inputs like `speed=null`. Placeholders that resolve to no value
+  (`@speed`, `@events`, `@battery`, …) are now omitted from the body.
+  Affects both platforms.
+  - Android: `com.marianhello.bgloc.HttpPostService.toQueryString`
+  - iOS: `MAURPostLocationTask` form-encoder branch
+
 ## [1.0.0] - 2026-05-12
 
 First public release. Full TypeScript-API parity with

@@ -193,7 +193,27 @@ public class HttpPostService {
         Iterator<String> keys = jsonObj.keys();
         while (keys.hasNext()) {
             String key = keys.next();
-            String value = jsonObj.get(key).toString();
+            // v4.5.4: skip null / JSONObject.NULL values. Previously these were
+            // serialised as the literal string "null", which servers like Traccar
+            // reject (Traccar OsmAndProtocolDecoder throws NumberFormatException
+            // on "speed=null"). Placeholders that resolve to no value (@speed,
+            // @events, @battery, etc.) end up as JSONObject.NULL in the batch and
+            // must be omitted from form-urlencoded bodies. Using `isNull` covers
+            // both the reference-equality and the literal "null" string cases.
+            if (jsonObj.isNull(key)) {
+                continue;
+            }
+            Object raw = jsonObj.opt(key);
+            if (raw == null) {
+                continue;
+            }
+            String value = raw.toString();
+            // Extra safety: some pre-parsed objects may stringify to "null"
+            // (e.g. NSNull, Boolean nulls from non-strict parsers). Treat the
+            // literal "null" string the same as a missing value.
+            if ("null".equals(value)) {
+                continue;
+            }
             if (result.length() > 0) {
                 result.append("&");
             }
