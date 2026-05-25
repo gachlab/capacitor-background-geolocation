@@ -1,8 +1,8 @@
 # Dependencies
 node_modules/
-package-lock.json
 bun.lock
 yarn.lock
+# package-lock.json is committed: CI (release.yml) uses `npm ci` + setup-node cache
 
 # Build output
 dist/
