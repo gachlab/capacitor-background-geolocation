@@ -8,7 +8,7 @@ homepage_url = repo_url.sub(/^git\+/, '').sub(/\.git$/, '')
 source_git = repo_url.sub(/^git\+/, '')
 
 Pod::Spec.new do |s|
-  s.name = 'JosuelmmCapacitorBackgroundGeolocation'
+  s.name = 'GachlabCapacitorBackgroundGeolocation'
   s.version = package['version']
   s.summary = package['description']
   s.license = package['license']

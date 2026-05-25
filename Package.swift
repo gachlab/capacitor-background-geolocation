@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "JosuelmmCapacitorBackgroundGeolocation",
+    name: "GachlabCapacitorBackgroundGeolocation",
     platforms: [.iOS(.v14)],
     products: [
         .library(
-            name: "JosuelmmCapacitorBackgroundGeolocation",
+            name: "GachlabCapacitorBackgroundGeolocation",
             targets: ["BackgroundGeolocationPlugin"])
     ],
     dependencies: [
@@ -21,7 +21,8 @@ let package = Package(
                 .headerSearchPath("."),
                 .headerSearchPath("INTULocationManager"),
                 .headerSearchPath("SQLQueryBuilder/ext"),
-                .headerSearchPath("SQLQueryBuilder/sql")
+                .headerSearchPath("SQLQueryBuilder/sql"),
+                .unsafeFlags(["-Wno-error=non-modular-include-in-framework-module"])
             ],
             linkerSettings: [
                 .linkedLibrary("sqlite3"),
@@ -36,7 +37,11 @@ let package = Package(
                 .product(name: "Capacitor", package: "capacitor-swift-pm"),
                 "MAURBackgroundGeolocation"
             ],
-            path: "ios/Sources/BackgroundGeolocationPlugin"),
+            path: "ios/Sources/BackgroundGeolocationPlugin",
+            exclude: [
+                "BackgroundGeolocationPlugin.m",
+                "BackgroundGeolocationPlugin-Bridging-Header.h"
+            ]),
         .testTarget(
             name: "BackgroundGeolocationPluginTests",
             dependencies: ["BackgroundGeolocationPlugin"],

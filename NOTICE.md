@@ -1,6 +1,6 @@
 # NOTICE
 
-`@josuelmm/capacitor-background-geolocation`
+`@gachlab/capacitor-background-geolocation`
 
 This Capacitor plugin is derived from prior work. Credits below.
 

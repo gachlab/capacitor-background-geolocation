@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `@josuelmm/capacitor-background-geolocation` are tracked
+All notable changes to `@gachlab/capacitor-background-geolocation` are tracked
 here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
@@ -88,7 +88,7 @@ First public release. Full TypeScript-API parity with
 Initial scaffold and native bridges.
 
 ### Added
-- Capacitor 8+ plugin scaffold (`@josuelmm/capacitor-background-geolocation`).
+- Capacitor 8+ plugin scaffold (`@gachlab/capacitor-background-geolocation`).
 - TypeScript API mirroring the legacy `@josuelmm/cordova-background-geolocation`
   surface: `configure`, `start`, `stop`, `getCurrentLocation`,
   `getStationaryLocation`, `getValidLocations`, `getConfig`, `deleteLocation`,

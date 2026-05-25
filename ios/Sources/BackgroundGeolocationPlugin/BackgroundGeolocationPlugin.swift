@@ -76,29 +76,29 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
 
         // v3.5 Phase 4 — sync + heartbeat notifications.
         let nc = NotificationCenter.default
-        nc.addObserver(self, selector: #selector(onSyncStartN(_:)),    name: NSNotification.Name(rawValue: MAURBackgroundSyncDidStartNotification),    object: nil)
-        nc.addObserver(self, selector: #selector(onSyncSuccessN(_:)),  name: NSNotification.Name(rawValue: MAURBackgroundSyncDidSucceedNotification),  object: nil)
-        nc.addObserver(self, selector: #selector(onSyncErrorN(_:)),    name: NSNotification.Name(rawValue: MAURBackgroundSyncDidFailNotification),     object: nil)
-        nc.addObserver(self, selector: #selector(onSyncProgressN(_:)), name: NSNotification.Name(rawValue: MAURBackgroundSyncDidProgressNotification), object: nil)
-        nc.addObserver(self, selector: #selector(onHeartbeatN(_:)),    name: NSNotification.Name(rawValue: MAURHeartbeatNotification),                 object: nil)
+        nc.addObserver(self, selector: #selector(onSyncStartN(_:)),    name: .MAURBackgroundSyncDidStart,    object: nil)
+        nc.addObserver(self, selector: #selector(onSyncSuccessN(_:)),  name: .MAURBackgroundSyncDidSucceed,  object: nil)
+        nc.addObserver(self, selector: #selector(onSyncErrorN(_:)),    name: .MAURBackgroundSyncDidFail,     object: nil)
+        nc.addObserver(self, selector: #selector(onSyncProgressN(_:)), name: .MAURBackgroundSyncDidProgress, object: nil)
+        nc.addObserver(self, selector: #selector(onHeartbeatN(_:)),    name: .MAURHeartbeat,                 object: nil)
 
         // v4.0 Phase 6 — driver-insight notifications.
-        nc.addObserver(self, selector: #selector(onTripStartN(_:)),      name: NSNotification.Name(rawValue: MAURTripStartNotification),      object: nil)
-        nc.addObserver(self, selector: #selector(onTripEndN(_:)),        name: NSNotification.Name(rawValue: MAURTripEndNotification),        object: nil)
-        nc.addObserver(self, selector: #selector(onMovingN(_:)),         name: NSNotification.Name(rawValue: MAURMovingNotification),         object: nil)
-        nc.addObserver(self, selector: #selector(onStoppedN(_:)),        name: NSNotification.Name(rawValue: MAURStoppedNotification),        object: nil)
-        nc.addObserver(self, selector: #selector(onSpeedingN(_:)),       name: NSNotification.Name(rawValue: MAURSpeedingNotification),       object: nil)
-        nc.addObserver(self, selector: #selector(onProviderChangeN(_:)), name: NSNotification.Name(rawValue: MAURProviderChangeNotification), object: nil)
-        nc.addObserver(self, selector: #selector(onSOSN(_:)),            name: NSNotification.Name(rawValue: MAURSOSNotification),            object: nil)
+        nc.addObserver(self, selector: #selector(onTripStartN(_:)),      name: .MAURTripStart,      object: nil)
+        nc.addObserver(self, selector: #selector(onTripEndN(_:)),        name: .MAURTripEnd,        object: nil)
+        nc.addObserver(self, selector: #selector(onMovingN(_:)),         name: .MAURMoving,         object: nil)
+        nc.addObserver(self, selector: #selector(onStoppedN(_:)),        name: .MAURStopped,        object: nil)
+        nc.addObserver(self, selector: #selector(onSpeedingN(_:)),       name: .MAURSpeeding,       object: nil)
+        nc.addObserver(self, selector: #selector(onProviderChangeN(_:)), name: .MAURProviderChange, object: nil)
+        nc.addObserver(self, selector: #selector(onSOSN(_:)),            name: .MAURSOS,            object: nil)
 
         // v4.1 GPS-derived sensor-like events.
-        nc.addObserver(self, selector: #selector(onHardBrakeN(_:)),         name: NSNotification.Name(rawValue: MAURHardBrakeNotification),         object: nil)
-        nc.addObserver(self, selector: #selector(onRapidAccelerationN(_:)), name: NSNotification.Name(rawValue: MAURRapidAccelerationNotification), object: nil)
-        nc.addObserver(self, selector: #selector(onSharpTurnN(_:)),         name: NSNotification.Name(rawValue: MAURSharpTurnNotification),         object: nil)
-        nc.addObserver(self, selector: #selector(onPossibleCrashN(_:)),     name: NSNotification.Name(rawValue: MAURPossibleCrashNotification),     object: nil)
+        nc.addObserver(self, selector: #selector(onHardBrakeN(_:)),         name: .MAURHardBrake,         object: nil)
+        nc.addObserver(self, selector: #selector(onRapidAccelerationN(_:)), name: .MAURRapidAcceleration, object: nil)
+        nc.addObserver(self, selector: #selector(onSharpTurnN(_:)),         name: .MAURSharpTurn,         object: nil)
+        nc.addObserver(self, selector: #selector(onPossibleCrashN(_:)),     name: .MAURPossibleCrash,     object: nil)
 
         // v4.2 sensor fusion.
-        nc.addObserver(self, selector: #selector(onPhoneUsageWhileDrivingN(_:)), name: NSNotification.Name(rawValue: MAURPhoneUsageWhileDrivingNotification), object: nil)
+        nc.addObserver(self, selector: #selector(onPhoneUsageWhileDrivingN(_:)), name: .MAURPhoneUsageWhileDriving, object: nil)
     }
 
     deinit {
@@ -108,12 +108,12 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
     // MARK: - App lifecycle bridge
 
     @objc private func onAppForeground() {
-        facade?.switchMode(MAURForegroundMode)
+        facade?.`switch`(.foregroundMode)
         notifyListeners("foreground", data: [:])
     }
 
     @objc private func onAppBackground() {
-        facade?.switchMode(MAURBackgroundMode)
+        facade?.`switch`(.backgroundMode)
         notifyListeners("background", data: [:])
     }
 
@@ -160,7 +160,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
     @objc func getCurrentLocation(_ call: CAPPluginCall) {
         guard let facade = facade else { call.reject("facade not initialized"); return }
         let timeout = call.getInt("timeout") ?? Int(Int32.max)
-        let maximumAge = call.getInt("maximumAge").map { Int64($0) } ?? Int64.max
+        let maximumAge = call.getInt("maximumAge") ?? Int.max
         let highAccuracy = call.getBool("enableHighAccuracy") ?? false
         do {
             let location = try facade.getCurrentLocation(Int32(timeout), maximumAge: maximumAge, enableHighAccuracy: highAccuracy)
@@ -216,7 +216,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
             call.reject("locationId required"); return
         }
         do {
-            try facade.delete(NSNumber(value: locationId))
+            try facade.deleteLocation(NSNumber(value: locationId))
             call.resolve()
         } catch {
             let nsErr = error as NSError
@@ -271,7 +271,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         let limit = call.getInt("limit") ?? 0
         let fromId = call.getInt("fromId") ?? 0
         let minLevel = call.getString("minLevel") ?? "DEBUG"
-        let logs = facade.getLogEntries(limit, fromLogEntryId: fromId, minLogLevelFromString: minLevel) as? [Any] ?? []
+        let logs = facade.getLogEntries(limit, fromLogEntryId: fromId, minLogLevelFrom: minLevel) as? [Any] ?? []
         call.resolve(["entries": logs])
     }
 
@@ -326,20 +326,20 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
 
     @objc func switchMode(_ call: CAPPluginCall) {
         guard let facade = facade else { call.reject("facade not initialized"); return }
-        let raw = call.getInt("mode") ?? Int(MAURForegroundMode.rawValue)
-        let mode: MAUROperationalMode = (raw == Int(MAURBackgroundMode.rawValue)) ? MAURBackgroundMode : MAURForegroundMode
-        facade.switchMode(mode)
+        let raw = call.getInt("mode") ?? 1
+        let mode: MAUROperationalMode = raw == 0 ? .backgroundMode : .foregroundMode
+        facade.`switch`(mode)
         call.resolve()
     }
 
     @objc func startTask(_ call: CAPPluginCall) {
-        let key = MAURBackgroundTaskManager.sharedTasks().beginTask()
+        let key = (MAURBackgroundTaskManager.sharedTasks() as! MAURBackgroundTaskManager).beginTask()
         call.resolve(["taskKey": key])
     }
 
     @objc func endTask(_ call: CAPPluginCall) {
         let key = call.getInt("taskKey") ?? 0
-        MAURBackgroundTaskManager.sharedTasks().endTask(withKey: UInt(key))
+        (MAURBackgroundTaskManager.sharedTasks() as! MAURBackgroundTaskManager).endTask(withKey: UInt(key))
         call.resolve()
     }
 

@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Copyright (c) 2026 JosueLMM -->
 
-# @josuelmm/capacitor-background-geolocation
+# @gachlab/capacitor-background-geolocation
 
-[![npm version](https://img.shields.io/npm/v/@josuelmm/capacitor-background-geolocation.svg)](https://www.npmjs.com/package/@josuelmm/capacitor-background-geolocation)
+[![npm version](https://img.shields.io/npm/v/@gachlab/capacitor-background-geolocation.svg)](https://www.npmjs.com/package/@gachlab/capacitor-background-geolocation)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Capacitor](https://img.shields.io/badge/Capacitor-8%2B-119EFF.svg)](https://capacitorjs.com/)
 
@@ -21,7 +21,7 @@ events, and `@awesome-cordova-plugins`-style compatibility enums.
 ## Install
 
 ```bash
-npm install @josuelmm/capacitor-background-geolocation
+npm install @gachlab/capacitor-background-geolocation
 npx cap sync
 ```
 
@@ -65,7 +65,7 @@ Add to `android/app/src/main/AndroidManifest.xml` (inside `<manifest>`):
 Runtime permission flow (API 23+) — request foreground first, then background:
 
 ```ts
-import { BackgroundGeolocation } from '@josuelmm/capacitor-background-geolocation';
+import { BackgroundGeolocation } from '@gachlab/capacitor-background-geolocation';
 
 const { location } = await BackgroundGeolocation.requestPermissions();
 if (location !== 'granted') {
@@ -90,7 +90,7 @@ with neutral payloads so app code stays portable.
 ## Usage
 
 ```ts
-import { BackgroundGeolocation } from '@josuelmm/capacitor-background-geolocation';
+import { BackgroundGeolocation } from '@gachlab/capacitor-background-geolocation';
 
 await BackgroundGeolocation.configure({
   locationProvider: 'DISTANCE_FILTER',
@@ -254,7 +254,7 @@ a hidden Android WebView every time a `location`, `stationary`, or
 `activity` event fires while the activity is gone.
 
 ```ts
-import { BackgroundGeolocation } from '@josuelmm/capacitor-background-geolocation';
+import { BackgroundGeolocation } from '@gachlab/capacitor-background-geolocation';
 
 await BackgroundGeolocation.configure({
   stopOnTerminate: false,
