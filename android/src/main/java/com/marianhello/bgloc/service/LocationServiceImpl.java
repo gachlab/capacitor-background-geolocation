@@ -136,6 +136,8 @@ public class LocationServiceImpl extends Service implements ProviderDelegate, Lo
     /** v4.2 — sensor-fusion-only events. {@code MSG_ON_POSSIBLE_CRASH} is reused
      *  by the sensor pipeline; phone-usage is a brand-new event. */
     public static final int MSG_ON_PHONE_USAGE_WHILE_DRIVING = 124;
+    /** P2: service was restarted by the OS watchdog, system kill, or boot. */
+    public static final int MSG_ON_SERVICE_RESTARTED = 125;
 
     /** notification id */
     private static int NOTIFICATION_ID = 1;
@@ -189,13 +191,26 @@ public class LocationServiceImpl extends Service implements ProviderDelegate, Lo
     private static final long PENDING_DRIVING_EVENTS_TTL_MS = 60_000L;
     private static final long WATCHDOG_INTERVAL_MS = 60_000L;
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
+
+    private long effectiveWatchdogIntervalMs() {
+        if (mConfig != null && mConfig.getWatchdogIntervalMs() != null) {
+            return mConfig.getWatchdogIntervalMs();
+        }
+        return WATCHDOG_INTERVAL_MS;
+    }
+
     private final Runnable mWatchdogRunnable = new Runnable() {
         @Override
         public void run() {
             if (!sIsRunning || mProvider == null || mConfig == null) return;
             if (!Boolean.TRUE.equals(mConfig.getEnableWatchdog())) return;
+            long interval = effectiveWatchdogIntervalMs();
             long now = System.currentTimeMillis();
-            if (mLastLocationTime > 0 && (now - mLastLocationTime) > WATCHDOG_INTERVAL_MS) {
+            // Fire when: (a) we got at least one fix but it's stale, OR
+            //            (b) the service started but never received any fix.
+            boolean stale = (mLastLocationTime > 0 && (now - mLastLocationTime) > interval)
+                    || (mLastLocationTime == 0 && (now - mSessionStartTime) > interval);
+            if (stale) {
                 // v4.5.1: when drivingEvents is enabled, treat "no fixes" while NOT tripActive as
                 // intentional stationary → don't restart (saves battery). When drivingEvents is
                 // disabled (the plugin has no notion of "trip"), keep the legacy behaviour of
@@ -204,7 +219,8 @@ public class LocationServiceImpl extends Service implements ProviderDelegate, Lo
                 boolean drivingEnabled = de != null && de.enabled;
                 boolean shouldRestart = !drivingEnabled || mDrivingTripActive;
                 if (shouldRestart) {
-                    logger.info("Location watchdog: no update in {}s, restarting provider", WATCHDOG_INTERVAL_MS / 1000);
+                    logger.info("Location watchdog: no update in {}s, restarting provider", interval / 1000);
+                    broadcastServiceRestarted("watchdog");
                     try {
                         mProvider.onStop();
                         mProvider.onStart();
@@ -215,7 +231,7 @@ public class LocationServiceImpl extends Service implements ProviderDelegate, Lo
                     logger.debug("Location watchdog: stationary (no active trip); skipping restart");
                 }
             }
-            mMainHandler.postDelayed(this, WATCHDOG_INTERVAL_MS);
+            mMainHandler.postDelayed(this, interval);
         }
     };
 
@@ -389,7 +405,8 @@ public class LocationServiceImpl extends Service implements ProviderDelegate, Lo
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) {
-            // when service was killed and restarted we will restart service
+            // Service was killed by the OS and is being restarted (START_STICKY).
+            broadcastServiceRestarted("system_kill");
             start();
             return START_STICKY;
         }
@@ -406,7 +423,11 @@ public class LocationServiceImpl extends Service implements ProviderDelegate, Lo
             LocationServiceIntentBuilder.Command cmd = getCommand(intent);
             processCommand(cmd.getId(), cmd.getArgument());
         } else {
-            // Could be a BOOT-event, or the OS just randomly restarted the service...
+            // Could be a BOOT-event (BootCompletedReceiver puts "config" extra) or
+            // the OS just randomly restarted the service without a specific command.
+            if (intent.hasExtra("config")) {
+                broadcastServiceRestarted("boot");
+            }
             startForegroundService();
         }
 
@@ -504,9 +525,8 @@ public class LocationServiceImpl extends Service implements ProviderDelegate, Lo
         }
 
         if (Boolean.TRUE.equals(mConfig.getEnableWatchdog())) {
-            mLastLocationTime = System.currentTimeMillis();
             mMainHandler.removeCallbacks(mWatchdogRunnable);
-            mMainHandler.postDelayed(mWatchdogRunnable, WATCHDOG_INTERVAL_MS);
+            mMainHandler.postDelayed(mWatchdogRunnable, effectiveWatchdogIntervalMs());
         }
 
         mSessionStartTime = System.currentTimeMillis();
@@ -1363,6 +1383,13 @@ public class LocationServiceImpl extends Service implements ProviderDelegate, Lo
         Bundle bundle = new Bundle();
         bundle.putInt("action", msgId);
         broadcastMessage(bundle);
+    }
+
+    private void broadcastServiceRestarted(String reason) {
+        Bundle b = new Bundle();
+        b.putInt("action", MSG_ON_SERVICE_RESTARTED);
+        b.putString("reason", reason);
+        broadcastMessage(b);
     }
 
     private void broadcastMessage(Bundle bundle) {

@@ -285,6 +285,13 @@ public class BackgroundGeolocationFacade {
                     if (mDelegate != null) mDelegate.onPhoneUsageWhileDriving(puLoc);
                     return;
                 }
+                // P2: service restarted by watchdog, OS kill, or boot
+                case LocationServiceImpl.MSG_ON_SERVICE_RESTARTED: {
+                    String reason = bundle != null ? bundle.getString("reason", "watchdog") : "watchdog";
+                    logger.debug("Received MSG_ON_SERVICE_RESTARTED reason={}", reason);
+                    if (mDelegate != null) mDelegate.onServiceRestarted(reason);
+                    return;
+                }
             }
         }
     };

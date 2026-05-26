@@ -163,8 +163,10 @@ export interface ConfigureOptions {
   activitiesInterval?: number;
   /** @deprecated Stop on STILL activity. */
   stopOnStillActivity?: boolean;
-  /** Restart the provider if no update is received for ~60s. Android. @default false */
+  /** Restart the provider if no update is received for the watchdog window. Android. @default false */
   enableWatchdog?: boolean;
+  /** Watchdog check interval (ms). @default 60000 */
+  watchdogIntervalMs?: number;
   /** Show local notifications during tracking/sync. Android. @default true */
   notificationsEnabled?: boolean;
   /** Run the sync service in foreground (Android requires a notification). @default false */
@@ -1066,6 +1068,19 @@ export interface BackgroundGeolocationPlugin {
     eventName: 'phoneUsageWhileDriving',
     listener: (event: { location?: Location }) => void,
   ): Promise<PluginListenerHandle>;
+
+  /**
+   * Android location service was restarted by the OS or watchdog.
+   * `reason` is `'watchdog'` (no GPS fix in the configured window),
+   * `'system_kill'` (OS killed and restarted via START_STICKY), or
+   * `'boot'` (device boot/package-replace via BootCompletedReceiver).
+   *
+   * @since 1.1.0
+   */
+  addListener(
+    eventName: 'serviceRestarted',
+    listener: (event: { reason: 'watchdog' | 'system_kill' | 'boot' }) => void,
+  ): Promise<PluginListenerHandle>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1102,6 +1117,7 @@ export enum BackgroundGeolocationEvents {
   sharpTurn = 'sharpTurn',
   possibleCrash = 'possibleCrash',
   phoneUsageWhileDriving = 'phoneUsageWhileDriving',
+  serviceRestarted = 'serviceRestarted',
 }
 
 /** Location error codes. @since 1.0.0 */

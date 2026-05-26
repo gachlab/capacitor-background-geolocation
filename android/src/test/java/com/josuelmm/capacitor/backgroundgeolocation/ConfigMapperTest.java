@@ -130,6 +130,22 @@ class ConfigMapperTest {
         }
 
         @Test
+        @DisplayName("maps watchdogIntervalMs")
+        void watchdogIntervalMs() throws Exception {
+            JSONObject json = new JSONObject().put("watchdogIntervalMs", 5000L);
+            Config config = ConfigMapper.fromJSONObject(json);
+            assertEquals(5000L, config.getWatchdogIntervalMs());
+        }
+
+        @Test
+        @DisplayName("absent watchdogIntervalMs leaves it null")
+        void watchdogIntervalMsAbsent() throws Exception {
+            JSONObject json = new JSONObject();
+            Config config = ConfigMapper.fromJSONObject(json);
+            assertNull(config.getWatchdogIntervalMs());
+        }
+
+        @Test
         @DisplayName("absent fields leave Config at its defaults — does not throw")
         void emptyObject() throws Exception {
             JSONObject json = new JSONObject();
@@ -210,6 +226,15 @@ class ConfigMapperTest {
             Config config = ConfigMapper.fromJSONObject(json);
             var jsObj = ConfigMapper.toJSObject(config);
             assertFalse(jsObj.getBoolean("sync"));
+        }
+
+        @Test
+        @DisplayName("watchdogIntervalMs survives from→to roundtrip")
+        void watchdogIntervalMsRoundtrip() throws Exception {
+            JSONObject json = new JSONObject().put("watchdogIntervalMs", 3000L);
+            Config config = ConfigMapper.fromJSONObject(json);
+            var jsObj = ConfigMapper.toJSObject(config);
+            assertEquals(3000L, jsObj.getLong("watchdogIntervalMs"));
         }
 
         @Test

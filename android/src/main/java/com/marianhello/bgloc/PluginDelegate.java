@@ -42,4 +42,6 @@ public interface PluginDelegate {
     }
     /** v4.2 sensor fusion: emitted when device interaction is detected during an active trip. */
     default void onPhoneUsageWhileDriving(BackgroundLocation location) {}
+    /** P2: service was restarted by the OS or watchdog. reason: "watchdog" | "system_kill" | "boot". */
+    default void onServiceRestarted(String reason) {}
 }

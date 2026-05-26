@@ -70,6 +70,8 @@ public class Config implements Parcelable
     private Integer maxLocations;
     private LocationTemplate template;
     private Boolean enableWatchdog;
+    /** Watchdog check interval (ms). {@code null} = use the 60 s default. */
+    private Long watchdogIntervalMs;
     private Boolean showTime;
     private Boolean showDistance;
     // v3.3 (Phase 2): backend-agnostic HTTP transport
@@ -156,6 +158,7 @@ public class Config implements Parcelable
         this.httpHeaders = CloneHelper.deepCopy(config.httpHeaders);
         this.maxLocations = config.maxLocations;
         this.enableWatchdog = config.enableWatchdog;
+        this.watchdogIntervalMs = config.watchdogIntervalMs;
         this.showTime = config.showTime;
         this.showDistance = config.showDistance;
         this.httpMethod = config.httpMethod;
@@ -284,6 +287,8 @@ public class Config implements Parcelable
         // v4.5.2 provider hardening
         setActivityConfidenceThreshold((Integer) in.readValue(null));
         setMaxAcceptedAccuracy((Float) in.readValue(null));
+        // P2: configurable watchdog interval
+        setWatchdogIntervalMs((Long) in.readValue(null));
         // v4.5.1 — pass the plugin's classloader so getSerializable() can deserialize
         // LocationTemplate / HashMap subclasses across IPC boundaries (e.g. SyncService :sync process).
         Bundle bundle = in.readBundle(Config.class.getClassLoader());
@@ -417,6 +422,8 @@ public class Config implements Parcelable
         // v4.5.2
         out.writeValue(getActivityConfidenceThreshold());
         out.writeValue(getMaxAcceptedAccuracy());
+        // P2: configurable watchdog interval
+        out.writeValue(getWatchdogIntervalMs());
         Bundle bundle = new Bundle();
         bundle.putSerializable("httpHeaders", getHttpHeaders());
         bundle.putSerializable("queryParams", getQueryParams());
@@ -815,6 +822,15 @@ public class Config implements Parcelable
     }
 
     @Nullable
+    public Long getWatchdogIntervalMs() {
+        return watchdogIntervalMs;
+    }
+
+    public void setWatchdogIntervalMs(Long watchdogIntervalMs) {
+        this.watchdogIntervalMs = watchdogIntervalMs;
+    }
+
+    @Nullable
     public Boolean getIncludeBattery() {
         return includeBattery;
     }
@@ -1142,6 +1158,8 @@ public class Config implements Parcelable
         // v4.5.2
         if (config2.activityConfidenceThreshold != null) merger.setActivityConfidenceThreshold(config2.activityConfidenceThreshold);
         if (config2.maxAcceptedAccuracy != null) merger.setMaxAcceptedAccuracy(config2.maxAcceptedAccuracy);
+        // P2
+        if (config2.watchdogIntervalMs != null) merger.setWatchdogIntervalMs(config2.watchdogIntervalMs);
 
         return merger;
     }
