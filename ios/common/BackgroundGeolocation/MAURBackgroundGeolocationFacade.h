@@ -39,6 +39,8 @@ extern NSString * _Nonnull const MAURPhoneUsageWhileDrivingNotification;
 @interface MAURBackgroundGeolocationFacade : NSObject
 
 @property (weak, nonatomic) id<MAURProviderDelegate> delegate;
+// Set by the Swift DrivingEventsDetector delegate to keep sensor-fusion in sync.
+@property (nonatomic, assign) BOOL drivingTripActive;
 
 - (BOOL) configure:(MAURConfig*)config error:(NSError * __autoreleasing *)outError;
 - (BOOL) start:(NSError * __autoreleasing *)outError;

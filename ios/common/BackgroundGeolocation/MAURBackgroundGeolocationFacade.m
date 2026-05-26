@@ -84,25 +84,7 @@ NSString * const MAURPhoneUsageWhileDrivingNotification = @"MAURPhoneUsageWhileD
     MAURAbstractLocationProvider<MAURLocationProvider> *locationProvider;
     MAURPostLocationTask *postLocationTask;
 
-    // v4.0 Phase 6: driver-insights state
-    BOOL    drIsMoving;
-    BOOL    drTripActive;
-    NSTimeInterval drTripStartedAt;
-    double  drTripDistanceMeters;
-    BOOL    drHasPrev;
-    double  drPrevLat, drPrevLon;
-    NSTimeInterval drAboveTripSpeedSince;
-    NSTimeInterval drBelowMovingSince;
-    BOOL    drWasSpeeding;
-    NSString *drLastProvider;
-    // v4.1 GPS-derived sensor-like state
-    double   drPrevSpeed;
-    NSTimeInterval drPrevSpeedAt;
-    double   drPrevBearing;
-    BOOL     drHasPrevBearing;
-    NSTimeInterval drPrevBearingAt;
-    NSTimeInterval drLastHardBrakeAt, drLastRapidAccelAt, drLastSharpTurnAt, drLastCrashAt;
-    // v4.2 sensor fusion
+    // v4.2 sensor fusion (driving events state machine moved to Swift DrivingEventsDetector)
     MAURSensorFusionDetector *sensorFusion;
     // v4.3 — events buffered when no simultaneous fix is available; drained onto next location.
     NSMutableArray *pendingDrivingEvents;
@@ -226,7 +208,6 @@ NSString * const MAURPhoneUsageWhileDrivingNotification = @"MAURPhoneUsageWhileD
         // unless the dictionary identity changed in a way that toggles `enabled`. Always reset
         // accumulators to apply the new thresholds cleanly from this point on.
         if (![[currentConfig.drivingEvents description] isEqualToString:[_config.drivingEvents description]]) {
-            [self drivingDetectorReset];
             // v4.2: re-evaluate sensor fusion as well (might have just been enabled/disabled).
             [self configureSensorFusion];
             if (isStarted) [sensorFusion start];
@@ -315,8 +296,6 @@ NSString * const MAURPhoneUsageWhileDrivingNotification = @"MAURPhoneUsageWhileD
 
     // v3.5 Phase 4: cancel heartbeat scheduler.
     [self cancelHeartbeat];
-    // v4.0 Phase 6: reset driver-insights state machine.
-    [self drivingDetectorReset];
     // v4.2 Phase 8: stop sensor fusion sampling.
     sensorFusion.tripActive = NO;
     [sensorFusion stop];
@@ -366,27 +345,6 @@ NSString * const MAURPhoneUsageWhileDrivingNotification = @"MAURPhoneUsageWhileD
                                                       userInfo:userInfo];
 }
 
-#pragma mark - v4.0 Phase 6 driver-insights state machine
-
-- (void) drivingDetectorReset
-{
-    drIsMoving = NO;
-    drTripActive = NO;
-    drTripStartedAt = 0;
-    drTripDistanceMeters = 0;
-    drHasPrev = NO;
-    drAboveTripSpeedSince = 0;
-    drBelowMovingSince = 0;
-    drWasSpeeding = NO;
-    drLastProvider = nil;
-    drPrevSpeed = 0;
-    drPrevSpeedAt = 0;
-    drPrevBearing = 0;
-    drHasPrevBearing = NO;
-    drPrevBearingAt = 0;
-    drLastHardBrakeAt = drLastRapidAccelAt = drLastSharpTurnAt = drLastCrashAt = 0;
-}
-
 #pragma mark - v4.2 Phase 8 sensor fusion
 
 - (void) configureSensorFusion
@@ -411,7 +369,7 @@ NSString * const MAURPhoneUsageWhileDrivingNotification = @"MAURPhoneUsageWhileD
     if (de[@"phoneUsageCooldownMs"])   sensorFusion.phoneUsageCooldownMs = [de[@"phoneUsageCooldownMs"] doubleValue];
     // v4.2 hot-reload: re-inject current trip state + last location so a config change
     // mid-trip starts the sensor pipeline in the correct mode.
-    sensorFusion.tripActive   = drTripActive;
+    sensorFusion.tripActive   = self.drivingTripActive;
     sensorFusion.lastLocation = lastReceivedLocation;
 }
 
@@ -508,206 +466,6 @@ static NSTimeInterval const kPendingDrivingEventsTTLMs   = 60000.0;
     }
 }
 
-- (void) drivingDetectorFeed:(MAURLocation *)loc
-{
-    if (loc == nil || _config == nil) return;
-    BOOL enabled = NO;
-    double speedLimit = 0;
-    double minMovingSpeed = 1.0;
-    NSTimeInterval stoppedDuration = 60.0;
-    double minTripSpeed = 3.0;
-    NSTimeInterval minTripDuration = 30.0;
-    NSDictionary *de = [_config valueForKey:@"drivingEvents"]; // see MAURConfig: provided as NSDictionary
-    if ([de isKindOfClass:[NSDictionary class]]) {
-        enabled         = [[de objectForKey:@"enabled"] boolValue];
-        speedLimit      = [[de objectForKey:@"speedLimit"] doubleValue];
-        if ([de objectForKey:@"minMovingSpeed"])  minMovingSpeed  = [[de objectForKey:@"minMovingSpeed"] doubleValue];
-        if ([de objectForKey:@"stoppedDuration"]) stoppedDuration = [[de objectForKey:@"stoppedDuration"] doubleValue] / 1000.0;
-        if ([de objectForKey:@"minTripSpeed"])    minTripSpeed    = [[de objectForKey:@"minTripSpeed"] doubleValue];
-        if ([de objectForKey:@"minTripDuration"]) minTripDuration = [[de objectForKey:@"minTripDuration"] doubleValue] / 1000.0;
-    }
-    if (!enabled) return;
-
-    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-    double speed = loc.speed != nil ? [loc.speed doubleValue] : 0.0;
-    if (speed < 0) speed = 0;
-
-    // Provider change
-    NSString *provider = loc.provider;
-    if (provider != nil && ![provider isEqualToString:drLastProvider]) {
-        drLastProvider = provider;
-        [self attachDrivingEvent:@"providerChange" to:loc extra:@{@"provider": provider}];
-        [[NSNotificationCenter defaultCenter] postNotificationName:MAURProviderChangeNotification
-                                                            object:self
-                                                          userInfo:@{@"provider": provider}];
-    }
-
-    double curLat = [loc.latitude doubleValue];
-    double curLon = [loc.longitude doubleValue];
-    if (drHasPrev && drTripActive) {
-        drTripDistanceMeters += [self drHaversineFromLat:drPrevLat lon:drPrevLon toLat:curLat lon:curLon];
-    }
-    drPrevLat = curLat;
-    drPrevLon = curLon;
-    drHasPrev = YES;
-
-    BOOL nowMoving = speed >= minMovingSpeed;
-    if (nowMoving) {
-        drBelowMovingSince = 0;
-        if (!drIsMoving) {
-            drIsMoving = YES;
-            [self attachDrivingEvent:@"moving" to:loc extra:nil];
-            [[NSNotificationCenter defaultCenter] postNotificationName:MAURMovingNotification
-                                                                object:self
-                                                              userInfo:@{@"location": loc}];
-        }
-        if (!drTripActive) {
-            if (speed >= minTripSpeed) {
-                if (drAboveTripSpeedSince == 0) drAboveTripSpeedSince = now;
-                if (now - drAboveTripSpeedSince >= minTripDuration) {
-                    drTripActive = YES;
-                    drTripStartedAt = now;
-                    drTripDistanceMeters = 0;
-                    [self attachDrivingEvent:@"tripStart" to:loc extra:nil];
-                    [[NSNotificationCenter defaultCenter] postNotificationName:MAURTripStartNotification
-                                                                        object:self
-                                                                      userInfo:@{@"location": loc}];
-                    sensorFusion.tripActive = YES;
-                }
-            } else {
-                drAboveTripSpeedSince = 0;
-            }
-        }
-    } else {
-        drAboveTripSpeedSince = 0;
-        if (drBelowMovingSince == 0) drBelowMovingSince = now;
-        if (drIsMoving && (now - drBelowMovingSince) >= stoppedDuration) {
-            drIsMoving = NO;
-            [self attachDrivingEvent:@"stopped" to:loc extra:nil];
-            [[NSNotificationCenter defaultCenter] postNotificationName:MAURStoppedNotification
-                                                                object:self
-                                                              userInfo:@{@"location": loc}];
-            if (drTripActive) {
-                NSTimeInterval durMs = (now - drTripStartedAt) * 1000.0;
-                double dist = drTripDistanceMeters;
-                drTripActive = NO;
-                [self attachDrivingEvent:@"tripEnd" to:loc extra:@{@"distance": @(dist), @"durationMs": @((long long)durMs)}];
-                [[NSNotificationCenter defaultCenter] postNotificationName:MAURTripEndNotification
-                                                                    object:self
-                                                                  userInfo:@{
-                                                                      @"location": loc,
-                                                                      @"distance": @(dist),
-                                                                      @"durationMs": @((long long)durMs)
-                                                                  }];
-                sensorFusion.tripActive = NO;
-            }
-        }
-    }
-
-    if (speedLimit > 0) {
-        double kmh = speed * 3.6;
-        if (kmh > speedLimit) {
-            if (!drWasSpeeding) {
-                drWasSpeeding = YES;
-                [self attachDrivingEvent:@"speeding" to:loc extra:@{@"speedKmh": @(kmh), @"limitKmh": @(speedLimit)}];
-                [[NSNotificationCenter defaultCenter] postNotificationName:MAURSpeedingNotification
-                                                                    object:self
-                                                                  userInfo:@{
-                                                                      @"location": loc,
-                                                                      @"speedKmh": @(kmh),
-                                                                      @"limitKmh": @(speedLimit)
-                                                                  }];
-            }
-        } else {
-            drWasSpeeding = NO;
-        }
-    }
-
-    // v4.1 GPS-derived sensor-like events
-    double hardBrakeMps2 = 3.5, rapidAccelMps2 = 3.5, sharpTurnDegPerSec = 30, crashImpactKmh = 25;
-    NSTimeInterval crashWindow = 2.0;
-    if ([de isKindOfClass:[NSDictionary class]]) {
-        if ([de objectForKey:@"hardBrakeMps2"])      hardBrakeMps2      = [[de objectForKey:@"hardBrakeMps2"] doubleValue];
-        if ([de objectForKey:@"rapidAccelMps2"])     rapidAccelMps2     = [[de objectForKey:@"rapidAccelMps2"] doubleValue];
-        if ([de objectForKey:@"sharpTurnDegPerSec"]) sharpTurnDegPerSec = [[de objectForKey:@"sharpTurnDegPerSec"] doubleValue];
-        if ([de objectForKey:@"crashImpactKmh"])     crashImpactKmh     = [[de objectForKey:@"crashImpactKmh"] doubleValue];
-        if ([de objectForKey:@"crashWindowMs"])      crashWindow        = [[de objectForKey:@"crashWindowMs"] doubleValue] / 1000.0;
-    }
-    static const NSTimeInterval kCooldown = 4.0;
-
-    if (drTripActive && drPrevSpeedAt > 0) {
-        NSTimeInterval dt = now - drPrevSpeedAt;
-        if (dt > 0 && dt <= 5.0) {
-            double dv = speed - drPrevSpeed;
-            double accel = dv / dt;
-            if (hardBrakeMps2 > 0 && accel <= -hardBrakeMps2 && (now - drLastHardBrakeAt) >= kCooldown) {
-                drLastHardBrakeAt = now;
-                [self attachDrivingEvent:@"hardBrake" to:loc extra:@{@"value": @(accel)}];
-                [[NSNotificationCenter defaultCenter] postNotificationName:MAURHardBrakeNotification
-                                                                    object:self
-                                                                  userInfo:@{@"location": loc, @"value": @(accel)}];
-            }
-            if (rapidAccelMps2 > 0 && accel >= rapidAccelMps2 && (now - drLastRapidAccelAt) >= kCooldown) {
-                drLastRapidAccelAt = now;
-                [self attachDrivingEvent:@"rapidAcceleration" to:loc extra:@{@"value": @(accel)}];
-                [[NSNotificationCenter defaultCenter] postNotificationName:MAURRapidAccelerationNotification
-                                                                    object:self
-                                                                  userInfo:@{@"location": loc, @"value": @(accel)}];
-            }
-            if (crashImpactKmh > 0 && dt <= crashWindow) {
-                double dropKmh = (drPrevSpeed - speed) * 3.6;
-                if (dropKmh >= crashImpactKmh
-                    && speed < 1.5
-                    && drPrevSpeed * 3.6 >= crashImpactKmh
-                    && (now - drLastCrashAt) >= kCooldown) {
-                    drLastCrashAt = now;
-                    [self attachDrivingEvent:@"possibleCrash" to:loc extra:@{@"value": @(dropKmh), @"source": @"gps"}];
-                    [[NSNotificationCenter defaultCenter] postNotificationName:MAURPossibleCrashNotification
-                                                                        object:self
-                                                                      userInfo:@{@"location": loc, @"value": @(dropKmh), @"source": @"gps"}];
-                }
-            }
-        }
-    }
-
-    // Sharp turn (bearing rate)
-    if (sharpTurnDegPerSec > 0 && loc.heading != nil && speed >= 5.0 && drHasPrevBearing) {
-        NSTimeInterval dt = now - drPrevBearingAt;
-        if (dt > 0 && dt <= 5.0) {
-            double bearing = [loc.heading doubleValue];
-            double diff = fabs(bearing - drPrevBearing);
-            if (diff > 180) diff = 360 - diff;
-            double rate = diff / dt;
-            if (rate >= sharpTurnDegPerSec && (now - drLastSharpTurnAt) >= kCooldown) {
-                drLastSharpTurnAt = now;
-                [self attachDrivingEvent:@"sharpTurn" to:loc extra:@{@"value": @(rate)}];
-                [[NSNotificationCenter defaultCenter] postNotificationName:MAURSharpTurnNotification
-                                                                    object:self
-                                                                  userInfo:@{@"location": loc, @"value": @(rate)}];
-            }
-        }
-        drPrevBearing = [loc.heading doubleValue];
-        drPrevBearingAt = now;
-    } else if (loc.heading != nil) {
-        drPrevBearing = [loc.heading doubleValue];
-        drPrevBearingAt = now;
-        drHasPrevBearing = YES;
-    }
-
-    drPrevSpeed = speed;
-    drPrevSpeedAt = now;
-}
-
-- (double) drHaversineFromLat:(double)lat1 lon:(double)lon1 toLat:(double)lat2 lon:(double)lon2
-{
-    const double R = 6371000.0;
-    double dLat = (lat2 - lat1) * M_PI / 180.0;
-    double dLon = (lon2 - lon1) * M_PI / 180.0;
-    double a = sin(dLat/2) * sin(dLat/2)
-             + cos(lat1 * M_PI / 180.0) * cos(lat2 * M_PI / 180.0)
-             * sin(dLon/2) * sin(dLon/2);
-    return 2 * R * asin(sqrt(a));
-}
 
 - (void) triggerSOS:(NSDictionary *)payload
 {
@@ -1070,8 +828,6 @@ static NSTimeInterval const kPendingDrivingEventsTTLMs   = 60000.0;
     stationaryLocation = nil;
     lastReceivedLocation = location; // v3.5 Phase 4: cached for heartbeat payload
 
-    // v4.0 Phase 6: feed driver-insights state machine. Listener may attach events to `location`.
-    [self drivingDetectorFeed:location];
     // v4.2 Phase 8: keep sensor pipeline aware of the latest fix.
     sensorFusion.lastLocation = location;
     // v4.5.1 — pending events drain + battery snapshot moved into MAURPostLocationTask.add:

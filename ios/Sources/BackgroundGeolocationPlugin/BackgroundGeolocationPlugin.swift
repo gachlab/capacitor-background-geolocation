@@ -10,7 +10,7 @@ import UserNotifications
 import MAURBackgroundGeolocation
 
 @objc(BackgroundGeolocationPlugin)
-public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProviderDelegate {
+public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProviderDelegate, DrivingEventsDetectorDelegate {
     public let identifier = "BackgroundGeolocationPlugin"
     public let jsName = "BackgroundGeolocation"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -66,11 +66,14 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
     private var currentConfig: MAURConfig?
     private var permissionHelper: PermissionRequestHelper?
     private var lastLocationAt: Date?
+    private let drivingDetector = DrivingEventsDetector()
+    private var lastMAURLocation: MAURLocation?
 
     override public func load() {
         let f = MAURBackgroundGeolocationFacade()
         f.delegate = self
         facade = f
+        drivingDetector.delegate = self
         NotificationCenter.default.addObserver(self, selector: #selector(onAppForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(onAppBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
 
@@ -124,6 +127,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         let opts = call.options ?? [:]
         let cfg = MAURConfig.fromDictionary(opts)
         currentConfig = cfg
+        configureDrivingDetector(from: opts)
         do {
             try facade.configure(cfg)
             call.resolve()
@@ -131,6 +135,26 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
             let nsErr = error as NSError
             call.reject(nsErr.localizedDescription, String(nsErr.code))
         }
+    }
+
+    private func configureDrivingDetector(from opts: [String: Any]) {
+        guard let de = opts["drivingEvents"] as? [String: Any] else {
+            drivingDetector.enabled = false
+            drivingDetector.reset()
+            return
+        }
+        drivingDetector.enabled = (de["enabled"] as? Bool) ?? false
+        if let v = (de["speedLimit"]         as? NSNumber)?.doubleValue { drivingDetector.speedLimitKmh      = v }
+        if let v = (de["minMovingSpeed"]     as? NSNumber)?.doubleValue { drivingDetector.minMovingSpeedMps  = v }
+        if let v = (de["stoppedDuration"]    as? NSNumber)?.doubleValue { drivingDetector.stoppedDurationSec = v }
+        if let v = (de["minTripSpeed"]       as? NSNumber)?.doubleValue { drivingDetector.minTripSpeedMps    = v }
+        if let v = (de["minTripDuration"]    as? NSNumber)?.doubleValue { drivingDetector.minTripDurationSec = v }
+        if let v = (de["hardBrakeMps2"]      as? NSNumber)?.doubleValue { drivingDetector.hardBrakeMps2      = v }
+        if let v = (de["rapidAccelMps2"]     as? NSNumber)?.doubleValue { drivingDetector.rapidAccelMps2     = v }
+        if let v = (de["sharpTurnDegPerSec"] as? NSNumber)?.doubleValue { drivingDetector.sharpTurnDegPerSec = v }
+        if let v = (de["crashImpactKmh"]     as? NSNumber)?.doubleValue { drivingDetector.crashImpactKmh     = v }
+        if let v = (de["crashWindowSec"]     as? NSNumber)?.doubleValue { drivingDetector.crashWindowSec     = v }
+        drivingDetector.reset()
     }
 
     @objc func start(_ call: CAPPluginCall) {
@@ -546,6 +570,17 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
 
     public func onLocationChanged(_ location: MAURLocation!) {
         lastLocationAt = Date()
+        lastMAURLocation = location
+        if let lat = location.latitude?.doubleValue, let lon = location.longitude?.doubleValue {
+            let dl = DLLocation(
+                latitude:  lat,
+                longitude: lon,
+                speed:     location.speed?.doubleValue ?? -1,
+                bearing:   location.heading?.doubleValue,
+                provider:  location.provider
+            )
+            drivingDetector.feed(dl)
+        }
         guard let dict = location.toDictionaryWithId() as? [String: Any] else { return }
         notifyListeners("location", data: dict)
     }
@@ -556,6 +591,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
     }
 
     public func onLocationPause() {
+        drivingDetector.reset()
         notifyListeners("stop", data: [:])
     }
 
@@ -713,6 +749,99 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
             notifyListeners("phoneUsageWhileDriving", data: [:])
         }
     }
+}
+
+// MARK: - DrivingEventsDetectorDelegate
+
+extension BackgroundGeolocationPlugin {
+
+    func detectorOnMoving(_ location: DLLocation) {
+        postDrivingNote(.MAURMoving)
+    }
+
+    func detectorOnStopped(_ location: DLLocation) {
+        postDrivingNote(.MAURStopped)
+    }
+
+    func detectorOnTripStart(_ location: DLLocation) {
+        facade?.drivingTripActive = true
+        postDrivingNote(.MAURTripStart)
+    }
+
+    func detectorOnTripEnd(_ location: DLLocation, distanceMeters: Double, durationMs: Int64) {
+        facade?.drivingTripActive = false
+        var info: [String: Any] = [:]
+        if let loc = lastMAURLocation { info["location"] = loc }
+        info["distance"]   = distanceMeters
+        info["durationMs"] = NSNumber(value: durationMs)
+        NotificationCenter.default.post(name: .MAURTripEnd, object: nil, userInfo: info)
+    }
+
+    func detectorOnSpeeding(_ location: DLLocation, speedKmh: Double, limitKmh: Double) {
+        var info: [String: Any] = [:]
+        if let loc = lastMAURLocation { info["location"] = loc }
+        info["speedKmh"] = speedKmh
+        info["limitKmh"] = limitKmh
+        NotificationCenter.default.post(name: .MAURSpeeding, object: nil, userInfo: info)
+    }
+
+    func detectorOnProviderChange(provider: String) {
+        NotificationCenter.default.post(
+            name: .MAURProviderChange,
+            object: nil,
+            userInfo: ["provider": provider]
+        )
+    }
+
+    func detectorOnHardBrake(_ location: DLLocation, decelMps2: Double) {
+        postSensorNote(.MAURHardBrake, value: decelMps2)
+    }
+
+    func detectorOnRapidAcceleration(_ location: DLLocation, accelMps2: Double) {
+        postSensorNote(.MAURRapidAcceleration, value: accelMps2)
+    }
+
+    func detectorOnSharpTurn(_ location: DLLocation, degPerSec: Double) {
+        postSensorNote(.MAURSharpTurn, value: degPerSec)
+    }
+
+    func detectorOnPossibleCrash(_ location: DLLocation, dropKmh: Double) {
+        postSensorNote(.MAURPossibleCrash, value: dropKmh)
+    }
+
+    private func postDrivingNote(_ name: Notification.Name) {
+        var info: [String: Any] = [:]
+        if let loc = lastMAURLocation { info["location"] = loc }
+        NotificationCenter.default.post(name: name, object: nil, userInfo: info)
+    }
+
+    private func postSensorNote(_ name: Notification.Name, value: Double) {
+        var info: [String: Any] = ["value": value, "source": "gps"]
+        if let loc = lastMAURLocation { info["location"] = loc }
+        NotificationCenter.default.post(name: name, object: nil, userInfo: info)
+    }
+}
+
+// MARK: - Notification.Name aliases
+
+extension Notification.Name {
+    static let MAURBackgroundSyncDidStart    = Notification.Name(MAURBackgroundSyncDidStartNotification)
+    static let MAURBackgroundSyncDidSucceed  = Notification.Name(MAURBackgroundSyncDidSucceedNotification)
+    static let MAURBackgroundSyncDidFail     = Notification.Name(MAURBackgroundSyncDidFailNotification)
+    static let MAURBackgroundSyncDidProgress = Notification.Name(MAURBackgroundSyncDidProgressNotification)
+    static let MAURHeartbeat                 = Notification.Name(MAURHeartbeatNotification)
+    static let MAURTripStart                 = Notification.Name(MAURTripStartNotification)
+    static let MAURTripEnd                   = Notification.Name(MAURTripEndNotification)
+    static let MAURMoving                    = Notification.Name(MAURMovingNotification)
+    static let MAURStopped                   = Notification.Name(MAURStoppedNotification)
+    static let MAURSpeeding                  = Notification.Name(MAURSpeedingNotification)
+    static let MAURProviderChange            = Notification.Name(MAURProviderChangeNotification)
+    static let MAURSOS                       = Notification.Name(MAURSOSNotification)
+    static let MAURHardBrake                 = Notification.Name(MAURHardBrakeNotification)
+    static let MAURRapidAcceleration         = Notification.Name(MAURRapidAccelerationNotification)
+    static let MAURSharpTurn                 = Notification.Name(MAURSharpTurnNotification)
+    static let MAURPossibleCrash             = Notification.Name(MAURPossibleCrashNotification)
+    static let MAURPhoneUsageWhileDriving    = Notification.Name(MAURPhoneUsageWhileDrivingNotification)
 }
 
 // MARK: - Permission helper
