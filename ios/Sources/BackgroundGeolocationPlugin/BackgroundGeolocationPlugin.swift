@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2026 JosueLMM
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 gachlab
 
 import Foundation
 import Capacitor
@@ -7,10 +7,10 @@ import CoreLocation
 import CoreMotion
 import UIKit
 import UserNotifications
-import MAURBackgroundGeolocation
+import BackgroundGeolocationCore
 
 @objc(BackgroundGeolocationPlugin)
-public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProviderDelegate, DrivingEventsDetectorDelegate {
+public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationProviderDelegate, DrivingEventsDetectorDelegate {
     public let identifier = "BackgroundGeolocationPlugin"
     public let jsName = "BackgroundGeolocation"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -62,46 +62,42 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
 
     private static let pluginVersion = "1.0.0"
 
-    private var facade: MAURBackgroundGeolocationFacade?
-    private var currentConfig: MAURConfig?
+    private var facade: BGFacade?
+    private var currentConfig: BGConfig?
     private var permissionHelper: PermissionRequestHelper?
     private var lastLocationAt: Date?
     private let drivingDetector = DrivingEventsDetector()
-    private var lastMAURLocation: MAURLocation?
+    private var lastBGLocation: BGLocation?
 
     override public func load() {
-        let f = MAURBackgroundGeolocationFacade()
+        let f = BGFacade()
         f.delegate = self
         facade = f
         drivingDetector.delegate = self
         NotificationCenter.default.addObserver(self, selector: #selector(onAppForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(onAppBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
 
-        // v3.5 Phase 4 — sync + heartbeat notifications.
         let nc = NotificationCenter.default
-        nc.addObserver(self, selector: #selector(onSyncStartN(_:)),    name: .MAURBackgroundSyncDidStart,    object: nil)
-        nc.addObserver(self, selector: #selector(onSyncSuccessN(_:)),  name: .MAURBackgroundSyncDidSucceed,  object: nil)
-        nc.addObserver(self, selector: #selector(onSyncErrorN(_:)),    name: .MAURBackgroundSyncDidFail,     object: nil)
-        nc.addObserver(self, selector: #selector(onSyncProgressN(_:)), name: .MAURBackgroundSyncDidProgress, object: nil)
-        nc.addObserver(self, selector: #selector(onHeartbeatN(_:)),    name: .MAURHeartbeat,                 object: nil)
+        nc.addObserver(self, selector: #selector(onSyncStartN(_:)),    name: .BGBackgroundSyncDidStart,    object: nil)
+        nc.addObserver(self, selector: #selector(onSyncSuccessN(_:)),  name: .BGBackgroundSyncDidSucceed,  object: nil)
+        nc.addObserver(self, selector: #selector(onSyncErrorN(_:)),    name: .BGBackgroundSyncDidFail,     object: nil)
+        nc.addObserver(self, selector: #selector(onSyncProgressN(_:)), name: .BGBackgroundSyncDidProgress, object: nil)
+        nc.addObserver(self, selector: #selector(onHeartbeatN(_:)),    name: .BGHeartbeat,                 object: nil)
 
-        // v4.0 Phase 6 — driver-insight notifications.
-        nc.addObserver(self, selector: #selector(onTripStartN(_:)),      name: .MAURTripStart,      object: nil)
-        nc.addObserver(self, selector: #selector(onTripEndN(_:)),        name: .MAURTripEnd,        object: nil)
-        nc.addObserver(self, selector: #selector(onMovingN(_:)),         name: .MAURMoving,         object: nil)
-        nc.addObserver(self, selector: #selector(onStoppedN(_:)),        name: .MAURStopped,        object: nil)
-        nc.addObserver(self, selector: #selector(onSpeedingN(_:)),       name: .MAURSpeeding,       object: nil)
-        nc.addObserver(self, selector: #selector(onProviderChangeN(_:)), name: .MAURProviderChange, object: nil)
-        nc.addObserver(self, selector: #selector(onSOSN(_:)),            name: .MAURSOS,            object: nil)
+        nc.addObserver(self, selector: #selector(onTripStartN(_:)),      name: .BGTripStart,      object: nil)
+        nc.addObserver(self, selector: #selector(onTripEndN(_:)),        name: .BGTripEnd,        object: nil)
+        nc.addObserver(self, selector: #selector(onMovingN(_:)),         name: .BGMoving,         object: nil)
+        nc.addObserver(self, selector: #selector(onStoppedN(_:)),        name: .BGStopped,        object: nil)
+        nc.addObserver(self, selector: #selector(onSpeedingN(_:)),       name: .BGSpeeding,       object: nil)
+        nc.addObserver(self, selector: #selector(onProviderChangeN(_:)), name: .BGProviderChange, object: nil)
+        nc.addObserver(self, selector: #selector(onSOSN(_:)),            name: .BGSOS,            object: nil)
 
-        // v4.1 GPS-derived sensor-like events.
-        nc.addObserver(self, selector: #selector(onHardBrakeN(_:)),         name: .MAURHardBrake,         object: nil)
-        nc.addObserver(self, selector: #selector(onRapidAccelerationN(_:)), name: .MAURRapidAcceleration, object: nil)
-        nc.addObserver(self, selector: #selector(onSharpTurnN(_:)),         name: .MAURSharpTurn,         object: nil)
-        nc.addObserver(self, selector: #selector(onPossibleCrashN(_:)),     name: .MAURPossibleCrash,     object: nil)
+        nc.addObserver(self, selector: #selector(onHardBrakeN(_:)),         name: .BGHardBrake,         object: nil)
+        nc.addObserver(self, selector: #selector(onRapidAccelerationN(_:)), name: .BGRapidAcceleration, object: nil)
+        nc.addObserver(self, selector: #selector(onSharpTurnN(_:)),         name: .BGSharpTurn,         object: nil)
+        nc.addObserver(self, selector: #selector(onPossibleCrashN(_:)),     name: .BGPossibleCrash,     object: nil)
 
-        // v4.2 sensor fusion.
-        nc.addObserver(self, selector: #selector(onPhoneUsageWhileDrivingN(_:)), name: .MAURPhoneUsageWhileDriving, object: nil)
+        nc.addObserver(self, selector: #selector(onPhoneUsageWhileDrivingN(_:)), name: .BGPhoneUsageWhileDriving, object: nil)
     }
 
     deinit {
@@ -111,12 +107,12 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
     // MARK: - App lifecycle bridge
 
     @objc private func onAppForeground() {
-        facade?.`switch`(.foregroundMode)
+        facade?.`switch`(.foreground)
         notifyListeners("foreground", data: [:])
     }
 
     @objc private func onAppBackground() {
-        facade?.`switch`(.backgroundMode)
+        facade?.`switch`(.background)
         notifyListeners("background", data: [:])
     }
 
@@ -125,7 +121,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
     @objc func configure(_ call: CAPPluginCall) {
         guard let facade = facade else { call.reject("facade not initialized"); return }
         let opts = call.options ?? [:]
-        let cfg = MAURConfig.fromDictionary(opts)
+        let cfg = BGConfig.from(dictionary: opts)
         currentConfig = cfg
         configureDrivingDetector(from: opts)
         do {
@@ -161,7 +157,6 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         guard let facade = facade else { call.reject("facade not initialized"); return }
         do {
             try facade.start()
-            // `start` event is emitted by MAURProviderDelegate.onLocationResume.
             call.resolve()
         } catch {
             let nsErr = error as NSError
@@ -173,7 +168,6 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         guard let facade = facade else { call.reject("facade not initialized"); return }
         do {
             try facade.stop()
-            // `stop` event is emitted by MAURProviderDelegate.onLocationPause.
             call.resolve()
         } catch {
             let nsErr = error as NSError
@@ -187,8 +181,9 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         let maximumAge = call.getInt("maximumAge") ?? Int.max
         let highAccuracy = call.getBool("enableHighAccuracy") ?? false
         do {
-            let location = try facade.getCurrentLocation(Int32(timeout), maximumAge: maximumAge, enableHighAccuracy: highAccuracy)
-            call.resolve(location.toDictionary() as? [String: Any] ?? [:])
+            let location = try facade.getCurrentLocation(
+                timeout: Int32(timeout), maximumAge: maximumAge, enableHighAccuracy: highAccuracy)
+            call.resolve(location.toDictionary())
         } catch {
             let nsErr = error as NSError
             call.reject(nsErr.localizedDescription, String(nsErr.code))
@@ -198,40 +193,33 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
     @objc func getStationaryLocation(_ call: CAPPluginCall) {
         guard let facade = facade else { call.reject("facade not initialized"); return }
         if let loc = facade.getStationaryLocation() {
-            call.resolve(loc.toDictionary() as? [String: Any] ?? [:])
+            call.resolve(loc.toDictionary())
         } else {
-            // TS contract is `Location | null` — resolve with no payload so the
-            // JS bridge surfaces `null`, matching Android's `call.resolve()`.
             call.resolve()
         }
     }
 
     @objc func getLocations(_ call: CAPPluginCall) {
         guard let facade = facade else { call.reject("facade not initialized"); return }
-        let locations = facade.getLocations() as? [MAURLocation] ?? []
-        let arr = locations.compactMap { $0.toDictionaryWithId() as? [String: Any] }
+        let arr = facade.getLocations().map { $0.toDictionaryWithId() }
         call.resolve(["locations": arr])
     }
 
     @objc func getValidLocations(_ call: CAPPluginCall) {
         guard let facade = facade else { call.reject("facade not initialized"); return }
-        let locations = facade.getValidLocations() as? [MAURLocation] ?? []
-        let arr = locations.compactMap { $0.toDictionaryWithId() as? [String: Any] }
+        let arr = facade.getValidLocations().map { $0.toDictionaryWithId() }
         call.resolve(["locations": arr])
     }
 
     @objc func getValidLocationsAndDelete(_ call: CAPPluginCall) {
         guard let facade = facade else { call.reject("facade not initialized"); return }
-        let locations = facade.getValidLocationsAndDelete() as? [MAURLocation] ?? []
-        let arr = locations.compactMap { $0.toDictionaryWithId() as? [String: Any] }
+        let arr = facade.getValidLocationsAndDelete().map { $0.toDictionaryWithId() }
         call.resolve(["locations": arr])
     }
 
     @objc func getConfig(_ call: CAPPluginCall) {
         guard let facade = facade else { call.reject("facade not initialized"); return }
-        let cfg = facade.getConfig()
-        let dict = cfg?.toDictionary() as? [String: Any] ?? [:]
-        call.resolve(dict)
+        call.resolve(facade.getConfig().toDictionary())
     }
 
     @objc func deleteLocation(_ call: CAPPluginCall) {
@@ -275,14 +263,11 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
     }
 
     @objc func openSettings(_ call: CAPPluginCall) {
-        // Alias of showAppSettings — keeps parity with the cross-platform TS contract.
         facade?.showAppSettings()
         call.resolve()
     }
 
     @objc func watchLocationMode(_ call: CAPPluginCall) {
-        // iOS has no separate "mode watcher". Permission/status changes flow through
-        // onAuthorizationChanged -> "authorization" event. This is a no-op resolve.
         call.resolve()
     }
 
@@ -295,19 +280,16 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         let limit = call.getInt("limit") ?? 0
         let fromId = call.getInt("fromId") ?? 0
         let minLevel = call.getString("minLevel") ?? "DEBUG"
-        let logs = facade.getLogEntries(limit, fromLogEntryId: fromId, minLogLevelFrom: minLevel) as? [Any] ?? []
+        let logs = facade.getLogEntries(limit, fromId: fromId, minLevel: minLevel)
         call.resolve(["entries": logs])
     }
 
     @objc func checkStatus(_ call: CAPPluginCall) {
         guard let facade = facade else { call.reject("facade not initialized"); return }
-        let isRunning = facade.isStarted()
-        let enabled = facade.locationServicesEnabled()
-        let auth = facade.authorizationStatus()
         call.resolve([
-            "isRunning": isRunning,
-            "locationServicesEnabled": enabled,
-            "authorization": auth.rawValue
+            "isRunning": facade.isStarted(),
+            "locationServicesEnabled": facade.locationServicesEnabled(),
+            "authorization": facade.authorizationStatus().rawValue
         ])
     }
 
@@ -315,12 +297,8 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         var d: [String: Any] = [:]
         d["isRunning"] = facade?.isStarted() ?? false
         d["locationServicesEnabled"] = facade?.locationServicesEnabled() ?? false
-        // iOS has no boot-time auto-start equivalent. Expose for cross-platform shape.
         d["startOnBoot"] = false
-
-        // Pending sync (best-effort).
-        let pending = MAURSQLiteLocationDAO.sharedInstance().getLocationsForSyncCount()
-        d["pendingSyncCount"] = pending?.intValue ?? 0
+        d["pendingSyncCount"] = facade?.getPendingSyncCount() ?? 0
 
         if let last = lastLocationAt {
             d["lastLocationAt"] = Int64(last.timeIntervalSince1970 * 1000)
@@ -328,7 +306,6 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
             d["lastLocationAt"] = NSNull()
         }
 
-        // Precise location (iOS 14+).
         if #available(iOS 14.0, *) {
             let lm = CLLocationManager()
             d["preciseLocationEnabled"] = (lm.accuracyAuthorization == .fullAccuracy)
@@ -351,19 +328,19 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
     @objc func switchMode(_ call: CAPPluginCall) {
         guard let facade = facade else { call.reject("facade not initialized"); return }
         let raw = call.getInt("mode") ?? 1
-        let mode: MAUROperationalMode = raw == 0 ? .backgroundMode : .foregroundMode
+        let mode: BGOperationalMode = raw == 0 ? .background : .foreground
         facade.`switch`(mode)
         call.resolve()
     }
 
     @objc func startTask(_ call: CAPPluginCall) {
-        let key = (MAURBackgroundTaskManager.sharedTasks() as! MAURBackgroundTaskManager).beginTask()
+        let key = BGBackgroundTaskManager.shared.beginTask()
         call.resolve(["taskKey": key])
     }
 
     @objc func endTask(_ call: CAPPluginCall) {
-        let key = call.getInt("taskKey") ?? 0
-        (MAURBackgroundTaskManager.sharedTasks() as! MAURBackgroundTaskManager).endTask(withKey: UInt(key))
+        let key = UInt(call.getInt("taskKey") ?? 0)
+        BGBackgroundTaskManager.shared.endTask(key: key)
         call.resolve()
     }
 
@@ -393,8 +370,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
     }
 
     @objc func getSessionLocations(_ call: CAPPluginCall) {
-        let locations = facade?.getSessionLocations() as? [MAURLocation] ?? []
-        let arr = locations.compactMap { $0.toDictionaryWithId() as? [String: Any] }
+        let arr = (facade?.getSessionLocations() ?? []).map { $0.toDictionaryWithId() }
         call.resolve(["locations": arr])
     }
 
@@ -404,8 +380,6 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
     }
 
     @objc func triggerSOS(_ call: CAPPluginCall) {
-        // Facade attaches the latest location and posts MAURSOSNotification, which we
-        // forward via onSOSN(_:) below — keeps the payload-merge logic in a single place.
         let payload = call.getObject("payload")
         facade?.triggerSOS(payload)
         call.resolve()
@@ -422,7 +396,6 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
     }
 
     @objc func openBatterySettings(_ call: CAPPluginCall) {
-        // iOS has no Battery Settings deeplink. Best-effort: app settings.
         if let url = URL(string: UIApplication.openSettingsURLString), UIApplication.shared.canOpenURL(url) {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
@@ -430,41 +403,28 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
     }
 
     @objc func openAutoStartSettings(_ call: CAPPluginCall) {
-        // No per-OEM auto-start screen on iOS. Report opened=false to let JS render help.
-        call.resolve([
-            "opened": false,
-            "manufacturer": "apple",
-            "screen": ""
-        ])
+        call.resolve(["opened": false, "manufacturer": "apple", "screen": ""])
     }
 
     @objc func getManufacturerHelp(_ call: CAPPluginCall) {
-        // Consumer apps will render their own copy. Return an empty list to keep the
-        // cross-platform shape stable.
-        call.resolve([
-            "manufacturer": "apple",
-            "steps": [] as [String]
-        ])
+        call.resolve(["manufacturer": "apple", "steps": [] as [String]])
     }
 
-    // MARK: - Runtime permission helpers (cross-platform shims)
+    // MARK: - Runtime permission helpers
 
     @objc func requestBackgroundLocationPermission(_ call: CAPPluginCall) {
-        // iOS folds background into "Always" — there's no separate gate.
         call.resolve(["granted": true, "notRequired": true])
     }
 
     @objc func requestActivityRecognitionPermission(_ call: CAPPluginCall) {
-        // Probe motion availability so the consumer sees a faithful "granted" flag.
         var granted = true
         if #available(iOS 11.0, *) {
             if CMMotionActivityManager.isActivityAvailable() {
                 switch CMMotionActivityManager.authorizationStatus() {
                 case .authorized:    granted = true
-                case .denied,
-                     .restricted:    granted = false
+                case .denied, .restricted: granted = false
                 case .notDetermined: granted = true
-                @unknown default:    granted = true
+                @unknown default:   granted = true
                 }
             }
         }
@@ -477,12 +437,6 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         }
     }
 
-    /// Android-only feature. iOS does not allow running JS in a killed-app
-    /// scenario the way Android's `JsEvaluator` does. The call resolves so
-    /// cross-platform code stays portable. Use the regular `addListener`
-    /// callbacks on iOS — they are delivered as long as the app is running
-    /// in the background (which on iOS is the only state where locations
-    /// are produced anyway).
     @objc func registerHeadlessTask(_ call: CAPPluginCall) {
         call.resolve()
     }
@@ -562,32 +516,30 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         return "notDetermined"
     }
 
-    // MARK: - MAURProviderDelegate
+    // MARK: - LocationProviderDelegate
 
-    public func onAuthorizationChanged(_ authStatus: MAURLocationAuthorizationStatus) {
-        notifyListeners("authorization", data: ["status": authStatus.rawValue])
+    public func onAuthorizationChanged(_ status: BGAuthorizationStatus) {
+        notifyListeners("authorization", data: ["status": status.rawValue])
     }
 
-    public func onLocationChanged(_ location: MAURLocation!) {
+    public func onLocationChanged(_ location: BGLocation) {
         lastLocationAt = Date()
-        lastMAURLocation = location
-        if let lat = location.latitude?.doubleValue, let lon = location.longitude?.doubleValue {
+        lastBGLocation = location
+        if let lat = location.latitude, let lon = location.longitude {
             let dl = DLLocation(
                 latitude:  lat,
                 longitude: lon,
-                speed:     location.speed?.doubleValue ?? -1,
-                bearing:   location.heading?.doubleValue,
+                speed:     location.speed ?? -1,
+                bearing:   location.heading,
                 provider:  location.provider
             )
             drivingDetector.feed(dl)
         }
-        guard let dict = location.toDictionaryWithId() as? [String: Any] else { return }
-        notifyListeners("location", data: dict)
+        notifyListeners("location", data: location.toDictionaryWithId())
     }
 
-    public func onStationaryChanged(_ location: MAURLocation!) {
-        guard let dict = location.toDictionaryWithId() as? [String: Any] else { return }
-        notifyListeners("stationary", data: dict)
+    public func onStationaryChanged(_ location: BGLocation) {
+        notifyListeners("stationary", data: location.toDictionaryWithId())
     }
 
     public func onLocationPause() {
@@ -599,9 +551,8 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         notifyListeners("start", data: [:])
     }
 
-    public func onActivityChanged(_ activity: MAURActivity!) {
-        guard let dict = activity.toDictionary() as? [String: Any] else { return }
-        notifyListeners("activity", data: dict)
+    public func onActivityChanged(_ activity: BGActivity) {
+        notifyListeners("activity", data: activity.toDictionary())
     }
 
     public func onAbortRequested() {
@@ -612,17 +563,17 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         notifyListeners("http_authorization", data: [:])
     }
 
-    public func onError(_ error: Error!) {
-        let nsErr = error as NSError?
+    public func onError(_ error: Error) {
+        let nsErr = error as NSError
         notifyListeners("error", data: [
-            "code": nsErr?.code ?? -1,
-            "message": nsErr?.localizedDescription ?? "unknown error"
+            "code": nsErr.code,
+            "message": nsErr.localizedDescription
         ])
     }
 
     // MARK: - Notification observers (sync / heartbeat / driving)
 
-    @objc private func onSyncStartN(_ note: Notification) {
+    @objc private func onSyncStartN(_: Notification) {
         notifyListeners("syncStart", data: [:])
     }
 
@@ -643,18 +594,16 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
     }
 
     @objc private func onHeartbeatN(_ note: Notification) {
-        if let loc = note.userInfo?["location"] as? MAURLocation,
-           let dict = loc.toDictionaryWithId() as? [String: Any] {
-            notifyListeners("heartbeat", data: dict)
+        if let loc = note.userInfo?["location"] as? BGLocation {
+            notifyListeners("heartbeat", data: loc.toDictionaryWithId())
         } else {
             notifyListeners("heartbeat", data: [:])
         }
     }
 
     @objc private func onTripStartN(_ note: Notification) {
-        if let loc = note.userInfo?["location"] as? MAURLocation,
-           let dict = loc.toDictionaryWithId() as? [String: Any] {
-            notifyListeners("tripStart", data: dict)
+        if let loc = note.userInfo?["location"] as? BGLocation {
+            notifyListeners("tripStart", data: loc.toDictionaryWithId())
         } else {
             notifyListeners("tripStart", data: [:])
         }
@@ -662,30 +611,27 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
 
     @objc private func onTripEndN(_ note: Notification) {
         var p: [String: Any] = [:]
-        if let loc = note.userInfo?["location"] as? MAURLocation,
-           let dict = loc.toDictionaryWithId() as? [String: Any] {
-            p["location"] = dict
+        if let loc = note.userInfo?["location"] as? BGLocation {
+            p["location"] = loc.toDictionaryWithId()
         } else {
             p["location"] = NSNull()
         }
         p["distance"]   = (note.userInfo?["distance"]   as? NSNumber)?.doubleValue ?? 0
-        p["durationMs"] = (note.userInfo?["durationMs"] as? NSNumber)?.int64Value ?? 0
+        p["durationMs"] = (note.userInfo?["durationMs"] as? NSNumber)?.int64Value  ?? 0
         notifyListeners("tripEnd", data: p)
     }
 
     @objc private func onMovingN(_ note: Notification) {
-        if let loc = note.userInfo?["location"] as? MAURLocation,
-           let dict = loc.toDictionaryWithId() as? [String: Any] {
-            notifyListeners("moving", data: dict)
+        if let loc = note.userInfo?["location"] as? BGLocation {
+            notifyListeners("moving", data: loc.toDictionaryWithId())
         } else {
             notifyListeners("moving", data: [:])
         }
     }
 
     @objc private func onStoppedN(_ note: Notification) {
-        if let loc = note.userInfo?["location"] as? MAURLocation,
-           let dict = loc.toDictionaryWithId() as? [String: Any] {
-            notifyListeners("stopped", data: dict)
+        if let loc = note.userInfo?["location"] as? BGLocation {
+            notifyListeners("stopped", data: loc.toDictionaryWithId())
         } else {
             notifyListeners("stopped", data: [:])
         }
@@ -693,9 +639,8 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
 
     @objc private func onSpeedingN(_ note: Notification) {
         var p: [String: Any] = [:]
-        if let loc = note.userInfo?["location"] as? MAURLocation,
-           let dict = loc.toDictionaryWithId() as? [String: Any] {
-            p["location"] = dict
+        if let loc = note.userInfo?["location"] as? BGLocation {
+            p["location"] = loc.toDictionaryWithId()
         } else {
             p["location"] = NSNull()
         }
@@ -714,9 +659,8 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
         if let userPayload = note.userInfo?["payload"] as? [String: Any] {
             for (k, v) in userPayload { p[k] = v }
         }
-        if let loc = note.userInfo?["location"] as? MAURLocation,
-           let dict = loc.toDictionaryWithId() as? [String: Any] {
-            p["location"] = dict
+        if let loc = note.userInfo?["location"] as? BGLocation {
+            p["location"] = loc.toDictionaryWithId()
         } else if p["location"] == nil {
             p["location"] = NSNull()
         }
@@ -725,9 +669,8 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
 
     private func emitDrivingEvent(_ name: String, note: Notification) {
         var p: [String: Any] = [:]
-        if let loc = note.userInfo?["location"] as? MAURLocation,
-           let dict = loc.toDictionaryWithId() as? [String: Any] {
-            p["location"] = dict
+        if let loc = note.userInfo?["location"] as? BGLocation {
+            p["location"] = loc.toDictionaryWithId()
         } else {
             p["location"] = NSNull()
         }
@@ -742,9 +685,8 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
     @objc private func onPossibleCrashN(_ note: Notification)     { emitDrivingEvent("possibleCrash",     note: note) }
 
     @objc private func onPhoneUsageWhileDrivingN(_ note: Notification) {
-        if let loc = note.userInfo?["location"] as? MAURLocation,
-           let dict = loc.toDictionaryWithId() as? [String: Any] {
-            notifyListeners("phoneUsageWhileDriving", data: dict)
+        if let loc = note.userInfo?["location"] as? BGLocation {
+            notifyListeners("phoneUsageWhileDriving", data: loc.toDictionaryWithId())
         } else {
             notifyListeners("phoneUsageWhileDriving", data: [:])
         }
@@ -756,99 +698,70 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, MAURProvi
 extension BackgroundGeolocationPlugin {
 
     func detectorOnMoving(_ location: DLLocation) {
-        postDrivingNote(.MAURMoving)
+        postDrivingNote(.BGMoving)
     }
 
     func detectorOnStopped(_ location: DLLocation) {
-        postDrivingNote(.MAURStopped)
+        postDrivingNote(.BGStopped)
     }
 
     func detectorOnTripStart(_ location: DLLocation) {
         facade?.drivingTripActive = true
-        postDrivingNote(.MAURTripStart)
+        postDrivingNote(.BGTripStart)
     }
 
     func detectorOnTripEnd(_ location: DLLocation, distanceMeters: Double, durationMs: Int64) {
         facade?.drivingTripActive = false
         var info: [String: Any] = [:]
-        if let loc = lastMAURLocation { info["location"] = loc }
+        if let loc = lastBGLocation { info["location"] = loc }
         info["distance"]   = distanceMeters
         info["durationMs"] = NSNumber(value: durationMs)
-        NotificationCenter.default.post(name: .MAURTripEnd, object: nil, userInfo: info)
+        NotificationCenter.default.post(name: .BGTripEnd, object: nil, userInfo: info)
     }
 
     func detectorOnSpeeding(_ location: DLLocation, speedKmh: Double, limitKmh: Double) {
         var info: [String: Any] = [:]
-        if let loc = lastMAURLocation { info["location"] = loc }
+        if let loc = lastBGLocation { info["location"] = loc }
         info["speedKmh"] = speedKmh
         info["limitKmh"] = limitKmh
-        NotificationCenter.default.post(name: .MAURSpeeding, object: nil, userInfo: info)
+        NotificationCenter.default.post(name: .BGSpeeding, object: nil, userInfo: info)
     }
 
     func detectorOnProviderChange(provider: String) {
-        NotificationCenter.default.post(
-            name: .MAURProviderChange,
-            object: nil,
-            userInfo: ["provider": provider]
-        )
+        NotificationCenter.default.post(name: .BGProviderChange, object: nil, userInfo: ["provider": provider])
     }
 
     func detectorOnHardBrake(_ location: DLLocation, decelMps2: Double) {
-        postSensorNote(.MAURHardBrake, value: decelMps2)
+        postSensorNote(.BGHardBrake, value: decelMps2)
     }
 
     func detectorOnRapidAcceleration(_ location: DLLocation, accelMps2: Double) {
-        postSensorNote(.MAURRapidAcceleration, value: accelMps2)
+        postSensorNote(.BGRapidAcceleration, value: accelMps2)
     }
 
     func detectorOnSharpTurn(_ location: DLLocation, degPerSec: Double) {
-        postSensorNote(.MAURSharpTurn, value: degPerSec)
+        postSensorNote(.BGSharpTurn, value: degPerSec)
     }
 
     func detectorOnPossibleCrash(_ location: DLLocation, dropKmh: Double) {
-        postSensorNote(.MAURPossibleCrash, value: dropKmh)
+        postSensorNote(.BGPossibleCrash, value: dropKmh)
     }
 
     private func postDrivingNote(_ name: Notification.Name) {
         var info: [String: Any] = [:]
-        if let loc = lastMAURLocation { info["location"] = loc }
+        if let loc = lastBGLocation { info["location"] = loc }
         NotificationCenter.default.post(name: name, object: nil, userInfo: info)
     }
 
     private func postSensorNote(_ name: Notification.Name, value: Double) {
         var info: [String: Any] = ["value": value, "source": "gps"]
-        if let loc = lastMAURLocation { info["location"] = loc }
+        if let loc = lastBGLocation { info["location"] = loc }
         NotificationCenter.default.post(name: name, object: nil, userInfo: info)
     }
 }
 
-// MARK: - Notification.Name aliases
-
-// The ObjC module exports these as NSNotification.Name (= Notification.Name) already.
-// Swift static aliases let us use .MAURTripStart instead of the verbose global.
-extension Notification.Name {
-    static let MAURBackgroundSyncDidStart    = MAURBackgroundSyncDidStartNotification
-    static let MAURBackgroundSyncDidSucceed  = MAURBackgroundSyncDidSucceedNotification
-    static let MAURBackgroundSyncDidFail     = MAURBackgroundSyncDidFailNotification
-    static let MAURBackgroundSyncDidProgress = MAURBackgroundSyncDidProgressNotification
-    static let MAURHeartbeat                 = MAURHeartbeatNotification
-    static let MAURTripStart                 = MAURTripStartNotification
-    static let MAURTripEnd                   = MAURTripEndNotification
-    static let MAURMoving                    = MAURMovingNotification
-    static let MAURStopped                   = MAURStoppedNotification
-    static let MAURSpeeding                  = MAURSpeedingNotification
-    static let MAURProviderChange            = MAURProviderChangeNotification
-    static let MAURSOS                       = MAURSOSNotification
-    static let MAURHardBrake                 = MAURHardBrakeNotification
-    static let MAURRapidAcceleration         = MAURRapidAccelerationNotification
-    static let MAURSharpTurn                 = MAURSharpTurnNotification
-    static let MAURPossibleCrash             = MAURPossibleCrashNotification
-    static let MAURPhoneUsageWhileDriving    = MAURPhoneUsageWhileDrivingNotification
-}
-
 // MARK: - Permission helper
 
-/// Wraps `CLLocationManager` for a single permission prompt.
 private final class PermissionRequestHelper: NSObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private let completion: (CLAuthorizationStatus) -> Void
@@ -868,7 +781,6 @@ private final class PermissionRequestHelper: NSObject, CLLocationManagerDelegate
         finish(with: manager.authorizationStatus)
     }
 
-    // iOS 13 fallback (kept for SDK completeness; deployment target is 14+).
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
         finish(with: status)
     }
