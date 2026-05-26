@@ -76,6 +76,7 @@ public class BackgroundGeolocationPlugin extends Plugin implements PluginDelegat
     private static final String ABORT_REQUESTED_EVENT    = "abort_requested";
     private static final String HTTP_AUTHORIZATION_EVENT = "http_authorization";
     private static final String ERROR_EVENT              = "error";
+    private static final String SERVICE_RESTARTED_EVENT  = "serviceRestarted";
 
     public static final String PLUGIN_VERSION = "1.0.1";
 
@@ -811,6 +812,14 @@ public class BackgroundGeolocationPlugin extends Plugin implements PluginDelegat
     @Override
     public void onPhoneUsageWhileDriving(BackgroundLocation location) {
         notifyListeners("phoneUsageWhileDriving", locationToJSObject(location));
+    }
+
+    // P2
+    @Override
+    public void onServiceRestarted(String reason) {
+        JSObject p = new JSObject();
+        p.put("reason", reason != null ? reason : "watchdog");
+        notifyListeners(SERVICE_RESTARTED_EVENT, p);
     }
 
     private void emitDrivingEvent(String name, BackgroundLocation location, double value) {

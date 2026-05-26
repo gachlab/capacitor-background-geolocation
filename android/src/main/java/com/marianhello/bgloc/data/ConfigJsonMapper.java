@@ -57,6 +57,7 @@ public final class ConfigJsonMapper {
         j.put("syncEnabled", c.getSyncEnabled());
         j.put("maxLocations", c.getMaxLocations());
         j.put("enableWatchdog", c.getEnableWatchdog());
+        if (c.getWatchdogIntervalMs() != null) j.put("watchdogIntervalMs", c.getWatchdogIntervalMs());
         j.put("showTime", c.getShowTime());
         j.put("showDistance", c.getShowDistance());
         j.put("httpMethod", c.getHttpMethod());
@@ -138,6 +139,7 @@ public final class ConfigJsonMapper {
         if (j.has("syncEnabled")) c.setSyncEnabled(j.getBoolean("syncEnabled"));
         if (j.has("maxLocations")) c.setMaxLocations(j.getInt("maxLocations"));
         if (j.has("enableWatchdog")) c.setEnableWatchdog(j.getBoolean("enableWatchdog"));
+        if (j.has("watchdogIntervalMs") && !j.isNull("watchdogIntervalMs")) c.setWatchdogIntervalMs(j.getLong("watchdogIntervalMs"));
         if (j.has("showTime")) c.setShowTime(j.getBoolean("showTime"));
         if (j.has("showDistance")) c.setShowDistance(j.getBoolean("showDistance"));
         if (has(j, "httpMethod")) c.setHttpMethod(j.getString("httpMethod"));

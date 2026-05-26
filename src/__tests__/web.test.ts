@@ -167,7 +167,7 @@ describe('BackgroundGeolocationWeb', () => {
     it('emits location event when watchPosition fires', async () => {
       const locs = collect<{ latitude: number }>(plugin, 'location');
       await plugin.start();
-      onWatchSuccess!(makePosition({ latitude: 19.4, longitude: -99.1 }));
+      onWatchSuccess?.(makePosition({ latitude: 19.4, longitude: -99.1 }));
       assert.equal(locs.length, 1);
       assert.equal(locs[0].latitude, 19.4);
     });
@@ -175,7 +175,7 @@ describe('BackgroundGeolocationWeb', () => {
     it('emits error event when watchPosition reports an error', async () => {
       const errs = collect<{ code: number }>(plugin, 'error');
       await plugin.start();
-      onWatchError!(makeGeoError(2, 'Position unavailable'));
+      onWatchError?.(makeGeoError(2, 'Position unavailable'));
       assert.equal(errs.length, 1);
       assert.equal(errs[0].code, 2);
     });
@@ -193,6 +193,40 @@ describe('BackgroundGeolocationWeb', () => {
     it('is a no-op when not running', async () => {
       await plugin.stop();
       assert.equal(mockGeo.clearWatch.mock.callCount(), 0);
+    });
+  });
+
+  // ── getCurrentLocation ────────────────────────────────────────────────────
+
+  describe('getCurrentLocation()', () => {
+    it('resolves with location on success', async () => {
+      const promise = plugin.getCurrentLocation();
+      onCurrentSuccess?.(makePosition({ latitude: 48.85, longitude: 2.35 }));
+      const loc = await promise;
+      assert.equal(loc.latitude, 48.85);
+      assert.equal(loc.longitude, 2.35);
+      assert.equal(loc.provider, 'gps');
+    });
+
+    it('rejects with mapped error code on failure', async () => {
+      const promise = plugin.getCurrentLocation();
+      onCurrentError?.(makeGeoError(2, 'Position unavailable'));
+      await assert.rejects(promise, (err: { code: number }) => {
+        assert.equal(err.code, 2);
+        return true;
+      });
+    });
+
+    it('passes enableHighAccuracy: true by default', async () => {
+      void plugin.getCurrentLocation({ enableHighAccuracy: true });
+      const opts = mockGeo.getCurrentPosition.mock.calls[0].arguments[2] as PositionOptions;
+      assert.equal(opts.enableHighAccuracy, true);
+    });
+
+    it('passes enableHighAccuracy: false when explicitly set', async () => {
+      void plugin.getCurrentLocation({ enableHighAccuracy: false });
+      const opts = mockGeo.getCurrentPosition.mock.calls[0].arguments[2] as PositionOptions;
+      assert.equal(opts.enableHighAccuracy, false);
     });
   });
 
@@ -229,7 +263,7 @@ describe('BackgroundGeolocationWeb', () => {
     it('maps all GeolocationPosition fields to Location', async () => {
       const locs = collect<Record<string, unknown>>(plugin, 'location');
       await plugin.start();
-      onWatchSuccess!(
+      onWatchSuccess?.(
         makePosition({
           latitude: 19.4326,
           longitude: -99.1332,
@@ -253,7 +287,7 @@ describe('BackgroundGeolocationWeb', () => {
     it('falls back to 0 when nullable fields are null', async () => {
       const locs = collect<Record<string, unknown>>(plugin, 'location');
       await plugin.start();
-      onWatchSuccess!(
+      onWatchSuccess?.(
         makePosition({
           accuracy: null as unknown as number,
           speed: null as unknown as number,
@@ -380,7 +414,7 @@ describe('BackgroundGeolocationWeb', () => {
       const events = collect<Record<string, unknown>>(plugin, 'sos');
       collect(plugin, 'location');
       await plugin.start();
-      onWatchSuccess!(makePosition({ latitude: 19.4, longitude: -99.1 }));
+      onWatchSuccess?.(makePosition({ latitude: 19.4, longitude: -99.1 }));
       await plugin.stop();
 
       await plugin.triggerSOS({});
@@ -420,7 +454,7 @@ describe('BackgroundGeolocationWeb', () => {
     it('lastLocationAt is set after a location fix', async () => {
       collect(plugin, 'location');
       await plugin.start();
-      onWatchSuccess!(makePosition());
+      onWatchSuccess?.(makePosition());
       await plugin.stop();
 
       const diag = await plugin.getDiagnostics();
