@@ -3,29 +3,20 @@
 
 import { registerPlugin } from '@capacitor/core';
 
-import type {
-  BackgroundGeolocationPlugin,
-  HeadlessTaskEvent,
-} from './definitions';
+import type { BackgroundGeolocationPlugin, HeadlessTaskEvent } from './definitions';
 
 /**
  * Internal native surface. The public `headlessTask(fn)` is adapted to the
  * native `registerHeadlessTask({ task: string })` so the function body can
  * cross the Capacitor bridge.
  */
-type BackgroundGeolocationNative = Omit<
-  BackgroundGeolocationPlugin,
-  'headlessTask'
-> & {
+type BackgroundGeolocationNative = Omit<BackgroundGeolocationPlugin, 'headlessTask'> & {
   registerHeadlessTask(options: { task: string }): Promise<void>;
 };
 
-const NativeBackgroundGeolocation = registerPlugin<BackgroundGeolocationNative>(
-  'BackgroundGeolocation',
-  {
-    web: () => import('./web').then((m) => new m.BackgroundGeolocationWeb()),
-  },
-);
+const NativeBackgroundGeolocation = registerPlugin<BackgroundGeolocationNative>('BackgroundGeolocation', {
+  web: () => import('./web').then((m) => new m.BackgroundGeolocationWeb()),
+});
 
 /**
  * Public plugin. `headlessTask(fn)` serialises the callback before sending it

@@ -1,8 +1,9 @@
 // node:test unit tests for BackgroundGeolocationWeb (web.ts)
 // Run: npm test
 
-import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { describe, it, beforeEach, afterEach, mock } from 'node:test';
+
 import { BackgroundGeolocationWeb } from '../web.js';
 
 // ─── Mock browser globals ─────────────────────────────────────────────────────
@@ -14,10 +15,7 @@ let onCurrentError: ((err: GeolocationPositionError) => void) | null = null;
 
 const mockGeo = {
   watchPosition: mock.fn(
-    (
-      success: (pos: GeolocationPosition) => void,
-      error: (e: GeolocationPositionError) => void,
-    ) => {
+    (success: (pos: GeolocationPosition) => void, error: (e: GeolocationPositionError) => void) => {
       onWatchSuccess = success;
       onWatchError = error;
       return 1;
@@ -25,10 +23,7 @@ const mockGeo = {
   ),
   clearWatch: mock.fn(),
   getCurrentPosition: mock.fn(
-    (
-      success: (pos: GeolocationPosition) => void,
-      error: (e: GeolocationPositionError) => void,
-    ) => {
+    (success: (pos: GeolocationPosition) => void, error: (e: GeolocationPositionError) => void) => {
       onCurrentSuccess = success;
       onCurrentError = error;
     },
@@ -51,9 +46,7 @@ Object.defineProperty(globalThis.navigator, 'geolocation', {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function makePosition(
-  overrides: Partial<GeolocationCoordinates> = {},
-): GeolocationPosition {
+function makePosition(overrides: Partial<GeolocationCoordinates> = {}): GeolocationPosition {
   return {
     timestamp: 1_716_000_000_000,
     coords: {
@@ -75,10 +68,7 @@ function makePosition(
   };
 }
 
-function makeGeoError(
-  code: number,
-  message: string,
-): GeolocationPositionError {
+function makeGeoError(code: number, message: string): GeolocationPositionError {
   return {
     code,
     message,
@@ -88,10 +78,7 @@ function makeGeoError(
   } as GeolocationPositionError;
 }
 
-function collect<T>(
-  plugin: BackgroundGeolocationWeb,
-  event: string,
-): T[] {
+function collect<T>(plugin: BackgroundGeolocationWeb, event: string): T[] {
   const items: T[] = [];
   plugin.addListener(event, (d) => items.push(d as T));
   return items;
@@ -114,7 +101,9 @@ describe('BackgroundGeolocationWeb', () => {
   });
 
   afterEach(async () => {
-    await plugin.stop().catch(() => { /* already stopped */ });
+    await plugin.stop().catch(() => {
+      /* already stopped */
+    });
   });
 
   // ── configure / getConfig ─────────────────────────────────────────────────
@@ -163,16 +152,14 @@ describe('BackgroundGeolocationWeb', () => {
     it('uses high accuracy when desiredAccuracy is not LOW', async () => {
       await plugin.configure({ desiredAccuracy: 'HIGH' });
       await plugin.start();
-      const opts = mockGeo.watchPosition.mock.calls[0]
-        .arguments[2] as PositionOptions;
+      const opts = mockGeo.watchPosition.mock.calls[0].arguments[2] as PositionOptions;
       assert.equal(opts.enableHighAccuracy, true);
     });
 
     it('uses low accuracy when desiredAccuracy is LOW', async () => {
       await plugin.configure({ desiredAccuracy: 'LOW' });
       await plugin.start();
-      const opts = mockGeo.watchPosition.mock.calls[0]
-        .arguments[2] as PositionOptions;
+      const opts = mockGeo.watchPosition.mock.calls[0].arguments[2] as PositionOptions;
       assert.equal(opts.enableHighAccuracy, false);
     });
 
@@ -336,10 +323,7 @@ describe('BackgroundGeolocationWeb', () => {
     });
 
     it('requestActivityRecognitionPermission() → { granted: true, notRequired: true }', async () => {
-      assert.deepEqual(
-        await plugin.requestActivityRecognitionPermission(),
-        { granted: true, notRequired: true },
-      );
+      assert.deepEqual(await plugin.requestActivityRecognitionPermission(), { granted: true, notRequired: true });
     });
 
     it('getLogEntries() → empty entries', async () => {
@@ -352,7 +336,7 @@ describe('BackgroundGeolocationWeb', () => {
   // ── Unimplemented methods ─────────────────────────────────────────────────
 
   describe('unimplemented methods', () => {
-    const cases: Array<[string, unknown[]]> = [
+    const cases: [string, unknown[]][] = [
       ['switchMode', [{ mode: 0 }]],
       ['deleteLocation', [{ locationId: 1 }]],
       ['deleteAllLocations', []],
@@ -363,19 +347,13 @@ describe('BackgroundGeolocationWeb', () => {
       ['showAppSettings', []],
       ['openSettings', []],
       ['showLocationSettings', []],
-      ['headlessTask', [() => {}]],
+      ['headlessTask', [() => {}]], // eslint-disable-line @typescript-eslint/no-empty-function
     ];
 
     for (const [method, args] of cases) {
       it(`${method}() throws`, async () => {
         await assert.rejects(
-          () =>
-            (
-              plugin as unknown as Record<
-                string,
-                (...a: unknown[]) => Promise<unknown>
-              >
-            )[method](...args),
+          () => (plugin as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[method](...args),
           (err: Error) => {
             assert.ok(err instanceof Error, `expected Error, got ${typeof err}`);
             return true;
