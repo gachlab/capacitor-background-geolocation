@@ -97,9 +97,13 @@ NSString * const MAURBackgroundSyncDidProgressNotification = @"MAURBackgroundSyn
     [request setTimeoutInterval:120]; // Prevents sync from hanging indefinitely if server does not respond
     [request setValue:[NSString stringWithFormat:@"%llu", bytesTotalForThisFile] forHTTPHeaderField:@"Content-Length"];
     [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-    
+
     if (httpHeaders != nil) {
         for(id key in httpHeaders) {
+            // Skip Content-Type — already set above; addValue: would append a
+            // second value producing "application/json, application/json",
+            // which servers reject with HTTP 415. Mirror MAURPostLocationTask.
+            if ([key isEqualToString:@"Content-Type"]) continue;
             id value = [httpHeaders objectForKey:key];
             [request addValue:value forHTTPHeaderField:key];
         }
