@@ -6,7 +6,18 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-## [1.0.1] - 2026-05-13
+## [1.0.1] - 2026-05-25
+
+### Fixed
+- **iOS background sync: HTTP 415 on every location POST.** `MAURBackgroundSync`
+  was calling `addValue:forHTTPHeaderField:` for all `httpHeaders` entries
+  including `Content-Type`, appending a second `application/json` value to the
+  header already set by the hardcoded `setValue:` above it. The resulting
+  `Content-Type: application/json, application/json` was rejected by strict
+  servers with HTTP 415 Unsupported Media Type. Fix mirrors the existing guard
+  in `MAURPostLocationTask` (skip `Content-Type` in the `addValue:` loop).
+
+## [1.0.0] - 2026-05-13
 
 Pulled in the v4.5.4 native bug-fix from `@josuelmm/cordova-background-geolocation`.
 
