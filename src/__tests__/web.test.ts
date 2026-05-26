@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 
+import { AccuracyValue, AuthorizationStatus, LocationProviderValue } from '../definitions.js';
 import { BackgroundGeolocationWeb } from '../web.js';
 
 // ─── Mock browser globals ─────────────────────────────────────────────────────
@@ -254,12 +255,14 @@ describe('BackgroundGeolocationWeb', () => {
       await plugin.start();
       onWatchSuccess!(
         makePosition({
+          accuracy: null as unknown as number,
           speed: null as unknown as number,
           altitude: null as unknown as number,
           heading: null as unknown as number,
         }),
       );
 
+      assert.equal(locs[0]['accuracy'], 0);
       assert.equal(locs[0]['speed'], 0);
       assert.equal(locs[0]['altitude'], 0);
       assert.equal(locs[0]['bearing'], 0);
@@ -423,5 +426,317 @@ describe('BackgroundGeolocationWeb', () => {
       const diag = await plugin.getDiagnostics();
       assert.ok(diag.lastLocationAt != null, 'lastLocationAt should be set');
     });
+  });
+
+  // ── getCurrentLocation ────────────────────────────────────────────────────
+
+  describe('getCurrentLocation()', () => {
+    it('resolves with mapped location on success', async () => {
+      const promise = plugin.getCurrentLocation();
+      onCurrentSuccess!(makePosition({ latitude: 10, longitude: 20 }));
+      const loc = await promise;
+      assert.equal(loc.latitude, 10);
+      assert.equal(loc.longitude, 20);
+    });
+
+    it('rejects with mapped error on failure', async () => {
+      const promise = plugin.getCurrentLocation();
+      onCurrentError!(makeGeoError(2, 'Position unavailable'));
+      await assert.rejects(
+        () => promise,
+        (err: unknown) => {
+          assert.equal((err as { code: number }).code, 2);
+          return true;
+        },
+      );
+    });
+
+    it('respects enableHighAccuracy option', async () => {
+      plugin.getCurrentLocation({ enableHighAccuracy: false });
+      const opts = mockGeo.getCurrentPosition.mock.calls[0].arguments[2] as PositionOptions;
+      assert.equal(opts.enableHighAccuracy, false);
+    });
+
+    it('throws unavailable when geolocation API is absent', async () => {
+      delete (navigator as unknown as Record<string, unknown>).geolocation;
+      assert.throws(
+        () => plugin.getCurrentLocation(),
+        (err: unknown) => {
+          assert.ok(err instanceof Error);
+          return true;
+        },
+      );
+      Object.defineProperty(navigator, 'geolocation', { value: mockGeo, configurable: true, writable: true });
+    });
+  });
+
+  // ── start() with no geolocation ───────────────────────────────────────────
+
+  describe('start() without geolocation API', () => {
+    it('throws unavailable when geolocation API is absent', async () => {
+      delete (navigator as unknown as Record<string, unknown>).geolocation;
+      await assert.rejects(
+        () => plugin.start(),
+        (err: unknown) => {
+          assert.ok(err instanceof Error);
+          return true;
+        },
+      );
+      Object.defineProperty(navigator, 'geolocation', { value: mockGeo, configurable: true, writable: true });
+    });
+  });
+
+  // ── start() idempotency ───────────────────────────────────────────────────
+
+  describe('start() idempotency guard', () => {
+    it('skips watchPosition on second call and emits no extra start event', async () => {
+      const starts = collect(plugin, 'start');
+      await plugin.start();
+      await plugin.start();
+      assert.equal(mockGeo.watchPosition.mock.callCount(), 1);
+      assert.equal(starts.length, 1);
+    });
+  });
+
+  // ── web stubs — safe defaults ─────────────────────────────────────────────
+
+  describe('web stubs returning safe defaults', () => {
+    it('getStationaryLocation() → null', async () => {
+      assert.equal(await plugin.getStationaryLocation(), null);
+    });
+
+    it('getLocations() → empty array', async () => {
+      assert.equal((await plugin.getLocations()).locations.length, 0);
+    });
+
+    it('getValidLocations() → empty array', async () => {
+      assert.equal((await plugin.getValidLocations()).locations.length, 0);
+    });
+
+    it('getValidLocationsAndDelete() → empty array', async () => {
+      assert.equal((await plugin.getValidLocationsAndDelete()).locations.length, 0);
+    });
+
+    it('getPendingSyncCount() → 0', async () => {
+      assert.equal((await plugin.getPendingSyncCount()).count, 0);
+    });
+
+    it('getSessionLocations() → empty array', async () => {
+      assert.equal((await plugin.getSessionLocations()).locations.length, 0);
+    });
+
+    it('getSessionLocationsCount() → 0', async () => {
+      assert.equal((await plugin.getSessionLocationsCount()).count, 0);
+    });
+
+    it('isIgnoringBatteryOptimizations() → whitelisted: true', async () => {
+      assert.equal((await plugin.isIgnoringBatteryOptimizations()).whitelisted, true);
+    });
+
+    it('requestIgnoreBatteryOptimizations() → whitelisted: true', async () => {
+      assert.equal((await plugin.requestIgnoreBatteryOptimizations()).whitelisted, true);
+    });
+
+    it('openBatterySettings() resolves without throwing', async () => {
+      await plugin.openBatterySettings();
+    });
+
+    it('openAutoStartSettings() → opened: false, manufacturer: web', async () => {
+      const r = await plugin.openAutoStartSettings();
+      assert.equal(r.opened, false);
+      assert.equal(r.manufacturer, 'web');
+    });
+
+    it('getManufacturerHelp() → manufacturer: web, steps: []', async () => {
+      const r = await plugin.getManufacturerHelp();
+      assert.equal(r.manufacturer, 'web');
+      assert.equal(r.steps.length, 0);
+    });
+
+    it('getPluginVersion() → version string', async () => {
+      const r = await plugin.getPluginVersion();
+      assert.ok(typeof r.version === 'string' && r.version.length > 0);
+    });
+
+    it('requestBackgroundLocationPermission() → granted: true, notRequired: true', async () => {
+      const r = await plugin.requestBackgroundLocationPermission();
+      assert.equal(r.granted, true);
+      assert.equal(r.notRequired, true);
+    });
+
+    it('requestActivityRecognitionPermission() → granted: true, notRequired: true', async () => {
+      const r = await plugin.requestActivityRecognitionPermission();
+      assert.equal(r.granted, true);
+      assert.equal(r.notRequired, true);
+    });
+
+    it('startTask() → taskKey number', async () => {
+      const r = await plugin.startTask();
+      assert.ok(typeof r.taskKey === 'number');
+    });
+
+    it('endTask() resolves without throwing', async () => {
+      await plugin.endTask({ taskKey: 0 });
+    });
+
+    it('getLogEntries() → empty entries', async () => {
+      assert.equal((await plugin.getLogEntries({ limit: 10 })).entries.length, 0);
+    });
+  });
+
+  // ── checkPermissions ──────────────────────────────────────────────────────
+
+  describe('checkPermissions()', () => {
+    it('returns prompt when permissions API is unavailable', async () => {
+      const saved = (navigator as unknown as Record<string, unknown>).permissions;
+      Object.defineProperty(navigator, 'permissions', { value: undefined, configurable: true });
+      const result = await plugin.checkPermissions();
+      assert.equal(result.location, 'prompt');
+      Object.defineProperty(navigator, 'permissions', { value: saved, configurable: true });
+    });
+
+    it('returns state from permissions API when available', async () => {
+      const fakePerms = { query: async () => ({ state: 'granted' as PermissionState }) };
+      Object.defineProperty(navigator, 'permissions', {
+        value: fakePerms,
+        writable: true,
+        configurable: true,
+      });
+      const result = await plugin.checkPermissions();
+      assert.equal(result.location, 'granted');
+      Object.defineProperty(navigator, 'permissions', { value: undefined, configurable: true });
+    });
+
+    it('falls through to prompt when permissions API query throws', async () => {
+      const fakePerms = {
+        query: async () => {
+          throw new Error('not supported');
+        },
+      };
+      Object.defineProperty(navigator, 'permissions', {
+        value: fakePerms,
+        writable: true,
+        configurable: true,
+      });
+      const result = await plugin.checkPermissions();
+      assert.equal(result.location, 'prompt');
+      Object.defineProperty(navigator, 'permissions', { value: undefined, configurable: true });
+    });
+  });
+
+  // ── requestPermissions ────────────────────────────────────────────────────
+
+  describe('requestPermissions()', () => {
+    it('resolves granted when getCurrentPosition succeeds', async () => {
+      const promise = plugin.requestPermissions();
+      onCurrentSuccess!(makePosition());
+      const result = await promise;
+      assert.equal(result.location, 'granted');
+    });
+
+    it('resolves denied when PERMISSION_DENIED error', async () => {
+      const promise = plugin.requestPermissions();
+      onCurrentError!(makeGeoError(1, 'Permission denied'));
+      const result = await promise;
+      assert.equal(result.location, 'denied');
+    });
+
+    it('resolves prompt for other geolocation errors', async () => {
+      const promise = plugin.requestPermissions();
+      onCurrentError!(makeGeoError(2, 'Position unavailable'));
+      const result = await promise;
+      assert.equal(result.location, 'prompt');
+    });
+
+    it('returns denied immediately when geolocation API is absent', async () => {
+      delete (navigator as unknown as Record<string, unknown>).geolocation;
+      const result = await plugin.requestPermissions();
+      assert.equal(result.location, 'denied');
+      Object.defineProperty(navigator, 'geolocation', { value: mockGeo, configurable: true, writable: true });
+    });
+  });
+
+  // ── requestNotificationPermission ────────────────────────────────────────
+
+  describe('requestNotificationPermission()', () => {
+    it('returns notRequired when Notification API is absent', async () => {
+      const saved = (globalThis as unknown as Record<string, unknown>).Notification;
+      delete (globalThis as unknown as Record<string, unknown>).Notification;
+      const r = await plugin.requestNotificationPermission();
+      assert.deepEqual(r, { granted: true, notRequired: true });
+      if (saved !== undefined) (globalThis as unknown as Record<string, unknown>).Notification = saved;
+    });
+
+    it('returns granted immediately when permission is already granted', async () => {
+      Object.defineProperty(globalThis, 'Notification', {
+        value: { permission: 'granted', requestPermission: async () => 'granted' },
+        configurable: true,
+        writable: true,
+      });
+      const r = await plugin.requestNotificationPermission();
+      assert.deepEqual(r, { granted: true });
+      delete (globalThis as unknown as Record<string, unknown>).Notification;
+    });
+
+    it('returns granted after user grants permission', async () => {
+      Object.defineProperty(globalThis, 'Notification', {
+        value: { permission: 'default', requestPermission: async () => 'granted' },
+        configurable: true,
+        writable: true,
+      });
+      const r = await plugin.requestNotificationPermission();
+      assert.deepEqual(r, { granted: true });
+      delete (globalThis as unknown as Record<string, unknown>).Notification;
+    });
+
+    it('returns denied when user denies permission', async () => {
+      Object.defineProperty(globalThis, 'Notification', {
+        value: { permission: 'default', requestPermission: async () => 'denied' },
+        configurable: true,
+        writable: true,
+      });
+      const r = await plugin.requestNotificationPermission();
+      assert.deepEqual(r, { granted: false, denied: ['notifications'] });
+      delete (globalThis as unknown as Record<string, unknown>).Notification;
+    });
+
+    it('returns denied when requestPermission() throws', async () => {
+      Object.defineProperty(globalThis, 'Notification', {
+        value: {
+          permission: 'default',
+          requestPermission: async () => {
+            throw new Error('not supported');
+          },
+        },
+        configurable: true,
+        writable: true,
+      });
+      const r = await plugin.requestNotificationPermission();
+      assert.deepEqual(r, { granted: false, denied: ['notifications'] });
+      delete (globalThis as unknown as Record<string, unknown>).Notification;
+    });
+  });
+});
+
+// ── definitions constants ─────────────────────────────────────────────────────
+
+describe('definitions constants', () => {
+  it('LocationProviderValue has correct numeric mappings', () => {
+    assert.equal(LocationProviderValue.DISTANCE_FILTER, 0);
+    assert.equal(LocationProviderValue.ACTIVITY_PROVIDER, 1);
+    assert.equal(LocationProviderValue.RAW_PROVIDER, 2);
+  });
+
+  it('AccuracyValue has correct meter mappings', () => {
+    assert.equal(AccuracyValue.HIGH, 0);
+    assert.equal(AccuracyValue.MEDIUM, 100);
+    assert.equal(AccuracyValue.LOW, 1000);
+    assert.equal(AccuracyValue.PASSIVE, 10000);
+  });
+
+  it('AuthorizationStatus has correct numeric values', () => {
+    assert.equal(AuthorizationStatus.NOT_AUTHORIZED, 0);
+    assert.equal(AuthorizationStatus.AUTHORIZED, 1);
+    assert.equal(AuthorizationStatus.AUTHORIZED_FOREGROUND, 2);
   });
 });
