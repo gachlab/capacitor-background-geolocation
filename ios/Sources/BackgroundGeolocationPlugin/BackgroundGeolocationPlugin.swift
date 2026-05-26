@@ -824,24 +824,26 @@ extension BackgroundGeolocationPlugin {
 
 // MARK: - Notification.Name aliases
 
+// The ObjC module exports these as NSNotification.Name (= Notification.Name) already.
+// Swift static aliases let us use .MAURTripStart instead of the verbose global.
 extension Notification.Name {
-    static let MAURBackgroundSyncDidStart    = Notification.Name(MAURBackgroundSyncDidStartNotification)
-    static let MAURBackgroundSyncDidSucceed  = Notification.Name(MAURBackgroundSyncDidSucceedNotification)
-    static let MAURBackgroundSyncDidFail     = Notification.Name(MAURBackgroundSyncDidFailNotification)
-    static let MAURBackgroundSyncDidProgress = Notification.Name(MAURBackgroundSyncDidProgressNotification)
-    static let MAURHeartbeat                 = Notification.Name(MAURHeartbeatNotification)
-    static let MAURTripStart                 = Notification.Name(MAURTripStartNotification)
-    static let MAURTripEnd                   = Notification.Name(MAURTripEndNotification)
-    static let MAURMoving                    = Notification.Name(MAURMovingNotification)
-    static let MAURStopped                   = Notification.Name(MAURStoppedNotification)
-    static let MAURSpeeding                  = Notification.Name(MAURSpeedingNotification)
-    static let MAURProviderChange            = Notification.Name(MAURProviderChangeNotification)
-    static let MAURSOS                       = Notification.Name(MAURSOSNotification)
-    static let MAURHardBrake                 = Notification.Name(MAURHardBrakeNotification)
-    static let MAURRapidAcceleration         = Notification.Name(MAURRapidAccelerationNotification)
-    static let MAURSharpTurn                 = Notification.Name(MAURSharpTurnNotification)
-    static let MAURPossibleCrash             = Notification.Name(MAURPossibleCrashNotification)
-    static let MAURPhoneUsageWhileDriving    = Notification.Name(MAURPhoneUsageWhileDrivingNotification)
+    static let MAURBackgroundSyncDidStart    = MAURBackgroundSyncDidStartNotification
+    static let MAURBackgroundSyncDidSucceed  = MAURBackgroundSyncDidSucceedNotification
+    static let MAURBackgroundSyncDidFail     = MAURBackgroundSyncDidFailNotification
+    static let MAURBackgroundSyncDidProgress = MAURBackgroundSyncDidProgressNotification
+    static let MAURHeartbeat                 = MAURHeartbeatNotification
+    static let MAURTripStart                 = MAURTripStartNotification
+    static let MAURTripEnd                   = MAURTripEndNotification
+    static let MAURMoving                    = MAURMovingNotification
+    static let MAURStopped                   = MAURStoppedNotification
+    static let MAURSpeeding                  = MAURSpeedingNotification
+    static let MAURProviderChange            = MAURProviderChangeNotification
+    static let MAURSOS                       = MAURSOSNotification
+    static let MAURHardBrake                 = MAURHardBrakeNotification
+    static let MAURRapidAcceleration         = MAURRapidAccelerationNotification
+    static let MAURSharpTurn                 = MAURSharpTurnNotification
+    static let MAURPossibleCrash             = MAURPossibleCrashNotification
+    static let MAURPhoneUsageWhileDriving    = MAURPhoneUsageWhileDrivingNotification
 }
 
 // MARK: - Permission helper
