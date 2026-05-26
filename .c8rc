@@ -1,0 +1,10 @@
+{
+  "include": ["src/web.ts"],
+  "exclude": ["src/__tests__/**"],
+  "lines": 100,
+  "branches": 97,
+  "functions": 100,
+  "statements": 100,
+  "reporter": ["text", "lcov"],
+  "all": true
+}

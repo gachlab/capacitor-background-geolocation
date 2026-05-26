@@ -320,4 +320,4 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   private toError(err: GeolocationPositionError): BackgroundGeolocationError {
     return { code: err.code, message: err.message };
   }
-}
+} /* c8 ignore next */
