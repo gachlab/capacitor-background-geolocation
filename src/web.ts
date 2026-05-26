@@ -28,10 +28,7 @@ interface BrowserPermissions {
   query?: (descriptor: { name: string }) => Promise<{ state: PermissionState }>;
 }
 
-export class BackgroundGeolocationWeb
-  extends WebPlugin
-  implements BackgroundGeolocationPlugin
-{
+export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeolocationPlugin {
   private watchId: number | null = null;
   private config: ConfigureOptions = {};
   private lastLocation: Location | null = null;
@@ -44,9 +41,7 @@ export class BackgroundGeolocationWeb
 
   async start(): Promise<void> {
     if (!('geolocation' in navigator)) {
-      throw this.unavailable(
-        'Geolocation API is not available in this browser.',
-      );
+      throw this.unavailable('Geolocation API is not available in this browser.');
     }
     if (this.watchId !== null) {
       return;
@@ -93,9 +88,7 @@ export class BackgroundGeolocationWeb
 
   getCurrentLocation(options?: CurrentLocationOptions): Promise<Location> {
     if (!('geolocation' in navigator)) {
-      throw this.unavailable(
-        'Geolocation API is not available in this browser.',
-      );
+      throw this.unavailable('Geolocation API is not available in this browser.');
     }
     return new Promise((resolve, reject) => {
       navigator.geolocation.getCurrentPosition(
@@ -211,8 +204,7 @@ export class BackgroundGeolocationWeb
   // ---------------- Permissions ----------------
 
   async checkPermissions(): Promise<{ location: PermissionState }> {
-    const perms = (navigator as unknown as { permissions?: BrowserPermissions })
-      .permissions;
+    const perms = (navigator as unknown as { permissions?: BrowserPermissions }).permissions;
     if (perms?.query) {
       try {
         const result = await perms.query({ name: 'geolocation' });
@@ -258,9 +250,7 @@ export class BackgroundGeolocationWeb
     }
     try {
       const result = await Notification.requestPermission();
-      return result === 'granted'
-        ? { granted: true }
-        : { granted: false, denied: ['notifications'] };
+      return result === 'granted' ? { granted: true } : { granted: false, denied: ['notifications'] };
     } catch {
       return { granted: false, denied: ['notifications'] };
     }
@@ -305,10 +295,7 @@ export class BackgroundGeolocationWeb
     return { ...this.config };
   }
 
-  async getLogEntries(_options: {
-    limit: number;
-    fromId?: number;
-  }): Promise<{ entries: LogEntry[] }> {
+  async getLogEntries(_options: { limit: number; fromId?: number }): Promise<{ entries: LogEntry[] }> {
     return { entries: [] };
   }
 

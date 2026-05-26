@@ -35,6 +35,7 @@ let package = Package(
             name: "BackgroundGeolocationPlugin",
             dependencies: [
                 .product(name: "Capacitor", package: "capacitor-swift-pm"),
+                .product(name: "Cordova", package: "capacitor-swift-pm"),
                 "MAURBackgroundGeolocation"
             ],
             path: "ios/Sources/BackgroundGeolocationPlugin",

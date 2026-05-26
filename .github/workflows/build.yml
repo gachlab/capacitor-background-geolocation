@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Copyright (c) 2026 JosueLMM
+# Copyright (c) 2026 gachlab
 
 name: Build
 
@@ -15,70 +15,69 @@ concurrency:
 
 jobs:
   web:
-    name: Web (lint + build)
+    name: Web — lint + build + test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run build
       - run: npm run lint
+      - run: npm test
 
   android:
-    name: Android (assembleDebug)
+    name: Android — unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: web
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 25
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
       - run: npm ci
-      - name: Check for Gradle wrapper
-        id: gradle
-        run: |
-          if [ -x android/gradlew ]; then
-            echo "wrapper=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "wrapper=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::android/gradlew not present, skipping assembleDebug"
-          fi
-      - if: steps.gradle.outputs.wrapper == 'true'
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Run unit tests
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew test --no-daemon
 
   ios:
-    name: iOS (xcodebuild)
-    runs-on: macos-14
-    timeout-minutes: 30
+    name: iOS — build + unit tests
+    runs-on: macos-15
+    timeout-minutes: 40
     needs: web
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
-      - name: Check for Package.swift
-        id: spm
+      - name: Run tests
         run: |
-          if [ -f Package.swift ]; then
-            echo "spm=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "spm=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Package.swift not present, skipping xcodebuild"
-          fi
-      - if: steps.spm.outputs.spm == 'true'
-        run: xcodebuild -scheme JosuelmmCapacitorBackgroundGeolocation -destination 'generic/platform=iOS' build
+          SIMULATOR_ID=$(xcrun simctl list devices available --json \
+            | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          for runtime, devices in d['devices'].items():
+              for dev in devices:
+                  if 'iPhone' in dev['name'] and dev['isAvailable']:
+                      print(dev['udid'])
+                      exit()
+          ")
+          xcodebuild test \
+            -scheme GachlabCapacitorBackgroundGeolocation \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            | xcpretty || xcodebuild test \
+              -scheme GachlabCapacitorBackgroundGeolocation \
+              -destination "platform=iOS Simulator,id=$SIMULATOR_ID"

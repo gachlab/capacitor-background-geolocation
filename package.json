@@ -32,7 +32,10 @@
   "scripts": {
     "verify": "npm run verify:web",
     "verify:ios": "xcodebuild -scheme GachlabCapacitorBackgroundGeolocation -destination generic/platform=iOS",
-    "verify:android": "cd android && ./gradlew clean build test && cd ..",
+    "verify:android": "cd android && ./gradlew clean test && cd ..",
+    "verify:android:example": "cd example-app && npm install && cd android && ./gradlew :josuelmm-capacitor-background-geolocation:clean :josuelmm-capacitor-background-geolocation:build :josuelmm-capacitor-background-geolocation:test && cd ../..",
+    "test": "node --import tsx --test 'src/__tests__/**/*.test.ts'",
+    "test:watch": "node --import tsx --test --watch 'src/__tests__/**/*.test.ts'",
     "verify:web": "npm run build",
     "lint": "eslint . --ext ts && prettier --check \"**/*.{css,html,ts,js}\"",
     "fmt": "eslint . --ext ts --fix && prettier --write \"**/*.{css,html,ts,js}\"",
@@ -66,6 +69,7 @@
     "prettier": "^3.3.3",
     "rimraf": "^6.0.1",
     "rollup": "^4.22.0",
+    "tsx": "^4.22.3",
     "typescript": "^5.5.4"
   },
   "peerDependencies": {
