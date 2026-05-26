@@ -66,6 +66,10 @@ jobs:
           java-version: 21
       - uses: android-actions/setup-android@v3
       - run: npm ci
+      - run: npm run build
+      - name: Install example-app dependencies
+        working-directory: example-app
+        run: npm ci
       - name: Build example APK
         working-directory: example-app/android
         run: ./gradlew assembleDebug --no-daemon
