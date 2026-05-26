@@ -6,6 +6,18 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-05-25
+
+### Fixed
+- **iOS background sync: HTTP 400 "Invalid request payload JSON format".** `MAURBackgroundSync`
+  was collecting all pending locations, serialising them into a JSON **array**, and uploading
+  the entire array in a single `NSURLSessionUploadTask`. Strict REST backends (Fastify/Hapi
+  with schema validation) expect a single JSON **object** per request — matching what the
+  single-POST path (`MAURPostLocationTask`) sends. Fix rewrites `sync:withTemplate:` to
+  iterate locations and create one `uploadTaskWithRequest:fromFile:` per location so every
+  request body is a single serialised location object. Progress/success/failure delegate
+  callbacks and file cleanup remain per-task.
+
 ## [1.0.1] - 2026-05-25
 
 ### Fixed

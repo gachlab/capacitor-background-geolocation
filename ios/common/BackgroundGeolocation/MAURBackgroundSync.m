@@ -73,61 +73,71 @@ NSString * const MAURBackgroundSyncDidProgressNotification = @"MAURBackgroundSyn
 {
     MAURSQLiteLocationDAO* locationDAO = [MAURSQLiteLocationDAO sharedInstance];
     NSArray *locations = [locationDAO getLocationsForSync];
-    
-    NSMutableArray *jsonArray = [[NSMutableArray alloc] initWithCapacity:[locations count]];
-    for (MAURLocation *location in locations) {
-        [jsonArray addObject:[location toResultFromTemplate:locationTemplate]];
-    }
-    
-    NSError *error = nil;
-    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:jsonArray options:0 error:&error];
-    
+
+    NSString *resolvedMethod = (method != nil && method.length > 0) ? [method uppercaseString] : @"POST";
+
     NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
     dateFormatter.locale = [[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"];
-    dateFormatter.dateFormat = @"yyyyMMdd_HHmms";
+    dateFormatter.dateFormat = @"yyyyMMdd_HHmmss";
     dateFormatter.timeZone = [NSTimeZone timeZoneForSecondsFromGMT:0];
-    NSString *fileName = [NSString stringWithFormat:@"locations_%@.json", [dateFormatter stringFromDate:[NSDate date]]];
-    NSURL *jsonUrl = [NSURL fileURLWithPath:[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0] stringByAppendingPathComponent:fileName]];
-    [jsonData writeToFile:jsonUrl.path atomically:NO];
-    uint64_t bytesTotalForThisFile = [[[NSFileManager defaultManager] attributesOfItemAtPath:jsonUrl.path error:nil] fileSize];
-    
-    NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:[NSURL URLWithString:url]];
-    NSString *resolvedMethod = (method != nil && method.length > 0) ? [method uppercaseString] : @"POST";
-    [request setHTTPMethod:resolvedMethod];
-    [request setTimeoutInterval:120]; // Prevents sync from hanging indefinitely if server does not respond
-    [request setValue:[NSString stringWithFormat:@"%llu", bytesTotalForThisFile] forHTTPHeaderField:@"Content-Length"];
-    [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    NSString *dateString = [dateFormatter stringFromDate:[NSDate date]];
 
-    if (httpHeaders != nil) {
-        for(id key in httpHeaders) {
-            // Skip Content-Type — already set above; addValue: would append a
-            // second value producing "application/json, application/json",
-            // which servers reject with HTTP 415. Mirror MAURPostLocationTask.
-            if ([key isEqualToString:@"Content-Type"]) continue;
-            id value = [httpHeaders objectForKey:key];
-            [request addValue:value forHTTPHeaderField:key];
+    // Send one upload task per location so each request body is a single
+    // JSON object — matching what the single-POST path (MAURPostLocationTask)
+    // sends and what strict REST APIs (Fastify/Hapi schema validation) expect.
+    // The old batch-array format produced HTTP 400 "Invalid request payload
+    // JSON format" from such servers.
+    NSTimeInterval uploadCutoff = [[NSDate date] timeIntervalSince1970];
+    NSUInteger index = 0;
+
+    // Emit syncStart once before the first task.
+    if (locations.count > 0) {
+        if (self.delegate && [self.delegate respondsToSelector:@selector(backgroundSyncStarted:)]) {
+            [self.delegate backgroundSyncStarted:self];
         }
+        [[NSNotificationCenter defaultCenter] postNotificationName:MAURBackgroundSyncDidStartNotification object:self];
     }
-    NSURLSessionTask *task = [urlSession uploadTaskWithRequest:request fromFile:jsonUrl];
-    task.taskDescription = fileName;
-    [tasks addObject:task];
-    DDLogInfo(@"Started upload for %@ as task %zu/%@/%@", jsonUrl.lastPathComponent, (unsigned long)task.taskIdentifier, task.taskDescription, task);
 
-    // v3.5 Phase 4: emit syncStart now that we are about to push to the server.
-    if (self.delegate && [self.delegate respondsToSelector:@selector(backgroundSyncStarted:)]) {
-        [self.delegate backgroundSyncStarted:self];
+    for (MAURLocation *location in locations) {
+        NSDictionary *locationDict = [location toResultFromTemplate:locationTemplate];
+        NSError *error = nil;
+        NSData *jsonData = [NSJSONSerialization dataWithJSONObject:locationDict options:0 error:&error];
+        if (!jsonData || error) {
+            DDLogError(@"MAURBackgroundSync: failed to serialize location: %@", error);
+            index++;
+            continue;
+        }
+
+        NSString *fileName = [NSString stringWithFormat:@"locations_%@_%tu.json", dateString, index];
+        NSURL *jsonUrl = [NSURL fileURLWithPath:[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0] stringByAppendingPathComponent:fileName]];
+        [jsonData writeToFile:jsonUrl.path atomically:NO];
+        uint64_t bytesTotalForThisFile = [[[NSFileManager defaultManager] attributesOfItemAtPath:jsonUrl.path error:nil] fileSize];
+
+        NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:[NSURL URLWithString:url]];
+        [request setHTTPMethod:resolvedMethod];
+        [request setTimeoutInterval:120];
+        [request setValue:[NSString stringWithFormat:@"%llu", bytesTotalForThisFile] forHTTPHeaderField:@"Content-Length"];
+        [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+
+        if (httpHeaders != nil) {
+            for(id key in httpHeaders) {
+                if ([key isEqualToString:@"Content-Type"]) continue;
+                id value = [httpHeaders objectForKey:key];
+                [request addValue:value forHTTPHeaderField:key];
+            }
+        }
+
+        NSURLSessionTask *task = [urlSession uploadTaskWithRequest:request fromFile:jsonUrl];
+        task.taskDescription = fileName;
+        [tasks addObject:task];
+        DDLogInfo(@"Started upload for %@ as task %zu/%@/%@", jsonUrl.lastPathComponent, (unsigned long)task.taskIdentifier, task.taskDescription, task);
+
+        objc_setAssociatedObject(task, "locationsSent", @(1), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(task, "uploadCutoff", @(uploadCutoff), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+        [task resume];
+        index++;
     }
-    [[NSNotificationCenter defaultCenter] postNotificationName:MAURBackgroundSyncDidStartNotification object:self];
-
-    // Stash count so didCompleteWithError can report it as syncSuccess payload.
-    objc_setAssociatedObject(task, "locationsSent", @([jsonArray count]), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    // v4.5.1: capture cutoff timestamp NOW so on success we delete only the rows that existed
-    // before the upload started. Locations persisted DURING the upload are preserved.
-    objc_setAssociatedObject(task, "uploadCutoff",
-        @([[NSDate date] timeIntervalSince1970]), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-    [task resume];
-
 }
 
 // http://stackoverflow.com/a/572623/48125
