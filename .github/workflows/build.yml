@@ -70,6 +70,9 @@ jobs:
       - name: Install example-app dependencies
         working-directory: example-app
         run: npm ci
+      - name: Sync Capacitor Android project
+        working-directory: example-app
+        run: npx cap sync android
       - name: Build example APK
         working-directory: example-app/android
         run: ./gradlew assembleDebug --no-daemon
