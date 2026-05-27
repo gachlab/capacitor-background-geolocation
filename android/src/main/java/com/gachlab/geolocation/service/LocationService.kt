@@ -27,6 +27,7 @@ import com.gachlab.geolocation.persistence.LocationDAO
 import com.gachlab.geolocation.persistence.SessionDAO
 import com.gachlab.geolocation.network.BackgroundSync
 import com.gachlab.geolocation.network.PostLocationTask
+import com.gachlab.geolocation.network.PrioritySyncManager
 import com.gachlab.geolocation.provider.AbstractLocationProvider
 import com.gachlab.geolocation.provider.ActivityLocationProvider
 import com.gachlab.geolocation.provider.BGException
@@ -86,6 +87,7 @@ class LocationService : Service() {
     private var config: BGConfig? = null
     private var provider: AbstractLocationProvider? = null
     private var postTask: PostLocationTask? = null
+    private var prioritySyncManager: PrioritySyncManager? = null
     private var drivingDetector: DrivingEventsDetector? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -166,6 +168,7 @@ class LocationService : Service() {
         provider = p; p.onStart()
 
         postTask = makePostTask(cfg)
+        configurePrioritySync(cfg)
         configureDrivingDetector(cfg)
         scheduleWatchdog(cfg)
         scheduleHeartbeat(cfg)
@@ -184,6 +187,7 @@ class LocationService : Service() {
 
         provider?.onStop(); provider?.onDestroy(); provider = null
         postTask?.shutdown(); postTask = null
+        prioritySyncManager?.destroy(); prioritySyncManager = null
         drivingDetector?.reset(); drivingDetector = null
 
         releaseWakeLock()
@@ -201,6 +205,7 @@ class LocationService : Service() {
         provider?.onConfigure(merged)
         postTask?.shutdown()
         postTask = makePostTask(merged)
+        configurePrioritySync(merged)
         configureDrivingDetector(merged)
 
         when (merged.wakeLockMode) {
@@ -395,9 +400,68 @@ class LocationService : Service() {
         }
     )
 
+    // ── Priority sync ─────────────────────────────────────────────────────────
+
+    private fun configurePrioritySync(cfg: BGConfig) {
+        prioritySyncManager?.destroy()
+        val hasUrl = !cfg.prioritySyncUrl.isNullOrEmpty() || !cfg.url.isNullOrEmpty()
+        prioritySyncManager = if (hasUrl) PrioritySyncManager(applicationContext, cfg, ::fire) else null
+    }
+
+    private fun maybePrioritySync(event: ServiceEvent) {
+        val mgr = prioritySyncManager ?: return
+        val allowed = config?.prioritySyncEvents ?: PrioritySyncManager.DEFAULT_EVENTS
+        val (type, payload) = buildPriorityPayload(event, allowed) ?: return
+        mgr.submit(type, payload)
+    }
+
+    private fun buildPriorityPayload(event: ServiceEvent, allowed: List<String>): Pair<String, org.json.JSONObject>? {
+        return when {
+            event is ServiceEvent.PossibleCrash && "possibleCrash" in allowed ->
+                Pair("possibleCrash", org.json.JSONObject().apply {
+                    put("type", "possibleCrash")
+                    put("timestamp", event.loc.time)
+                    put("location", locationToCoords(event.loc))
+                    put("source", "gps")
+                })
+            event is ServiceEvent.Sos && "sos" in allowed ->
+                Pair("sos", org.json.JSONObject().apply {
+                    put("type", "sos")
+                    put("timestamp", System.currentTimeMillis())
+                    latestLocation?.let { put("location", locationToCoords(it)) }
+                })
+            event is ServiceEvent.HardBrake && "hardBrake" in allowed ->
+                Pair("hardBrake", org.json.JSONObject().apply {
+                    put("type", "hardBrake")
+                    put("timestamp", event.loc.time)
+                    put("location", locationToCoords(event.loc))
+                    put("source", "gps")
+                })
+            event is ServiceEvent.Speeding && "speeding" in allowed ->
+                Pair("speeding", org.json.JSONObject().apply {
+                    put("type", "speeding")
+                    put("timestamp", event.loc.time)
+                    put("location", locationToCoords(event.loc))
+                    put("speedKmh", event.speedKmh)
+                    put("limitKmh", event.limitKmh)
+                    put("source", "gps")
+                })
+            else -> null
+        }
+    }
+
+    private fun locationToCoords(loc: BGLocation): org.json.JSONObject =
+        org.json.JSONObject().apply {
+            put("latitude",  loc.latitude)
+            put("longitude", loc.longitude)
+        }
+
     // ── Event dispatch ────────────────────────────────────────────────────────
 
-    private fun fire(event: ServiceEvent) { eventListener?.invoke(event) }
+    private fun fire(event: ServiceEvent) {
+        maybePrioritySync(event)
+        eventListener?.invoke(event)
+    }
 
     // ── Kill diagnostics ──────────────────────────────────────────────────────
 

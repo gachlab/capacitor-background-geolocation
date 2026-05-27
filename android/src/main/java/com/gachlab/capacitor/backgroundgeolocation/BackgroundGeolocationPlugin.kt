@@ -127,6 +127,15 @@ class BackgroundGeolocationPlugin : Plugin() {
                     event.loc?.let { put("location", it.toJSONObjectWithId()) } })
             ServiceEvent.AbortRequested       -> notifyListeners("abort_requested",    JSObject())
             ServiceEvent.HttpAuthorization    -> notifyListeners("http_authorization", JSObject())
+            is ServiceEvent.PrioritySyncSuccess -> notifyListeners("prioritySyncSuccess", JSObject().apply {
+                put("eventType",     event.eventType)
+                put("attemptNumber", event.attemptNumber)
+            })
+            is ServiceEvent.PrioritySyncFailed  -> notifyListeners("prioritySyncFailed", JSObject().apply {
+                put("eventType",  event.eventType)
+                put("httpStatus", event.httpStatus)
+                put("attempts",   event.attempts)
+            })
         }
     }
 
@@ -550,6 +559,6 @@ class BackgroundGeolocationPlugin : Plugin() {
     }
 
     companion object {
-        private const val PLUGIN_VERSION = "1.4.0"
+        private const val PLUGIN_VERSION = "1.5.0"
     }
 }

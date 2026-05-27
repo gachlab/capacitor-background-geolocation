@@ -332,6 +332,26 @@ export interface ConfigureOptions {
       phoneUsageWeight?: number;
     };
   };
+  /**
+   * Events that trigger an immediate POST to `prioritySyncUrl` (or `url`) without
+   * waiting for the sync queue. @default ['possibleCrash', 'sos'] @since 1.5.0
+   */
+  prioritySyncEvents?: ('possibleCrash' | 'sos' | 'hardBrake' | 'speeding' | 'phoneUsageWhileDriving')[];
+  /**
+   * Override endpoint for priority events only. Falls back to `url` if not set.
+   * @since 1.5.0
+   */
+  prioritySyncUrl?: string;
+  /**
+   * Max retry attempts on HTTP failure before `prioritySyncFailed` fires.
+   * @default 3 @since 1.5.0
+   */
+  prioritySyncRetries?: number;
+  /**
+   * Milliseconds between retry attempts. Length must match `prioritySyncRetries`.
+   * @default [10000, 30000, 60000] @since 1.5.0
+   */
+  prioritySyncRetryDelays?: number[];
   /** Forward-compatible escape hatch for new native options. */
   [extra: string]: unknown;
 }
@@ -655,6 +675,28 @@ export interface ServiceRestartedEvent {
 export interface IosFallbackActivatedEvent {
   /** Which fallback strategy was activated. */
   strategy: 'significantchanges' | 'regionmonitoring';
+}
+
+/**
+ * Payload of the `prioritySyncSuccess` event. @since 1.5.0
+ */
+export interface PrioritySyncSuccessEvent {
+  /** Event type that triggered the priority sync. */
+  eventType: string;
+  /** Which attempt (1-based) succeeded. */
+  attemptNumber: number;
+}
+
+/**
+ * Payload of the `prioritySyncFailed` event. @since 1.5.0
+ */
+export interface PrioritySyncFailedEvent {
+  /** Event type that triggered the priority sync. */
+  eventType: string;
+  /** Last HTTP status code received (-1 if no response). */
+  httpStatus: number;
+  /** Total number of attempts made. */
+  attempts: number;
 }
 
 /** iOS background task handle returned by {@link BackgroundGeolocationPlugin.startTask}. @since 1.0.0 */
@@ -1370,6 +1412,28 @@ export interface BackgroundGeolocationPlugin {
    * @since 1.4.0
    */
   addListener(eventName: 'idleEnd', listener: (event: IdleEndEvent) => void): Promise<PluginListenerHandle>;
+
+  /**
+   * A priority-sync POST succeeded. Carries the event type and which attempt
+   * number (1-based) delivered it.
+   *
+   * @since 1.5.0
+   */
+  addListener(
+    eventName: 'prioritySyncSuccess',
+    listener: (event: PrioritySyncSuccessEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  /**
+   * A priority-sync POST exhausted all retry attempts. Carries the last HTTP
+   * status code and total attempts made.
+   *
+   * @since 1.5.0
+   */
+  addListener(
+    eventName: 'prioritySyncFailed',
+    listener: (event: PrioritySyncFailedEvent) => void,
+  ): Promise<PluginListenerHandle>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1413,6 +1477,8 @@ export enum BackgroundGeolocationEvents {
   geofenceDwell = 'geofenceDwell',
   idleStart = 'idleStart',
   idleEnd = 'idleEnd',
+  prioritySyncSuccess = 'prioritySyncSuccess',
+  prioritySyncFailed = 'prioritySyncFailed',
 }
 
 /** Location error codes. @since 1.0.0 */

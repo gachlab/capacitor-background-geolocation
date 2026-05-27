@@ -60,6 +60,16 @@ public final class BGConfig: NSObject, NSCopying {
     // MARK: – Driver insights
     public var drivingEvents: [String: Any]?
 
+    // MARK: – Priority sync (v1.5+)
+    /** Events that trigger an immediate POST (default: ["possibleCrash", "sos"]). */
+    public var prioritySyncEvents:      [String]?
+    /** Override endpoint for priority events; falls back to `url`. */
+    public var prioritySyncUrl:         String?
+    /** Max retry attempts on HTTP failure (default: 3). */
+    public var prioritySyncRetries:     Int?
+    /** Milliseconds between retries (default: [10000, 30000, 60000]). */
+    public var prioritySyncRetryDelays: [Int]?
+
     // MARK: – Battery
     public var includeBattery: Bool?
 
@@ -136,6 +146,10 @@ public final class BGConfig: NSObject, NSCopying {
         setInt(\.heartbeatInterval, "heartbeatInterval")
         if let v = (d["mockLocationPolicy"] as? String)?.lowercased() { c.mockLocationPolicy = v }
         if let v = d["drivingEvents"] as? [String: Any] { c.drivingEvents = v }
+        if let v = d["prioritySyncEvents"] as? [String] { c.prioritySyncEvents = v }
+        if let v = d["prioritySyncUrl"]    as? String   { c.prioritySyncUrl    = v }
+        if let v = d["prioritySyncRetries"] as? Int     { c.prioritySyncRetries = v }
+        if let v = d["prioritySyncRetryDelays"] as? [Int] { c.prioritySyncRetryDelays = v }
         setBool(\.includeBattery, "includeBattery")
         if let v = d["postTemplate"]  { c.template = v }
         else if let v = d["bodyTemplate"] { c.template = v }
@@ -161,6 +175,8 @@ public final class BGConfig: NSObject, NSCopying {
         apply(\.debug); apply(\.heartbeatInterval); apply(\.mockLocationPolicy)
         apply(\.drivingEvents); apply(\.includeBattery); apply(\.template)
         apply(\.iosBackgroundFallback)
+        apply(\.prioritySyncEvents); apply(\.prioritySyncUrl)
+        apply(\.prioritySyncRetries); apply(\.prioritySyncRetryDelays)
         return m
     }
 
@@ -231,6 +247,10 @@ public final class BGConfig: NSObject, NSCopying {
         if let v = heartbeatInterval { d["heartbeatInterval"] = v }
         if let v = mockLocationPolicy { d["mockLocationPolicy"] = v }
         if let v = drivingEvents     { d["drivingEvents"]     = v }
+        if let v = prioritySyncEvents      { d["prioritySyncEvents"]      = v }
+        if let v = prioritySyncUrl         { d["prioritySyncUrl"]         = v }
+        if let v = prioritySyncRetries     { d["prioritySyncRetries"]     = v }
+        if let v = prioritySyncRetryDelays { d["prioritySyncRetryDelays"] = v }
         if let v = includeBattery    { d["includeBattery"]    = v }
         if let v = activityConfidenceThreshold { d["activityConfidenceThreshold"] = v }
         if let v = maxAcceptedAccuracy { d["maxAcceptedAccuracy"] = v }
@@ -281,6 +301,10 @@ public final class BGConfig: NSObject, NSCopying {
         c.heartbeatInterval         = heartbeatInterval
         c.mockLocationPolicy        = mockLocationPolicy
         c.drivingEvents             = drivingEvents
+        c.prioritySyncEvents        = prioritySyncEvents
+        c.prioritySyncUrl           = prioritySyncUrl
+        c.prioritySyncRetries       = prioritySyncRetries
+        c.prioritySyncRetryDelays   = prioritySyncRetryDelays
         c.includeBattery            = includeBattery
         c.template                  = template
         c.iosBackgroundFallback     = iosBackgroundFallback
