@@ -97,6 +97,34 @@ jobs:
             /tmp/e2e-logcat.txt
             /tmp/e2e-driving-logcat.txt
 
+  ios-e2e:
+    name: iOS — E2E (driving events)
+    runs-on: macos-15
+    timeout-minutes: 60
+    needs: ios
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Install example-app deps
+        working-directory: example-app
+        run: npm ci
+      - name: Sync web assets and plugin into iOS project
+        working-directory: example-app
+        run: npx cap sync ios
+      - name: E2E driving events
+        run: .github/scripts/e2e-ios-driving-events.sh
+      - name: Upload xcresult on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-e2e-xcresult
+          path: /tmp/e2e-ios-results.xcresult
+
   ios:
     name: iOS — build + unit tests
     runs-on: macos-15
