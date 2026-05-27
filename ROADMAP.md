@@ -4,6 +4,14 @@
 Verticals: flotilla corporativa + rideshare/taxi. Pain point #1: el tracking se cae en background.
 Prioridad de plataforma: Android primero.
 
+> **Orden de ejecución (fijado 2026-05-26):** P1 Testing → **P2 Confiabilidad en Background** → Geofencing → resto.
+> Las dos secciones marcadas "Prioridad 2" **no** son simultáneas: Confiabilidad en Background va **primero**,
+> porque cualquier feature nuevo (Geofencing incluido) hereda el bug de "se cae en background" si no está blindado.
+> Background confiable es prerequisito de todo lo demás.
+>
+> **Rol en el ecosistema:** este plugin además aporta su capa de cola SQLite + sync HTTP como base del futuro
+> plugin genérico `capacitor-event-sink`; idealmente su foreground service se comparte (un servicio, una cola, un sync).
+
 ---
 
 ## Completado
