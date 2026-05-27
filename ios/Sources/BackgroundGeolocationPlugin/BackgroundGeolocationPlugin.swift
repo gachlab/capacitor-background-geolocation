@@ -135,7 +135,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
     @objc func configure(_ call: CAPPluginCall) {
         guard let facade = facade else { call.reject("facade not initialized"); return }
-        let opts = call.options ?? [:]
+        let opts: [String: Any] = call.options as? [String: Any] ?? [:]
         let cfg = BGConfig.from(dictionary: opts)
         currentConfig = cfg
         configureDrivingDetector(from: opts)
@@ -776,8 +776,8 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         let allowed = currentConfig?.prioritySyncEvents ?? PrioritySyncManager.defaultEvents
         if allowed.contains("speeding"), let loc = note.userInfo?["location"] as? BGLocation {
             prioritySyncManager?.submit(eventType: "speeding", payload: [
-                "type": "speeding", "timestamp": Int64(loc.time),
-                "location": ["latitude": loc.latitude, "longitude": loc.longitude],
+                "type": "speeding", "timestamp": loc.time.map { Int64($0.timeIntervalSince1970 * 1000) } as Any,
+                "location": ["latitude": loc.latitude as Any, "longitude": loc.longitude as Any],
                 "speedKmh": speedKmh, "limitKmh": limitKmh, "source": "gps"
             ])
         }
@@ -825,8 +825,8 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         guard allowed.contains(name), let loc = note.userInfo?["location"] as? BGLocation else { return }
         prioritySyncManager?.submit(eventType: name, payload: [
             "type": name,
-            "timestamp": Int64(loc.time),
-            "location": ["latitude": loc.latitude, "longitude": loc.longitude],
+            "timestamp": loc.time.map { Int64($0.timeIntervalSince1970 * 1000) } as Any,
+            "location": ["latitude": loc.latitude as Any, "longitude": loc.longitude as Any],
             "source": (note.userInfo?["source"] as? String) ?? "gps"
         ])
     }

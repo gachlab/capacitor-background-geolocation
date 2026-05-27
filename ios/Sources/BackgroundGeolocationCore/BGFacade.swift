@@ -24,7 +24,7 @@ public final class BGFacade: NSObject {
 
     // MARK: - Private state
 
-    private var isStarted = false
+    private var _isStarted = false
     private var operationMode: BGOperationalMode = .foreground
     private var _config: BGConfig?
     private var stationaryLocation: BGLocation?
@@ -60,7 +60,7 @@ public final class BGFacade: NSObject {
         let previousProviderType = _config?.locationProvider
         let previousDrivingEvents = _config?.drivingEvents
 
-        let merged = BGConfig.merge(BGConfig.merge(BGConfig(defaults: ()), existing), with: config)
+        let merged = BGConfig.merge(BGConfig.merge(BGConfig(defaults: ()), with: existing), with: config)
         _config = merged
         ConfigDAO.shared.persist(merged)
         PostLocationTask.shared.config = merged
@@ -73,13 +73,13 @@ public final class BGFacade: NSObject {
             }
         }
 
-        guard isStarted else { return }
+        guard _isStarted else { return }
 
         // Switch provider if locationProvider changed
         let newProviderType = merged.locationProvider ?? BGLocationProvider.distanceFilter.rawValue
         if newProviderType != (previousProviderType ?? BGLocationProvider.distanceFilter.rawValue),
            let oldProvider = locationProvider {
-            runOnMain { oldProvider.onStop(); oldProvider.onDestroy() }
+            runOnMain { try? oldProvider.onStop(); oldProvider.onDestroy() }
             let newProvider = try getProvider(newProviderType)
             newProvider.delegate = self
             newProvider.onCreate()
@@ -117,7 +117,7 @@ public final class BGFacade: NSObject {
     // MARK: - Start / Stop
 
     public func start() throws {
-        guard !isStarted else { return }
+        guard !_isStarted else { return }
 
         let config = getConfig()
         _config = config
@@ -135,14 +135,14 @@ public final class BGFacade: NSObject {
             try? provider.onStart()
         }
 
-        isStarted = true
+        _isStarted = true
         scheduleHeartbeat()
         configureSensorFusion()
         sensorFusion?.start()
     }
 
     public func stop() throws {
-        guard isStarted else { return }
+        guard _isStarted else { return }
 
         cancelHeartbeat()
         sensorFusion?.tripActive = false
@@ -153,7 +153,7 @@ public final class BGFacade: NSObject {
             runOnMain { try? provider.onStop() }
         }
 
-        isStarted = false
+        _isStarted = false
     }
 
     // MARK: - Location services status
@@ -184,7 +184,7 @@ public final class BGFacade: NSObject {
     }
 
     public func isStarted() -> Bool {
-        return isStarted
+        return _isStarted
     }
 
     // MARK: - Settings UI
@@ -288,7 +288,7 @@ public final class BGFacade: NSObject {
 
     public func getConfig() -> BGConfig {
         if let c = _config { return c }
-        let c = BGConfig.merge(BGConfig(defaults: ()), ConfigDAO.shared.retrieve())
+        let c = BGConfig.merge(BGConfig(defaults: ()), with: ConfigDAO.shared.retrieve())
         _config = c
         return c
     }

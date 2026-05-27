@@ -105,7 +105,7 @@ public final class BGLocation: NSObject, NSCopying {
         return out
     }
 
-    public func value(forKey key: String) -> Any? {
+    override public func value(forKey key: String) -> Any? {
         switch key {
         case "@id":              return locationId
         case "@time":            return time.map { Int64($0.timeIntervalSince1970 * 1000) }

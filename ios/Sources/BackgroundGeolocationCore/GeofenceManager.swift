@@ -54,9 +54,9 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         persistToDefaults()
         let monitoredIds = locationManager.monitoredRegions
             .compactMap { ($0 as? CLCircularRegion)?.identifier }
-        toRemove.filter { monitoredIds.contains($0) }.forEach {
+        toRemove.filter { monitoredIds.contains($0) }.forEach { id in
             if let region = locationManager.monitoredRegions
-                .first(where: { ($0 as? CLCircularRegion)?.identifier == $0 }) {
+                .first(where: { ($0 as? CLCircularRegion)?.identifier == id }) {
                 locationManager.stopMonitoring(for: region)
             }
         }

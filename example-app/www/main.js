@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
     safe('configure', () =>
       BackgroundGeolocation.configure({
         locationProvider: 2,
-        desiredAccuracy: 'HIGH',
+        desiredAccuracy: 0,
         stationaryRadius: 25,
         distanceFilter: 0,
         debug: false,
@@ -62,8 +62,8 @@ document.addEventListener('DOMContentLoaded', () => {
           sensorFusion: false,
           phoneUsageWindowMs: 3000,
           phoneUsageCooldownMs: 5000,
-          minTripDurationMs: 0,
-          minMovingSpeedMps: 0.5,
+          minTripDuration: 0,
+          minMovingSpeed: 0.5,
         },
       }),
     );

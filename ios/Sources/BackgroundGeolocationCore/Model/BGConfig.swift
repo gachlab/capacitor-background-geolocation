@@ -105,7 +105,7 @@ public final class BGConfig: NSObject, NSCopying {
     // MARK: - Factory
 
     public static func from(dictionary d: [String: Any]) -> BGConfig {
-        let c = BGConfig()
+        var c = BGConfig()
         func set<T>(_ kp: WritableKeyPath<BGConfig, T?>, _ key: String, as: T.Type = T.self) {
             if let v = d[key] as? T { c[keyPath: kp] = v }
         }
@@ -160,7 +160,7 @@ public final class BGConfig: NSObject, NSCopying {
     public static func merge(_ base: BGConfig?, with override: BGConfig?) -> BGConfig {
         guard let base = base else { return override ?? BGConfig(defaults: ()) }
         guard let override = override else { return base }
-        let m = base.copy() as! BGConfig
+        var m = base.copy() as! BGConfig
         func apply<T>(_ kp: WritableKeyPath<BGConfig, T?>) {
             if let v = override[keyPath: kp] { m[keyPath: kp] = v }
         }

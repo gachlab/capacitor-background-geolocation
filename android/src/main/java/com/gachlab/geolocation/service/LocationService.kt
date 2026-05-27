@@ -241,19 +241,19 @@ class LocationService : Service() {
         val prev = latestLocation
         latestLocation = loc
 
-        // When the GPS hardware omits speed/bearing (common on emulators via
-        // `adb emu geo fix` and some low-end chipsets) derive them from the
-        // displacement between consecutive fixes so the driving detector works.
+        // Emulators (`adb emu geo fix`) and some low-end chipsets report speed=0
+        // with hasSpeed=true, or omit speed/bearing entirely. Derive both from
+        // consecutive-fix displacement so the driving detector works correctly.
         if (prev != null) {
             val prevL = prev.getLocation()
             val currL = loc.getLocation()
-            if (!loc.hasSpeed) {
-                val dt = (loc.time - prev.time) / 1000.0
-                if (dt in 0.5..30.0) loc.speed = (prevL.distanceTo(currL) / dt).toFloat()
-            }
-            if (!loc.hasBearing) {
+            val dt = (loc.time - prev.time) / 1000.0
+            if (dt in 0.5..30.0) {
                 val dist = prevL.distanceTo(currL)
-                if (dist > 1.0f) loc.bearing = prevL.bearingTo(currL)
+                if (!loc.hasSpeed || loc.speed == 0f)
+                    loc.speed = (dist / dt).toFloat()
+                if ((!loc.hasBearing || loc.bearing == 0f) && dist > 1.0f)
+                    loc.bearing = prevL.bearingTo(currL)
             }
         }
 
