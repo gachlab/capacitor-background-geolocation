@@ -14,21 +14,15 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "MAURBackgroundGeolocation",
-            path: "ios/common/BackgroundGeolocation",
-            publicHeadersPath: ".",
-            cSettings: [
-                .headerSearchPath("."),
-                .headerSearchPath("INTULocationManager"),
-                .headerSearchPath("SQLQueryBuilder/ext"),
-                .headerSearchPath("SQLQueryBuilder/sql"),
-                .unsafeFlags(["-Wno-error=non-modular-include-in-framework-module"])
-            ],
+            name: "BackgroundGeolocationCore",
+            path: "ios/Sources/BackgroundGeolocationCore",
             linkerSettings: [
                 .linkedLibrary("sqlite3"),
                 .linkedFramework("CoreLocation"),
                 .linkedFramework("CoreMotion"),
-                .linkedFramework("UIKit")
+                .linkedFramework("UIKit"),
+                .linkedFramework("Network"),
+                .linkedFramework("UserNotifications")
             ]
         ),
         .target(
@@ -36,7 +30,7 @@ let package = Package(
             dependencies: [
                 .product(name: "Capacitor", package: "capacitor-swift-pm"),
                 .product(name: "Cordova", package: "capacitor-swift-pm"),
-                "MAURBackgroundGeolocation"
+                "BackgroundGeolocationCore"
             ],
             path: "ios/Sources/BackgroundGeolocationPlugin",
             exclude: [

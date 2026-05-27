@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2026 JosueLMM
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 gachlab
 //
 // Capacitor plugin definitions for @josuelmm/capacitor-background-geolocation.
 // Mirrors @josuelmm/cordova-background-geolocation's www/BackgroundGeolocation.d.ts
@@ -167,6 +167,13 @@ export interface ConfigureOptions {
   enableWatchdog?: boolean;
   /** Watchdog check interval (ms). @default 60000 */
   watchdogIntervalMs?: number;
+  /**
+   * When `true` (default) the service uses `START_STICKY` and is restarted by the OS
+   * after a kill. Set to `false` to opt out — useful for battery-conscious apps that
+   * prefer not to auto-restart after the OS reclaims memory.
+   * Android only. @default true
+   */
+  restartOnKill?: boolean;
   /** Show local notifications during tracking/sync. Android. @default true */
   notificationsEnabled?: boolean;
   /** Run the sync service in foreground (Android requires a notification). @default false */
@@ -465,6 +472,20 @@ export interface HeadlessTaskEvent {
   params: unknown;
 }
 
+/**
+ * Payload of the `serviceRestarted` event. @since 1.1.0
+ */
+export interface ServiceRestartedEvent {
+  /**
+   * Why the service was restarted.
+   * - `'watchdog'`    — no GPS fix received within `watchdogIntervalMs`; provider restarted.
+   * - `'system_kill'` — OS killed the service (OOM or battery saver); restarted via `START_STICKY`.
+   * - `'boot'`        — device rebooted and `startOnBoot` is `true`.
+   * - `'app_removed'` — user removed the task from recents; service survived (`stopOnTerminate: false`).
+   */
+  reason: 'watchdog' | 'system_kill' | 'boot' | 'app_removed';
+}
+
 /** iOS background task handle returned by {@link BackgroundGeolocationPlugin.startTask}. @since 1.0.0 */
 export interface Task {
   /** Native task identifier — pass back to `endTask`. */
@@ -645,6 +666,17 @@ export interface BackgroundGeolocationPlugin {
    * @since 1.0.0
    */
   getDiagnostics(): Promise<Diagnostics>;
+
+  /**
+   * Returns the reason and timestamp of the last time the native service was killed
+   * and restarted automatically. Useful for post-mortem debugging of tracking gaps.
+   * Both fields are `null` if the service has never been killed since last install.
+   *
+   * Android only — iOS resolves `{ reason: null, timestamp: null }`.
+   *
+   * @since 1.1.0
+   */
+  getBackgroundKillReason(): Promise<{ reason: string | null; timestamp: number | null }>;
 
   /**
    * Android: TRUE if the app is on the battery optimisation whitelist.
@@ -1079,7 +1111,7 @@ export interface BackgroundGeolocationPlugin {
    */
   addListener(
     eventName: 'serviceRestarted',
-    listener: (event: { reason: 'watchdog' | 'system_kill' | 'boot' }) => void,
+    listener: (event: ServiceRestartedEvent) => void,
   ): Promise<PluginListenerHandle>;
 }
 

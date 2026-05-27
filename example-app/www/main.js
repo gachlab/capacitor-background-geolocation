@@ -6,10 +6,17 @@
 import { BackgroundGeolocation } from '@josuelmm/capacitor-background-geolocation';
 
 const out = document.getElementById('log');
+const statusEl = document.querySelector('[data-testid="service-status"]');
+const countEl  = document.querySelector('[data-testid="location-count"]');
+const lastEvEl = document.querySelector('[data-testid="last-event"]');
+
+let locationCount = 0;
+
 const log = (label, data) => {
   const line = `[${new Date().toISOString().slice(11, 19)}] ${label}` +
     (data === undefined ? '' : ' ' + JSON.stringify(data));
   out.textContent = line + '\n' + out.textContent;
+  lastEvEl.textContent = label;
 };
 
 async function safe(label, fn) {
@@ -84,11 +91,15 @@ document.getElementById('notifperm').onclick = () =>
   );
 
 // Event subscriptions
-BackgroundGeolocation.addListener('location', (loc) => log('event:location', loc));
+BackgroundGeolocation.addListener('location', (loc) => {
+  locationCount++;
+  countEl.textContent = String(locationCount);
+  log('event:location', loc);
+});
 BackgroundGeolocation.addListener('stationary', (loc) => log('event:stationary', loc));
 BackgroundGeolocation.addListener('error', (err) => log('event:error', err));
-BackgroundGeolocation.addListener('start', () => log('event:start'));
-BackgroundGeolocation.addListener('stop', () => log('event:stop'));
+BackgroundGeolocation.addListener('start', () => { statusEl.textContent = 'running'; log('event:start'); });
+BackgroundGeolocation.addListener('stop',  () => { statusEl.textContent = 'stopped'; log('event:stop'); });
 BackgroundGeolocation.addListener('activity', (a) => log('event:activity', a));
 BackgroundGeolocation.addListener('authorization', (a) => log('event:authorization', a));
 BackgroundGeolocation.addListener('heartbeat', (h) => log('event:heartbeat', h));

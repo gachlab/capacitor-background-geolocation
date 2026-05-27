@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2026 JosueLMM
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 gachlab
 
 import type { CapacitorConfig } from '@capacitor/cli';
 

@@ -1,15 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Copyright (c) 2026 gachlab -->
 <resources>
-    <!-- Default app name (consumer app should override). -->
     <string name="app_name">app_name</string>
-    <!--
-        Static identifiers replacing the Cordova-era dynamic resValues.
-        In the Cordova plugin these were generated at build time from the
-        consumer applicationId; here we use a fixed prefix scoped to the
-        plugin so the SyncAdapter / ContentProvider keep working without
-        requiring the host app to declare anything.
-    -->
-    <string name="plugin_bgloc_account_name">Locations</string>
-    <string name="plugin_bgloc_account_type">com.josuelmm.capacitor.backgroundgeolocation.account</string>
-    <string name="plugin_bgloc_content_authority">com.josuelmm.capacitor.backgroundgeolocation.provider</string>
 </resources>

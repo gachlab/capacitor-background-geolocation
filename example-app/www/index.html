@@ -1,6 +1,6 @@
 <!doctype html>
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- Copyright (c) 2026 JosueLMM -->
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Copyright (c) 2026 gachlab -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -18,6 +18,13 @@
   <body>
     <h1>@josuelmm/capacitor-background-geolocation</h1>
     <h2>Tracking</h2>
+    <div class="row">
+      Status: <span data-testid="service-status">stopped</span>
+      &nbsp;|&nbsp;
+      Locations: <span data-testid="location-count">0</span>
+      &nbsp;|&nbsp;
+      Last event: <span data-testid="last-event">—</span>
+    </div>
     <div class="row">
       <button id="configure">Configure</button>
       <button id="start">Start</button>
