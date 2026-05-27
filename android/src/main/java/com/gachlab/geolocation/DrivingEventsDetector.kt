@@ -19,13 +19,15 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         fun onMoving(loc: BGLocation)
         fun onStopped(loc: BGLocation)
         fun onTripStart(loc: BGLocation)
-        fun onTripEnd(loc: BGLocation, distanceMeters: Double, durationMs: Long)
+        fun onTripEnd(loc: BGLocation, distanceMeters: Double, durationMs: Long, score: TripScore)
         fun onSpeeding(loc: BGLocation, speedKmh: Double, limitKmh: Double)
         fun onProviderChange(provider: String)
         fun onHardBrake(loc: BGLocation, decelMps2: Double)
         fun onRapidAcceleration(loc: BGLocation, accelMps2: Double)
         fun onSharpTurn(loc: BGLocation, degPerSec: Double)
         fun onPossibleCrash(loc: BGLocation, velocityDropKmh: Double)
+        fun onIdleStart(loc: BGLocation, startedAt: Long)
+        fun onIdleEnd(loc: BGLocation, durationMs: Long, startedAt: Long)
     }
 
     data class Config(
@@ -39,7 +41,10 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         val rapidAccelMps2:      Double  = 3.5,
         val sharpTurnDegPerSec:  Double  = 30.0,
         val crashImpactKmh:      Double  = 25.0,
-        val crashWindowMs:       Long    = 2_000L
+        val crashWindowMs:       Long    = 2_000L,
+        val idleThresholdMs:     Long    = 300_000L,
+        val idleEndThresholdMs:  Long    = 30_000L,
+        val scoringWeights:      ScoringWeights? = null,
     )
 
     private enum class MovingState { STATIONARY, MOVING, TRIP_ACTIVE }
@@ -66,6 +71,13 @@ internal class DrivingEventsDetector(private val listener: Listener) {
     private var lastSharpTurnAt      = 0L
     private var lastCrashAt          = 0L
 
+    // Scoring / idle state
+    private var scoreCalc:            ScoreCalculator? = null
+    private var tripId:               String = ""
+    private var idleStartedAt:        Long = 0L
+    private var idleThresholdFired:   Boolean = false
+    private var postIdleMovingAt:     Long = 0L
+
     @Synchronized fun setConfig(c: Config) { cfg = c }
 
     @Synchronized fun reset() {
@@ -76,6 +88,8 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         prevSpeedMps = 0.0; prevSpeedAt = 0L
         prevBearingDeg = 0.0; prevBearingAt = 0L; hasPrevBearing = false
         lastHardBrakeAt = 0L; lastRapidAccelAt = 0L; lastSharpTurnAt = 0L; lastCrashAt = 0L
+        scoreCalc = null; tripId = ""
+        idleStartedAt = 0L; idleThresholdFired = false; postIdleMovingAt = 0L
     }
 
     @Synchronized fun onLocation(loc: BGLocation) {
@@ -111,6 +125,8 @@ internal class DrivingEventsDetector(private val listener: Listener) {
                     if (now - aboveTripSpeedSince >= cfg.minTripDurationMs) {
                         movingState = MovingState.TRIP_ACTIVE
                         tripStartedAt = now; tripDistanceMeters = 0.0
+                        tripId = now.toString()
+                        scoreCalc = ScoreCalculator(cfg.scoringWeights ?: ScoringWeights())
                         listener.onTripStart(loc)
                     }
                 } else aboveTripSpeedSince = 0L
@@ -123,16 +139,50 @@ internal class DrivingEventsDetector(private val listener: Listener) {
                 movingState = MovingState.STATIONARY
                 listener.onStopped(loc)
                 if (wasTripActive) {
-                    listener.onTripEnd(loc, tripDistanceMeters, now - tripStartedAt)
+                    val score = scoreCalc?.compute(tripId, tripStartedAt, now, tripDistanceMeters)
+                        ?: ScoreCalculator().compute(tripId, tripStartedAt, now, tripDistanceMeters)
+                    scoreCalc = null
+                    listener.onTripEnd(loc, tripDistanceMeters, now - tripStartedAt, score)
                 }
             }
+        }
+
+        // ── Idle detection (TRIP_ACTIVE only) ────────────────────────────────
+        if (movingState == MovingState.TRIP_ACTIVE) {
+            if (!nowMoving) {
+                if (idleStartedAt == 0L) idleStartedAt = now
+                if (!idleThresholdFired && (now - idleStartedAt) >= cfg.idleThresholdMs) {
+                    idleThresholdFired = true
+                    postIdleMovingAt = 0L
+                    scoreCalc?.recordIdleStart()
+                    listener.onIdleStart(loc, idleStartedAt)
+                }
+            } else {
+                if (idleThresholdFired) {
+                    if (postIdleMovingAt == 0L) postIdleMovingAt = now
+                    if ((now - postIdleMovingAt) >= cfg.idleEndThresholdMs) {
+                        val durationMs = now - idleStartedAt
+                        scoreCalc?.recordIdleEnd(durationMs)
+                        listener.onIdleEnd(loc, durationMs, idleStartedAt)
+                        idleStartedAt = 0L; idleThresholdFired = false; postIdleMovingAt = 0L
+                    }
+                } else {
+                    idleStartedAt = 0L  // brief stop, not idle
+                }
+            }
+        } else {
+            idleStartedAt = 0L; idleThresholdFired = false; postIdleMovingAt = 0L
         }
 
         // ── Speeding ──────────────────────────────────────────────────────────
         if (cfg.speedLimitKmh > 0) {
             val kmh = speed * 3.6
             if (kmh > cfg.speedLimitKmh) {
-                if (!wasSpeeding) { wasSpeeding = true; listener.onSpeeding(loc, kmh, cfg.speedLimitKmh) }
+                if (!wasSpeeding) {
+                    wasSpeeding = true
+                    scoreCalc?.recordSpeeding(loc, now)
+                    listener.onSpeeding(loc, kmh, cfg.speedLimitKmh)
+                }
             } else wasSpeeding = false
         }
 
@@ -145,11 +195,15 @@ internal class DrivingEventsDetector(private val listener: Listener) {
                 val accel = dv / dt
                 if (cfg.hardBrakeMps2 > 0 && accel <= -cfg.hardBrakeMps2
                         && now - lastHardBrakeAt >= COOLDOWN_MS) {
-                    lastHardBrakeAt = now; listener.onHardBrake(loc, accel)
+                    lastHardBrakeAt = now
+                    scoreCalc?.recordHardBrake(loc, now)
+                    listener.onHardBrake(loc, accel)
                 }
                 if (cfg.rapidAccelMps2 > 0 && accel >= cfg.rapidAccelMps2
                         && now - lastRapidAccelAt >= COOLDOWN_MS) {
-                    lastRapidAccelAt = now; listener.onRapidAcceleration(loc, accel)
+                    lastRapidAccelAt = now
+                    scoreCalc?.recordRapidAccel(loc, now)
+                    listener.onRapidAcceleration(loc, accel)
                 }
                 if (cfg.crashImpactKmh > 0 && dtMs <= cfg.crashWindowMs) {
                     val dropKmh = (prevSpeedMps - speed) * 3.6
@@ -170,7 +224,9 @@ internal class DrivingEventsDetector(private val listener: Listener) {
                 if (diff > 180) diff = 360 - diff
                 val rate = diff * 1000.0 / dtMs
                 if (rate >= cfg.sharpTurnDegPerSec && now - lastSharpTurnAt >= COOLDOWN_MS) {
-                    lastSharpTurnAt = now; listener.onSharpTurn(loc, rate)
+                    lastSharpTurnAt = now
+                    scoreCalc?.recordSharpTurn(loc, now)
+                    listener.onSharpTurn(loc, rate)
                 }
             }
         }

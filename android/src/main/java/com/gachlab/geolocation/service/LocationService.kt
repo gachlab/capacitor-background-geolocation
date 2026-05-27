@@ -266,7 +266,10 @@ class LocationService : Service() {
             rapidAccelMps2     = opts.rapidAccelMps2,
             sharpTurnDegPerSec = opts.sharpTurnDegPerSec,
             crashImpactKmh     = opts.crashImpactKmh,
-            crashWindowMs      = opts.crashWindowMs
+            crashWindowMs      = opts.crashWindowMs,
+            idleThresholdMs    = opts.idleThresholdMs,
+            idleEndThresholdMs = opts.idleEndThresholdMs,
+            scoringWeights     = opts.scoringWeights,
         )
         if (drivingDetector == null) drivingDetector = DrivingEventsDetector(drivingListener)
         drivingDetector!!.setConfig(detectorCfg)
@@ -276,8 +279,12 @@ class LocationService : Service() {
         override fun onMoving(loc: BGLocation)        = fire(ServiceEvent.Moving(loc))
         override fun onStopped(loc: BGLocation)       = fire(ServiceEvent.Stopped(loc))
         override fun onTripStart(loc: BGLocation)     = fire(ServiceEvent.TripStart(loc))
-        override fun onTripEnd(loc: BGLocation, distanceMeters: Double, durationMs: Long) =
-            fire(ServiceEvent.TripEnd(loc, distanceMeters, durationMs))
+        override fun onTripEnd(loc: BGLocation, distanceMeters: Double, durationMs: Long, score: com.gachlab.geolocation.TripScore) =
+            fire(ServiceEvent.TripEnd(loc, distanceMeters, durationMs, score))
+        override fun onIdleStart(loc: BGLocation, startedAt: Long) =
+            fire(ServiceEvent.IdleStart(loc, startedAt))
+        override fun onIdleEnd(loc: BGLocation, durationMs: Long, startedAt: Long) =
+            fire(ServiceEvent.IdleEnd(loc, durationMs, startedAt))
         override fun onSpeeding(loc: BGLocation, speedKmh: Double, limitKmh: Double) =
             fire(ServiceEvent.Speeding(loc, speedKmh, limitKmh))
         override fun onProviderChange(provider: String) = fire(ServiceEvent.ProviderChange(provider))

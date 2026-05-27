@@ -23,6 +23,9 @@ public extension Notification.Name {
     static let BGPhoneUsageWhileDriving    = Notification.Name("BGPhoneUsageWhileDriving")
     /** Fired when the iOS location provider switches to a background fallback strategy. */
     static let BGFallbackActivated         = Notification.Name("BGFallbackActivated")
+    // Driver intelligence events (v1.4)
+    static let BGIdleStart                 = Notification.Name("BGIdleStart")
+    static let BGIdleEnd                   = Notification.Name("BGIdleEnd")
     // Geofence transition events — userInfo: ["id": String, "action": String]
     static let BGGeofenceEnter             = Notification.Name("BGGeofenceEnter")
     static let BGGeofenceExit              = Notification.Name("BGGeofenceExit")

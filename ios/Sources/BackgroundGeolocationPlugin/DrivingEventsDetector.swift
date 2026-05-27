@@ -16,13 +16,15 @@ protocol DrivingEventsDetectorDelegate: AnyObject {
     func detectorOnMoving(_ location: DLLocation)
     func detectorOnStopped(_ location: DLLocation)
     func detectorOnTripStart(_ location: DLLocation)
-    func detectorOnTripEnd(_ location: DLLocation, distanceMeters: Double, durationMs: Int64)
+    func detectorOnTripEnd(_ location: DLLocation, distanceMeters: Double, durationMs: Int64, score: TripScore)
     func detectorOnSpeeding(_ location: DLLocation, speedKmh: Double, limitKmh: Double)
     func detectorOnProviderChange(provider: String)
     func detectorOnHardBrake(_ location: DLLocation, decelMps2: Double)
     func detectorOnRapidAcceleration(_ location: DLLocation, accelMps2: Double)
     func detectorOnSharpTurn(_ location: DLLocation, degPerSec: Double)
     func detectorOnPossibleCrash(_ location: DLLocation, dropKmh: Double)
+    func detectorOnIdleStart(_ location: DLLocation, startedAt: Double)
+    func detectorOnIdleEnd(_ location: DLLocation, durationMs: Int64, startedAt: Double)
 }
 
 // Pure-Swift driving-events state machine — exact port of the Java DrivingEventsDetector.
@@ -40,8 +42,11 @@ final class DrivingEventsDetector {
     var hardBrakeMps2       = 3.5
     var rapidAccelMps2      = 3.5
     var sharpTurnDegPerSec  = 30.0
-    var crashImpactKmh      = 25.0
-    var crashWindowSec      = 2.0
+    var crashImpactKmh       = 25.0
+    var crashWindowSec       = 2.0
+    var idleThresholdSec     = 300.0
+    var idleEndThresholdSec  = 30.0
+    var scoringWeights: ScoringWeights?
 
     weak var delegate: DrivingEventsDetectorDelegate?
 
@@ -72,6 +77,13 @@ final class DrivingEventsDetector {
     private var lastSharpTurnAt  = 0.0
     private var lastCrashAt      = 0.0
 
+    // Scoring / idle state
+    private var scoreCalc:           ScoreCalculator?
+    private var tripId               = ""
+    private var idleStartedAt        = 0.0
+    private var idleThresholdFired   = false
+    private var postIdleMovingAt     = 0.0
+
     private static let cooldown = 4.0
 
     // ── Public API ────────────────────────────────────────────────────────────
@@ -95,6 +107,8 @@ final class DrivingEventsDetector {
         lastRapidAccelAt    = 0
         lastSharpTurnAt     = 0
         lastCrashAt         = 0
+        scoreCalc = nil; tripId = ""
+        idleStartedAt = 0; idleThresholdFired = false; postIdleMovingAt = 0
     }
 
     func feed(_ location: DLLocation) {
@@ -125,9 +139,11 @@ final class DrivingEventsDetector {
                 if speed >= minTripSpeedMps {
                     if aboveTripSpeedSince == 0 { aboveTripSpeedSince = now }
                     if now - aboveTripSpeedSince >= minTripDurationSec {
-                        tripActive      = true
-                        tripStartedAt   = now
+                        tripActive         = true
+                        tripStartedAt      = now
                         tripDistanceMeters = 0
+                        tripId    = String(Int64(now * 1000))
+                        scoreCalc = ScoreCalculator(weights: scoringWeights ?? ScoringWeights())
                         delegate?.detectorOnTripStart(location)
                     }
                 } else {
@@ -143,17 +159,53 @@ final class DrivingEventsDetector {
                 if tripActive {
                     let durMs = Int64((now - tripStartedAt) * 1000)
                     let dist  = tripDistanceMeters
+                    let score = scoreCalc?.compute(tripId: tripId, startedAt: tripStartedAt,
+                                                   endedAt: now, distanceMeters: dist)
+                               ?? ScoreCalculator().compute(tripId: tripId, startedAt: tripStartedAt,
+                                                            endedAt: now, distanceMeters: dist)
                     tripActive = false
-                    delegate?.detectorOnTripEnd(location, distanceMeters: dist, durationMs: durMs)
+                    scoreCalc  = nil
+                    delegate?.detectorOnTripEnd(location, distanceMeters: dist, durationMs: durMs, score: score)
                 }
             }
+        }
+
+        // Idle detection (trip active only)
+        if tripActive {
+            if !nowMoving {
+                if idleStartedAt == 0 { idleStartedAt = now }
+                if !idleThresholdFired && (now - idleStartedAt) >= idleThresholdSec {
+                    idleThresholdFired = true
+                    postIdleMovingAt = 0
+                    scoreCalc?.recordIdleStart()
+                    delegate?.detectorOnIdleStart(location, startedAt: idleStartedAt)
+                }
+            } else {
+                if idleThresholdFired {
+                    if postIdleMovingAt == 0 { postIdleMovingAt = now }
+                    if (now - postIdleMovingAt) >= idleEndThresholdSec {
+                        let durationMs = Int64((now - idleStartedAt) * 1000)
+                        scoreCalc?.recordIdleEnd(durationMs)
+                        delegate?.detectorOnIdleEnd(location, durationMs: durationMs, startedAt: idleStartedAt)
+                        idleStartedAt = 0; idleThresholdFired = false; postIdleMovingAt = 0
+                    }
+                } else {
+                    idleStartedAt = 0  // brief stop, not idle
+                }
+            }
+        } else {
+            idleStartedAt = 0; idleThresholdFired = false; postIdleMovingAt = 0
         }
 
         // Speeding
         if speedLimitKmh > 0 {
             let kmh = speed * 3.6
             if kmh > speedLimitKmh {
-                if !wasSpeeding { wasSpeeding = true; delegate?.detectorOnSpeeding(location, speedKmh: kmh, limitKmh: speedLimitKmh) }
+                if !wasSpeeding {
+                    wasSpeeding = true
+                    scoreCalc?.recordSpeeding(location, ts: now)
+                    delegate?.detectorOnSpeeding(location, speedKmh: kmh, limitKmh: speedLimitKmh)
+                }
             } else {
                 wasSpeeding = false
             }
@@ -167,10 +219,12 @@ final class DrivingEventsDetector {
 
                 if hardBrakeMps2 > 0 && accel <= -hardBrakeMps2 && (now - lastHardBrakeAt) >= Self.cooldown {
                     lastHardBrakeAt = now
+                    scoreCalc?.recordHardBrake(location, ts: now)
                     delegate?.detectorOnHardBrake(location, decelMps2: accel)
                 }
                 if rapidAccelMps2 > 0 && accel >= rapidAccelMps2 && (now - lastRapidAccelAt) >= Self.cooldown {
                     lastRapidAccelAt = now
+                    scoreCalc?.recordRapidAccel(location, ts: now)
                     delegate?.detectorOnRapidAcceleration(location, accelMps2: accel)
                 }
                 if crashImpactKmh > 0 && dt <= crashWindowSec {
@@ -194,6 +248,7 @@ final class DrivingEventsDetector {
                 let rate = diff / dt
                 if rate >= sharpTurnDegPerSec && (now - lastSharpTurnAt) >= Self.cooldown {
                     lastSharpTurnAt = now
+                    scoreCalc?.recordSharpTurn(location, ts: now)
                     delegate?.detectorOnSharpTurn(location, degPerSec: rate)
                 }
             }

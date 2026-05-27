@@ -6,6 +6,7 @@ package com.gachlab.capacitor.backgroundgeolocation
 import com.getcapacitor.JSObject
 import com.gachlab.geolocation.BGConfig
 import com.gachlab.geolocation.BGConfig.DrivingEventsOptions
+import com.gachlab.geolocation.ScoringWeights
 import com.gachlab.geolocation.ArrayListLocationTemplate
 import com.gachlab.geolocation.HashMapLocationTemplate
 import com.gachlab.geolocation.LocationTemplateFactory
@@ -336,6 +337,25 @@ object GachConfigMapper {
         if (de.has("phoneUsageWindowMs"))    phoneUsageWindowMs  = de.getLong("phoneUsageWindowMs")
         if (de.has("phoneUsageCooldownMs"))  phoneUsageCooldownMs = de.getLong("phoneUsageCooldownMs")
 
+        var idleThresholdMs    = 300_000L
+        var idleEndThresholdMs = 30_000L
+        var scoringWeights: ScoringWeights? = null
+
+        if (de.has("idleThresholdMs"))    idleThresholdMs    = de.getLong("idleThresholdMs")
+        if (de.has("idleEndThresholdMs")) idleEndThresholdMs = de.getLong("idleEndThresholdMs")
+        if (de.has("scoring") && !de.isNull("scoring")) {
+            val sw = de.getJSONObject("scoring")
+            scoringWeights = ScoringWeights(
+                speeding    = if (sw.has("speedingWeight"))    sw.getInt("speedingWeight")    else 30,
+                hardBraking = if (sw.has("hardBrakingWeight")) sw.getInt("hardBrakingWeight") else 25,
+                rapidAccel  = if (sw.has("rapidAccelWeight"))  sw.getInt("rapidAccelWeight")  else 20,
+                sharpTurn   = if (sw.has("sharpTurnWeight"))   sw.getInt("sharpTurnWeight")   else 15,
+                phoneUsage  = if (sw.has("phoneUsageWeight"))  sw.getInt("phoneUsageWeight")  else 10,
+            )
+            if (!scoringWeights.isValid())
+                throw IllegalArgumentException("drivingEvents.scoring weights must sum to 100")
+        }
+
         return DrivingEventsOptions(
             enabled             = enabled,
             speedLimitKmh       = speedLimitKmh,
@@ -353,6 +373,9 @@ object GachConfigMapper {
             sensorCrashCooldownMs = sensorCrashCooldownMs,
             phoneUsageWindowMs  = phoneUsageWindowMs,
             phoneUsageCooldownMs = phoneUsageCooldownMs,
+            idleThresholdMs     = idleThresholdMs,
+            idleEndThresholdMs  = idleEndThresholdMs,
+            scoringWeights      = scoringWeights,
         )
     }
 
@@ -375,6 +398,17 @@ object GachConfigMapper {
         j.put("sensorCrashCooldownMs", de.sensorCrashCooldownMs)
         j.put("phoneUsageWindowMs",  de.phoneUsageWindowMs)
         j.put("phoneUsageCooldownMs", de.phoneUsageCooldownMs)
+        j.put("idleThresholdMs",    de.idleThresholdMs)
+        j.put("idleEndThresholdMs", de.idleEndThresholdMs)
+        de.scoringWeights?.let { sw ->
+            j.put("scoring", org.json.JSONObject().apply {
+                put("speedingWeight",    sw.speeding)
+                put("hardBrakingWeight", sw.hardBraking)
+                put("rapidAccelWeight",  sw.rapidAccel)
+                put("sharpTurnWeight",   sw.sharpTurn)
+                put("phoneUsageWeight",  sw.phoneUsage)
+            })
+        }
         return j
     }
 }

@@ -61,7 +61,8 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         CAPPluginMethod(name: "addGeofences", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "removeGeofences", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getGeofences", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getTripScore", returnType: CAPPluginReturnPromise)
     ]
 
     private static let pluginVersion = "1.0.0"
@@ -72,6 +73,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     private var lastLocationAt: Date?
     private let drivingDetector = DrivingEventsDetector()
     private var lastBGLocation: BGLocation?
+    private var lastTripScore: TripScore?
 
     override public func load() {
         let f = BGFacade()
@@ -103,6 +105,8 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
         nc.addObserver(self, selector: #selector(onPhoneUsageWhileDrivingN(_:)), name: .BGPhoneUsageWhileDriving, object: nil)
         nc.addObserver(self, selector: #selector(onFallbackActivatedN(_:)), name: .BGFallbackActivated, object: nil)
+        nc.addObserver(self, selector: #selector(onIdleStartN(_:)), name: .BGIdleStart, object: nil)
+        nc.addObserver(self, selector: #selector(onIdleEndN(_:)),   name: .BGIdleEnd,   object: nil)
         nc.addObserver(self, selector: #selector(onGeofenceN(_:)), name: .BGGeofenceEnter, object: nil)
         nc.addObserver(self, selector: #selector(onGeofenceN(_:)), name: .BGGeofenceExit,  object: nil)
         nc.addObserver(self, selector: #selector(onGeofenceN(_:)), name: .BGGeofenceDwell, object: nil)
@@ -158,6 +162,20 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         if let v = (de["sharpTurnDegPerSec"] as? NSNumber)?.doubleValue { drivingDetector.sharpTurnDegPerSec = v }
         if let v = (de["crashImpactKmh"]     as? NSNumber)?.doubleValue { drivingDetector.crashImpactKmh     = v }
         if let v = (de["crashWindowSec"]     as? NSNumber)?.doubleValue { drivingDetector.crashWindowSec     = v }
+        // v1.4 idle + scoring
+        if let v = (de["idleThresholdMs"]    as? NSNumber)?.doubleValue { drivingDetector.idleThresholdSec    = v / 1000.0 }
+        if let v = (de["idleEndThresholdMs"] as? NSNumber)?.doubleValue { drivingDetector.idleEndThresholdSec = v / 1000.0 }
+        if let sw = de["scoring"] as? [String: Any] {
+            var weights = ScoringWeights()
+            if let v = (sw["speedingWeight"]    as? NSNumber)?.intValue { weights.speeding    = v }
+            if let v = (sw["hardBrakingWeight"] as? NSNumber)?.intValue { weights.hardBraking = v }
+            if let v = (sw["rapidAccelWeight"]  as? NSNumber)?.intValue { weights.rapidAccel  = v }
+            if let v = (sw["sharpTurnWeight"]   as? NSNumber)?.intValue { weights.sharpTurn   = v }
+            if let v = (sw["phoneUsageWeight"]  as? NSNumber)?.intValue { weights.phoneUsage  = v }
+            drivingDetector.scoringWeights = weights.isValid ? weights : nil
+        } else {
+            drivingDetector.scoringWeights = nil
+        }
         drivingDetector.reset()
     }
 
@@ -475,6 +493,70 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         call.resolve()
     }
 
+    @objc func getTripScore(_ call: CAPPluginCall) {
+        if let score = lastTripScore {
+            call.resolve(scoreToDict(score))
+        } else {
+            call.resolve([
+                "overall": 100,
+                "breakdown": [
+                    "speeding": 100, "hardBraking": 100, "rapidAcceleration": 100,
+                    "sharpTurns": 100, "phoneUsage": 100
+                ],
+                "events": [] as [[String: Any]],
+                "tripId": "", "startedAt": 0, "endedAt": 0,
+                "distanceKm": 0.0, "totalIdleMs": 0, "idleCount": 0
+            ])
+        }
+    }
+
+    @objc private func onIdleStartN(_ note: Notification) {
+        var p: [String: Any] = [:]
+        if let loc = note.userInfo?["location"] as? BGLocation {
+            p["location"] = loc.toDictionaryWithId()
+        } else {
+            p["location"] = NSNull()
+        }
+        p["startedAt"] = (note.userInfo?["startedAt"] as? NSNumber)?.int64Value ?? 0
+        notifyListeners("idleStart", data: p)
+    }
+
+    @objc private func onIdleEndN(_ note: Notification) {
+        var p: [String: Any] = [:]
+        if let loc = note.userInfo?["location"] as? BGLocation {
+            p["location"] = loc.toDictionaryWithId()
+        } else {
+            p["location"] = NSNull()
+        }
+        p["durationMs"] = (note.userInfo?["durationMs"] as? NSNumber)?.int64Value ?? 0
+        p["startedAt"]  = (note.userInfo?["startedAt"]  as? NSNumber)?.int64Value ?? 0
+        notifyListeners("idleEnd", data: p)
+    }
+
+    private func scoreToDict(_ score: TripScore) -> [String: Any] {
+        let evArr: [[String: Any]] = score.events.map { e in
+            ["type": e.type, "timestamp": e.timestamp, "penalty": e.penalty,
+             "location": ["latitude": e.latitude, "longitude": e.longitude]]
+        }
+        return [
+            "overall": score.overall,
+            "breakdown": [
+                "speeding":          score.breakdown.speeding,
+                "hardBraking":       score.breakdown.hardBraking,
+                "rapidAcceleration": score.breakdown.rapidAcceleration,
+                "sharpTurns":        score.breakdown.sharpTurns,
+                "phoneUsage":        score.breakdown.phoneUsage
+            ],
+            "events":      evArr,
+            "tripId":      score.tripId,
+            "startedAt":   score.startedAt,
+            "endedAt":     score.endedAt,
+            "distanceKm":  score.distanceKm,
+            "totalIdleMs": score.totalIdleMs,
+            "idleCount":   score.idleCount
+        ]
+    }
+
     @objc override public func removeAllListeners(_ call: CAPPluginCall) {
         super.removeAllListeners(call)
     }
@@ -652,6 +734,9 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         }
         p["distance"]   = (note.userInfo?["distance"]   as? NSNumber)?.doubleValue ?? 0
         p["durationMs"] = (note.userInfo?["durationMs"] as? NSNumber)?.int64Value  ?? 0
+        if let score = note.userInfo?["score"] as? TripScore {
+            p["score"] = scoreToDict(score)
+        }
         notifyListeners("tripEnd", data: p)
     }
 
@@ -765,13 +850,30 @@ extension BackgroundGeolocationPlugin {
         postDrivingNote(.BGTripStart)
     }
 
-    func detectorOnTripEnd(_ location: DLLocation, distanceMeters: Double, durationMs: Int64) {
+    func detectorOnTripEnd(_ location: DLLocation, distanceMeters: Double, durationMs: Int64, score: TripScore) {
         facade?.drivingTripActive = false
+        lastTripScore = score
         var info: [String: Any] = [:]
         if let loc = lastBGLocation { info["location"] = loc }
         info["distance"]   = distanceMeters
         info["durationMs"] = NSNumber(value: durationMs)
+        info["score"]      = score
         NotificationCenter.default.post(name: .BGTripEnd, object: nil, userInfo: info)
+    }
+
+    func detectorOnIdleStart(_ location: DLLocation, startedAt: Double) {
+        var info: [String: Any] = [:]
+        if let loc = lastBGLocation { info["location"] = loc }
+        info["startedAt"] = NSNumber(value: Int64(startedAt * 1000))
+        NotificationCenter.default.post(name: .BGIdleStart, object: nil, userInfo: info)
+    }
+
+    func detectorOnIdleEnd(_ location: DLLocation, durationMs: Int64, startedAt: Double) {
+        var info: [String: Any] = [:]
+        if let loc = lastBGLocation { info["location"] = loc }
+        info["durationMs"] = NSNumber(value: durationMs)
+        info["startedAt"]  = NSNumber(value: Int64(startedAt * 1000))
+        NotificationCenter.default.post(name: .BGIdleEnd, object: nil, userInfo: info)
     }
 
     func detectorOnSpeeding(_ location: DLLocation, speedKmh: Double, limitKmh: Double) {
