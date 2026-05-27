@@ -151,6 +151,30 @@ done
 echo "→ Waiting for phoneUsageWindowMs (2 s margin)"
 sleep 2
 
+# ── scenario 3: crash confirm cancellation (false-positive suppression) ───────
+# Speed drops from 30 km/h to 0, then recovers to 15 km/h before the 2 s
+# confirm window elapses. No possibleCrash event should fire for this sequence.
+
+echo "→ Injecting crash-then-recovery sequence (30 km/h → 0 → 15 km/h)"
+BASE_LAT3="19.470000"
+for i in 1 2 3 4; do
+  lat=$(echo "$BASE_LAT3 + $i * 0.000270" | bc -l | awk '{printf "%.6f", $1}')
+  send_nmea_fix "$lat" "-99.133200" "30.0" "0.0"
+  sleep 1
+done
+
+lat=$(echo "$BASE_LAT3 + 5 * 0.000270" | bc -l | awk '{printf "%.6f", $1}')
+send_nmea_fix "$lat" "-99.133200" "0.0" "0.0"   # sudden stop → crash candidate
+sleep 1
+
+lat=$(echo "$BASE_LAT3 + 6 * 0.000270" | bc -l | awk '{printf "%.6f", $1}')
+send_nmea_fix "$lat" "-99.133200" "15.0" "0.0"  # speed recovers before confirm window
+sleep 1
+
+lat=$(echo "$BASE_LAT3 + 7 * 0.000270" | bc -l | awk '{printf "%.6f", $1}')
+send_nmea_fix "$lat" "-99.133200" "15.0" "0.0"
+sleep 3  # well past confirm window — no crash should have fired
+
 # ── capture logcat ────────────────────────────────────────────────────────────
 
 adb logcat -d > "$LOGCAT_OUT" 2>&1 || true
@@ -160,12 +184,26 @@ adb logcat -d > "$LOGCAT_OUT" 2>&1 || true
 echo ""
 echo "── Assertions ──────────────────────────────────────────────────────"
 
-if grep -q "driving-event: possibleCrash" "$LOGCAT_OUT"; then
-  echo "✓ possibleCrash fired"
+# Count crash events — we expect exactly 1 (from scenario 1, not from scenario 3)
+CRASH_COUNT=$(grep -c "driving-event: possibleCrash" "$LOGCAT_OUT" || true)
+
+if [[ "$CRASH_COUNT" -ge 1 ]]; then
+  echo "✓ possibleCrash fired (scenario 1) [count=$CRASH_COUNT]"
   PASS=$(( PASS + 1 ))
 else
   echo "✗ possibleCrash NOT found in logcat"
   echo "  Hint: check crashImpactKmh threshold and NMEA speed injection"
+fi
+
+# Scenario 3 must NOT have produced a second crash (recovery should cancel it).
+# We can't distinguish scenario 1 vs 3 crash lines without timestamps, but at
+# minimum we verify at most 1 crash fired (scenario 3 adds 0 extra crashes).
+# A stricter check would require timestamps; this is a best-effort guard.
+if [[ "$CRASH_COUNT" -le 1 ]]; then
+  echo "✓ crash confirm cancellation: no extra crash from recovery sequence [count=$CRASH_COUNT]"
+  PASS=$(( PASS + 1 ))
+else
+  echo "✗ crash confirm cancellation FAILED: expected ≤1 crash but got $CRASH_COUNT"
 fi
 
 if grep -q "driving-event: phoneUsageWhileDriving" "$LOGCAT_OUT"; then
@@ -177,10 +215,10 @@ else
 fi
 
 echo ""
-if [[ "$PASS" -eq 2 ]]; then
-  echo "✓ Driving events E2E PASSED ($PASS/2)"
+if [[ "$PASS" -eq 3 ]]; then
+  echo "✓ Driving events E2E PASSED ($PASS/3)"
 else
-  echo "✗ Driving events E2E FAILED ($PASS/2)"
+  echo "✗ Driving events E2E FAILED ($PASS/3)"
   echo "--- relevant logcat ---"
   grep -iE "driving-event|DrivingEvents|possibleCrash|phoneUsage|LocationService" \
     "$LOGCAT_OUT" | tail -60 || true

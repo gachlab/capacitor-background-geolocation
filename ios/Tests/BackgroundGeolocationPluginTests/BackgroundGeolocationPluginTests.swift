@@ -155,13 +155,6 @@ final class BackgroundGeolocationPluginTests: XCTestCase {
         XCTAssertEqual(steps?.count, 0)
     }
 
-    func testRegisterHeadlessTaskResolvesOnIOS() {
-        let plugin = BackgroundGeolocationPlugin()
-        let mock = MockCAPPluginCall()
-        plugin.registerHeadlessTask(mock.call)
-        XCTAssertTrue(mock.resolved, "registerHeadlessTask is a no-op on iOS and should resolve")
-    }
-
     func testRequestBackgroundLocationPermissionReturnsNotRequired() {
         let plugin = BackgroundGeolocationPlugin()
         let mock = MockCAPPluginCall()

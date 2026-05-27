@@ -285,11 +285,13 @@ class LocationService : Service() {
     }
 
     private val drivingListener = object : DrivingEventsDetector.Listener {
-        override fun onMoving(loc: BGLocation)        = fire(ServiceEvent.Moving(loc))
-        override fun onStopped(loc: BGLocation)       = fire(ServiceEvent.Stopped(loc))
-        override fun onTripStart(loc: BGLocation)     = fire(ServiceEvent.TripStart(loc))
-        override fun onTripEnd(loc: BGLocation, distanceMeters: Double, durationMs: Long, score: com.gachlab.geolocation.TripScore) =
+        override fun onMoving(loc: BGLocation)        { Log.i(TAG, "driving-event: moving");   fire(ServiceEvent.Moving(loc)) }
+        override fun onStopped(loc: BGLocation)       { Log.i(TAG, "driving-event: stopped");  fire(ServiceEvent.Stopped(loc)) }
+        override fun onTripStart(loc: BGLocation)     { Log.i(TAG, "driving-event: tripStart"); fire(ServiceEvent.TripStart(loc)) }
+        override fun onTripEnd(loc: BGLocation, distanceMeters: Double, durationMs: Long, score: com.gachlab.geolocation.TripScore) {
+            Log.i(TAG, "driving-event: tripEnd dist=${distanceMeters.toInt()}m dur=${durationMs}ms")
             fire(ServiceEvent.TripEnd(loc, distanceMeters, durationMs, score))
+        }
         override fun onIdleStart(loc: BGLocation, startedAt: Long) =
             fire(ServiceEvent.IdleStart(loc, startedAt))
         override fun onIdleEnd(loc: BGLocation, durationMs: Long, startedAt: Long) =
