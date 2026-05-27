@@ -75,6 +75,7 @@ class BGConfig() : Parcelable {
     var mockLocationPolicy: String? = null
     var enableWatchdog: Boolean?    = null
     var watchdogIntervalMs: Long?   = null
+    var restartOnKill: Boolean?     = null  // true = START_STICKY (default); false = START_NOT_STICKY
 
     // ── Driving events (v4.0+) ────────────────────────────────────────────────
     var drivingEvents: DrivingEventsOptions? = null
@@ -224,6 +225,7 @@ class BGConfig() : Parcelable {
         dest.writeValue(activityConfidenceThreshold)
         dest.writeValue(maxAcceptedAccuracy)
         dest.writeValue(watchdogIntervalMs)
+        dest.writeValue(restartOnKill)
         // Bundle for map / template fields (classloader required for deserialization)
         val bundle = Bundle()
         bundle.putSerializable("httpHeaders", httpHeaders)
@@ -302,6 +304,7 @@ class BGConfig() : Parcelable {
             maxLocations               = DEFAULT_MAX_LOCATIONS
             template                   = null
             enableWatchdog             = false
+            restartOnKill              = true
             showTime                   = false
             showDistance               = false
             httpMethod                 = DEFAULT_HTTP_METHOD
@@ -363,6 +366,7 @@ class BGConfig() : Parcelable {
             result.template                    = b.template
             result.enableWatchdog              = b.enableWatchdog
             result.watchdogIntervalMs          = b.watchdogIntervalMs
+            result.restartOnKill               = b.restartOnKill
             result.showTime                    = b.showTime
             result.showDistance                = b.showDistance
             result.httpMethod                  = b.httpMethod
@@ -415,6 +419,7 @@ class BGConfig() : Parcelable {
             o.template?.let                    { result.template                    = it }
             o.enableWatchdog?.let              { result.enableWatchdog              = it }
             o.watchdogIntervalMs?.let          { result.watchdogIntervalMs          = it }
+            o.restartOnKill?.let               { result.restartOnKill               = it }
             o.showTime?.let                    { result.showTime                    = it }
             o.showDistance?.let                { result.showDistance                = it }
             o.httpMethod?.let                  { result.httpMethod                  = it.uppercase(Locale.US) }
@@ -524,6 +529,7 @@ class BGConfig() : Parcelable {
                 c.activityConfidenceThreshold = parcel.readValue(null) as? Int
                 c.maxAcceptedAccuracy         = parcel.readValue(null) as? Float
                 c.watchdogIntervalMs          = parcel.readValue(null) as? Long
+                c.restartOnKill               = parcel.readValue(null) as? Boolean
                 val bundle = parcel.readBundle(BGConfig::class.java.classLoader)
                 if (bundle != null) {
                     @Suppress("DEPRECATION")

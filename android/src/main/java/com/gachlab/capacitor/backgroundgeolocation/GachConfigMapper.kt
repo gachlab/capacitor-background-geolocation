@@ -6,13 +6,12 @@ package com.gachlab.capacitor.backgroundgeolocation
 import com.getcapacitor.JSObject
 import com.gachlab.geolocation.BGConfig
 import com.gachlab.geolocation.BGConfig.DrivingEventsOptions
-import com.marianhello.bgloc.data.ArrayListLocationTemplate
-import com.marianhello.bgloc.data.HashMapLocationTemplate
-import com.marianhello.bgloc.data.LocationTemplateFactory
+import com.gachlab.geolocation.ArrayListLocationTemplate
+import com.gachlab.geolocation.HashMapLocationTemplate
+import com.gachlab.geolocation.LocationTemplateFactory
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
-import java.util.Arrays
 import java.util.Locale
 
 /**
@@ -100,12 +99,12 @@ object GachConfigMapper {
 
         // Location body template ("postTemplate" or "bodyTemplate").
         if (j.has("postTemplate")) {
-            c.template = if (j.isNull("postTemplate")) LocationTemplateFactory.getDefault() as? java.io.Serializable
-                         else LocationTemplateFactory.fromJSON(j.get("postTemplate")) as? java.io.Serializable
+            c.template = if (j.isNull("postTemplate")) LocationTemplateFactory.empty()
+                         else LocationTemplateFactory.fromJSON(j.get("postTemplate"))
         }
         if (j.has("bodyTemplate")) {
-            c.template = if (j.isNull("bodyTemplate")) LocationTemplateFactory.getDefault() as? java.io.Serializable
-                         else LocationTemplateFactory.fromJSON(j.get("bodyTemplate")) as? java.io.Serializable
+            c.template = if (j.isNull("bodyTemplate")) LocationTemplateFactory.empty()
+                         else LocationTemplateFactory.fromJSON(j.get("bodyTemplate"))
         }
 
         if (has(j, "httpMethod"))        c.httpMethod        = j.getString("httpMethod").uppercase(Locale.US)
@@ -119,6 +118,7 @@ object GachConfigMapper {
         if (j.has("enableWatchdog")) c.enableWatchdog = j.getBoolean("enableWatchdog")
         if (j.has("watchdogIntervalMs") && !j.isNull("watchdogIntervalMs"))
             c.watchdogIntervalMs = j.getLong("watchdogIntervalMs")
+        if (j.has("restartOnKill")) c.restartOnKill = j.getBoolean("restartOnKill")
 
         if (j.has("includeBattery")) c.includeBattery = j.getBoolean("includeBattery")
         if (has(j, "wakeLockMode"))  c.wakeLockMode    = j.getString("wakeLockMode")
@@ -175,13 +175,14 @@ object GachConfigMapper {
         json.put("maxLocations",               config.maxLocations)
         json.put("enableWatchdog",             config.enableWatchdog == true)
         json.put("watchdogIntervalMs",         config.watchdogIntervalMs)
+        json.put("restartOnKill",              config.restartOnKill ?: true)
         json.put("showTime",                   config.showTime == true)
         json.put("showDistance",               config.showDistance == true)
 
         // Template serialization
         val tplObj: Any = when (val t = config.template) {
-            is HashMapLocationTemplate  -> t.toMap()?.let { JSONObject(it) } ?: JSONObject.NULL
-            is ArrayListLocationTemplate -> t.toArray()?.let { JSONArray(Arrays.asList(*it)) } ?: JSONObject.NULL
+            is HashMapLocationTemplate   -> t.toDefinitionJson() ?: JSONObject.NULL
+            is ArrayListLocationTemplate -> t.toDefinitionJson() ?: JSONObject.NULL
             else                         -> JSONObject.NULL
         }
         json.put("postTemplate", tplObj)
@@ -242,6 +243,7 @@ object GachConfigMapper {
         j.put("maxLocations",               config.maxLocations)
         j.put("enableWatchdog",             config.enableWatchdog)
         config.watchdogIntervalMs?.let { j.put("watchdogIntervalMs", it) }
+        j.put("restartOnKill",              config.restartOnKill ?: true)
         j.put("showTime",                   config.showTime)
         j.put("showDistance",               config.showDistance)
         j.put("httpMethod",                 config.httpMethod)

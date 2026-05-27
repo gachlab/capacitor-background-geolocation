@@ -72,6 +72,8 @@ class BGLocation() : Parcelable {
     var batteryLevel: Int? = null
     var isCharging: Boolean? = null
 
+    constructor(provider: String) : this() { this.provider = provider }
+
     // ── Copy constructor ─────────────────────────────────────────────────────
     constructor(src: BGLocation) : this() {
         locationId          = src.locationId
@@ -132,6 +134,9 @@ class BGLocation() : Parcelable {
         if (drivingEvents == null) drivingEvents = JSONArray()
         drivingEvents!!.put(event)
     }
+
+    fun addDrivingEvent(type: String) =
+        addDrivingEvent(JSONObject().put("type", type))
 
     fun hasDrivingEvents(): Boolean = drivingEvents != null && drivingEvents!!.length() > 0
 

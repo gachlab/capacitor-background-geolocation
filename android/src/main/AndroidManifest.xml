@@ -1,13 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    SPDX-License-Identifier: Apache-2.0
-    Copyright (c) 2026 JosueLMM
-
-    Mirrors the Cordova `android/common/src/main/AndroidManifest.xml` from the
-    upstream plugin (`com.marianhello.bgloc`) so the copied native core works
-    unchanged. ACCESS_BACKGROUND_LOCATION is intentionally NOT declared here;
-    consumer apps that want the "Allow all the time" tier must opt in by
-    declaring it in their own AndroidManifest.
+    SPDX-License-Identifier: MIT
+    Copyright (c) 2026 gachlab
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
@@ -23,56 +17,44 @@
     <uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.READ_SYNC_SETTINGS" />
-    <uses-permission android:name="android.permission.WRITE_SYNC_SETTINGS" />
-    <uses-permission android:name="android.permission.AUTHENTICATE_ACCOUNTS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application>
-        <!-- Foreground location service (the core implementation). -->
+        <!-- Foreground location service — pure Kotlin, MIT-licensed. -->
         <service
-            android:name="com.marianhello.bgloc.service.LocationServiceImpl"
+            android:name="com.gachlab.geolocation.service.LocationService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />
 
-        <!-- SyncAdapter (runs in its own :sync process to honor Android's sync framework). -->
-        <service
-            android:name="com.marianhello.bgloc.sync.SyncService"
-            android:exported="true"
-            android:process=":sync">
-            <intent-filter>
-                <action android:name="android.content.SyncAdapter" />
-            </intent-filter>
-            <meta-data
-                android:name="android.content.SyncAdapter"
-                android:resource="@xml/syncadapter" />
-        </service>
+        <!-- WorkManager background sync (replaces the old SyncAdapter/AuthenticatorService). -->
+        <!-- WorkManager registers its own services via manifest merger — no entry needed here. -->
 
-        <!-- Account authenticator stub required by the sync framework. -->
-        <service
-            android:name="com.marianhello.bgloc.sync.AuthenticatorService"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.accounts.AccountAuthenticator" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accounts.AccountAuthenticator"
-                android:resource="@xml/authenticator" />
-        </service>
-
-        <!-- Local content provider backing the location queue. -->
-        <provider
-            android:name="com.marianhello.bgloc.data.provider.LocationContentProvider"
-            android:authorities="@string/plugin_bgloc_content_authority"
-            android:exported="false"
-            android:syncable="true" />
-
-        <!-- Restart the service after device reboot when `startOnBoot` is enabled. -->
+        <!-- DistanceFilterLocationProvider alarm/intent receiver targets (must be in manifest). -->
         <receiver
-            android:name="com.marianhello.bgloc.BootCompletedReceiver"
+            android:name="com.gachlab.geolocation.provider.DistanceFilterLocationProvider$StationaryAlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
+        <receiver
+            android:name="com.gachlab.geolocation.provider.DistanceFilterLocationProvider$StationaryMonitorReceiver"
+            android:enabled="true"
+            android:exported="false" />
+        <receiver
+            android:name="com.gachlab.geolocation.provider.DistanceFilterLocationProvider$SingleUpdateReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- ActivityLocationProvider activity recognition intent target. -->
+        <receiver
+            android:name="com.gachlab.geolocation.provider.ActivityLocationProvider$ActivityUpdateReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Restart the service after device reboot when startOnBoot is enabled. -->
+        <receiver
+            android:name="com.gachlab.geolocation.BootReceiver"
             android:enabled="true"
             android:exported="true">
             <intent-filter>
