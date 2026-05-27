@@ -238,7 +238,24 @@ class LocationService : Service() {
 
     private fun handleLocation(loc: BGLocation) {
         lastLocationTime = System.currentTimeMillis()
-        latestLocation   = loc
+        val prev = latestLocation
+        latestLocation = loc
+
+        // When the GPS hardware omits speed/bearing (common on emulators via
+        // `adb emu geo fix` and some low-end chipsets) derive them from the
+        // displacement between consecutive fixes so the driving detector works.
+        if (prev != null) {
+            val prevL = prev.getLocation()
+            val currL = loc.getLocation()
+            if (!loc.hasSpeed) {
+                val dt = (loc.time - prev.time) / 1000.0
+                if (dt in 0.5..30.0) loc.speed = (prevL.distanceTo(currL) / dt).toFloat()
+            }
+            if (!loc.hasBearing) {
+                val dist = prevL.distanceTo(currL)
+                if (dist > 1.0f) loc.bearing = prevL.bearingTo(currL)
+            }
+        }
 
         drivingDetector?.onLocation(loc)
         attachBattery(loc)
