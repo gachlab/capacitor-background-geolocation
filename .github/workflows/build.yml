@@ -73,9 +73,9 @@ jobs:
       - name: Install example-app dependencies
         working-directory: example-app
         run: npm ci
-      - name: Copy web assets into Android project
+      - name: Sync web assets and plugin metadata into Android project
         working-directory: example-app
-        run: npx cap copy android
+        run: npx cap sync android
       - name: Build example APK
         working-directory: example-app/android
         run: ./gradlew assembleDebug --no-daemon
