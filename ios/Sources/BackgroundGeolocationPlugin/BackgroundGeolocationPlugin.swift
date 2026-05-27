@@ -651,9 +651,10 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
             var speed = location.speed ?? -1
             // Compute speed from consecutive fixes when sensor speed is unavailable
             // (e.g. CLLocation injected by xcrun simctl provides speed = -1).
+            // dt < 30 s to tolerate slow CI runners where xcrun simctl can take 3-4 s/call.
             if speed < 0, let prev = prevDLLoc {
                 let dt = now.timeIntervalSince(prev.time)
-                if dt > 0 && dt < 10 {
+                if dt > 0 && dt < 30 {
                     let dLat = (lat - prev.lat) * .pi / 180
                     let dLon = (lon - prev.lon) * .pi / 180
                     let a = sin(dLat/2) * sin(dLat/2)

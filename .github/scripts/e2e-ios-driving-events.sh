@@ -120,16 +120,18 @@ xcrun simctl privacy "${UDID}" grant location "${APP_BUNDLE_ID}" 2>/dev/null || 
 # ---------------------------------------------------------------------------
 # 3. Background GPS injection loop
 # ---------------------------------------------------------------------------
-# Inject a stationary fix first, then drive north at ~30 m per 0.5 s
-# (= 60 m/s ≈ 216 km/h — well above the 90 km/h speedLimit in the config).
-# After 20 moving fixes, slow to ~10 km/h for 3 fixes, then stop (crash sim).
+# Inject a stationary fix first, then drive north with a large step so that
+# speed >> 90 km/h even when xcrun simctl takes 3-4 s per call (CI runners).
+# After 5 fast fixes → 6 near-stop micro-step fixes for the crash window,
+# then cycle repeats. Short cycle (5+6 fixes) keeps the crash phase reachable
+# within the 40 s test timeout on any runner.
 GPS_PID=""
 
 inject_gps_loop() {
   local udid="$1"
   local lat=37.3317
   local lon=-122.0307
-  local step=0.00027   # ~30 m per fix at this latitude
+  local step=0.003   # ~333 m/fix; speed=333m/dt >> 90 km/h even at dt=4 s
   local i=0
 
   # Stationary start
@@ -142,22 +144,17 @@ inject_gps_loop() {
     sleep 0.5
     i=$((i + 1))
 
-    # After 30 fast fixes: slow down + stop (possibleCrash window)
-    if [ $i -eq 30 ]; then
-      step=0.00003   # ~3 m per fix ≈ slow roll
-    fi
-    if [ $i -eq 35 ]; then
-      # Near-stop: micro-step ~0.0000045° ≈ 0.5 m per fix → speed ≈ 1 m/s < 1.5 m/s.
-      # Distinct positions so CoreLocation delivers every fix (deduplication workaround).
-      # 6 fixes × 0.5 s = 3 s; crash confirms after 5 (2.5 s > crashConfirmWindowSec=2 s).
+    # After 5 fast fixes: near-stop micro-step for possibleCrash window.
+    # step 0.0000045° ≈ 0.5 m/fix → speed < 1.5 m/s regardless of dt.
+    # Distinct positions prevent CoreLocation deduplication.
+    # 6 fixes; crash confirms after elapsed >= crashConfirmWindowSec (2 s).
+    if [ $i -eq 5 ]; then
       for j in 1 2 3 4 5 6; do
         lat=$(python3 -c "print(${lat} + 0.0000045)")
         xcrun simctl location "${udid}" set "${lat},${lon}" 2>/dev/null || true
         sleep 0.5
       done
-      # Reset loop for a second trip cycle
       i=0
-      step=0.00027
     fi
   done
 }
