@@ -56,7 +56,6 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         CAPPluginMethod(name: "requestNotificationPermission", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "registerHeadlessTask", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getBackgroundKillReason", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "addGeofences", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "removeGeofences", returnType: CAPPluginReturnPromise),
@@ -492,10 +491,6 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     @objc func getGeofences(_ call: CAPPluginCall) {
         guard let facade = facade else { call.reject("facade not initialized"); return }
         call.resolve(["geofences": facade.getGeofences()])
-    }
-
-    @objc func registerHeadlessTask(_ call: CAPPluginCall) {
-        call.resolve()
     }
 
     @objc func getTripScore(_ call: CAPPluginCall) {

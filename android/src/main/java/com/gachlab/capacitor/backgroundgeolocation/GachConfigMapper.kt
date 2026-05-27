@@ -120,9 +120,6 @@ object GachConfigMapper {
         if (j.has("watchdogIntervalMs") && !j.isNull("watchdogIntervalMs"))
             c.watchdogIntervalMs = j.getLong("watchdogIntervalMs")
         if (j.has("restartOnKill")) c.restartOnKill = j.getBoolean("restartOnKill")
-        if (j.has("headlessTaskTimeoutMs") && !j.isNull("headlessTaskTimeoutMs"))
-            c.headlessTaskTimeoutMs = j.getLong("headlessTaskTimeoutMs")
-
         if (j.has("includeBattery")) c.includeBattery = j.getBoolean("includeBattery")
         if (has(j, "wakeLockMode"))  c.wakeLockMode    = j.getString("wakeLockMode")
 
@@ -191,7 +188,6 @@ object GachConfigMapper {
         json.put("enableWatchdog",             config.enableWatchdog == true)
         json.put("watchdogIntervalMs",         config.watchdogIntervalMs)
         json.put("restartOnKill",              config.restartOnKill ?: true)
-        json.put("headlessTaskTimeoutMs",      config.headlessTaskTimeoutMs)
         json.put("showTime",                   config.showTime == true)
         json.put("showDistance",               config.showDistance == true)
 
@@ -265,7 +261,6 @@ object GachConfigMapper {
         j.put("enableWatchdog",             config.enableWatchdog)
         config.watchdogIntervalMs?.let { j.put("watchdogIntervalMs", it) }
         j.put("restartOnKill",              config.restartOnKill ?: true)
-        config.headlessTaskTimeoutMs?.let { j.put("headlessTaskTimeoutMs", it) }
         j.put("showTime",                   config.showTime)
         j.put("showDistance",               config.showDistance)
         j.put("httpMethod",                 config.httpMethod)

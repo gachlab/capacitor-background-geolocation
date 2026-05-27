@@ -76,7 +76,6 @@ class BGConfig() : Parcelable {
     var enableWatchdog: Boolean?         = null
     var watchdogIntervalMs: Long?        = null
     var restartOnKill: Boolean?          = null  // true = START_STICKY (default); false = START_NOT_STICKY
-    var headlessTaskTimeoutMs: Long?     = null  // WorkManager headless sync interval (ms); default 15 min
 
     // ── Driving events (v4.0+) ────────────────────────────────────────────────
     var drivingEvents: DrivingEventsOptions? = null
@@ -246,7 +245,6 @@ class BGConfig() : Parcelable {
         bundle.putSerializable("httpHeaders", httpHeaders)
         bundle.putSerializable("queryParams", queryParams)
         bundle.putSerializable("template",    template as? java.io.Serializable)
-        headlessTaskTimeoutMs?.let { bundle.putLong("headlessTaskTimeoutMs", it) }
         de?.idleThresholdMs?.let { bundle.putLong("idleThresholdMs", it) }
         de?.idleEndThresholdMs?.let { bundle.putLong("idleEndThresholdMs", it) }
         de?.scoringWeights?.let { sw ->
@@ -413,7 +411,6 @@ class BGConfig() : Parcelable {
             result.stationaryPollFast          = b.stationaryPollFast
             result.activityConfidenceThreshold = b.activityConfidenceThreshold
             result.maxAcceptedAccuracy         = b.maxAcceptedAccuracy
-            result.headlessTaskTimeoutMs       = b.headlessTaskTimeoutMs
             result.prioritySyncEvents          = b.prioritySyncEvents
             result.prioritySyncUrl             = b.prioritySyncUrl
             result.prioritySyncRetries         = b.prioritySyncRetries
@@ -471,7 +468,6 @@ class BGConfig() : Parcelable {
             o.stationaryPollFast?.let          { result.stationaryPollFast          = it }
             o.activityConfidenceThreshold?.let { result.activityConfidenceThreshold = it }
             o.maxAcceptedAccuracy?.let         { result.maxAcceptedAccuracy         = it }
-            o.headlessTaskTimeoutMs?.let       { result.headlessTaskTimeoutMs       = it }
             o.prioritySyncEvents?.let          { result.prioritySyncEvents          = it }
             o.prioritySyncUrl?.let             { result.prioritySyncUrl             = it }
             o.prioritySyncRetries?.let         { result.prioritySyncRetries         = it }
@@ -577,8 +573,6 @@ class BGConfig() : Parcelable {
                     c.queryParams = bundle.getSerializable("queryParams") as? HashMap<String, String>
                     @Suppress("DEPRECATION")
                     c.template    = bundle.getSerializable("template")
-                    val htms = bundle.getLong("headlessTaskTimeoutMs", -1L)
-                    if (htms >= 0) c.headlessTaskTimeoutMs = htms
                     if (c.drivingEvents != null) {
                         val idleMs    = bundle.getLong("idleThresholdMs", -1L)
                         val idleEndMs = bundle.getLong("idleEndThresholdMs", -1L)

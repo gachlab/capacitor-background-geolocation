@@ -291,10 +291,6 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     });
   }
 
-  async headlessTask(): Promise<void> {
-    throw this.unimplemented(NOT_AVAILABLE);
-  }
-
   async addGeofences(_options: { geofences: Geofence[] }): Promise<void> {
     throw this.unimplemented(NOT_AVAILABLE);
   }
