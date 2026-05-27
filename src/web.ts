@@ -20,6 +20,7 @@ import type {
   PermissionRequestResult,
   ServiceStatus,
   StationaryLocation,
+  TripScore,
 } from './definitions';
 import { AuthorizationStatus } from './definitions';
 
@@ -304,6 +305,10 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
 
   async getGeofences(): Promise<{ geofences: Geofence[] }> {
     return { geofences: [] };
+  }
+
+  async getTripScore(): Promise<TripScore | null> {
+    return null;
   }
 
   // ---------------- Config & logs ----------------

@@ -310,6 +310,27 @@ export interface ConfigureOptions {
     phoneUsageWindowMs?: number;
     /** Cooldown (ms) between `phoneUsageWhileDriving` events. */
     phoneUsageCooldownMs?: number;
+    /**
+     * Duration (ms) the vehicle must be stationary during an active trip before
+     * `idleStart` fires. @default 300000 (5 min) @since 1.4.0
+     */
+    idleThresholdMs?: number;
+    /**
+     * Duration (ms) the vehicle must be moving continuously after an idle before
+     * `idleEnd` fires. @default 30000 @since 1.4.0
+     */
+    idleEndThresholdMs?: number;
+    /**
+     * Per-category weights for the driver behavior score.
+     * Values must sum to exactly 100. @since 1.4.0
+     */
+    scoring?: {
+      speedingWeight?: number;
+      hardBrakingWeight?: number;
+      rapidAccelWeight?: number;
+      sharpTurnWeight?: number;
+      phoneUsageWeight?: number;
+    };
   };
   /** Forward-compatible escape hatch for new native options. */
   [extra: string]: unknown;
@@ -541,6 +562,77 @@ export interface GeofenceEvent {
   action: 'ENTER' | 'EXIT' | 'DWELL';
   /** Location fix at the moment of the transition (may be absent). */
   location?: Location;
+}
+
+/**
+ * Per-category score breakdown (0–100 each). @since 1.4.0
+ */
+export interface TripScoreBreakdown {
+  speeding: number;
+  hardBraking: number;
+  rapidAcceleration: number;
+  sharpTurns: number;
+  phoneUsage: number;
+}
+
+/**
+ * A single scored event recorded during a trip. @since 1.4.0
+ */
+export interface TripScoreEvent {
+  /** Category key (e.g. `'speeding'`, `'hardBrake'`). */
+  type: string;
+  /** UTC timestamp (ms) when the event occurred. */
+  timestamp: number;
+  /** Points deducted for this event. */
+  penalty: number;
+  /** Location at the time of the event. */
+  location: { latitude: number; longitude: number };
+}
+
+/**
+ * Driver behaviour score for a completed trip. @since 1.4.0
+ */
+export interface TripScore {
+  /** Overall score (0–100). */
+  overall: number;
+  /** Per-category breakdown. */
+  breakdown: TripScoreBreakdown;
+  /** Individual scored events. */
+  events: TripScoreEvent[];
+  /** Unique trip identifier. */
+  tripId: string;
+  /** UTC ms when the trip started. */
+  startedAt: number;
+  /** UTC ms when the trip ended. */
+  endedAt: number;
+  /** Total trip distance in kilometers. */
+  distanceKm: number;
+  /** Total idle time in milliseconds. */
+  totalIdleMs: number;
+  /** Number of idle episodes during the trip. */
+  idleCount: number;
+}
+
+/**
+ * Payload of the `idleStart` event. @since 1.4.0
+ */
+export interface IdleStartEvent {
+  /** Location at which idling began. */
+  location: Location;
+  /** UTC ms when idling started. */
+  startedAt: number;
+}
+
+/**
+ * Payload of the `idleEnd` event. @since 1.4.0
+ */
+export interface IdleEndEvent {
+  /** Location at which the vehicle resumed moving. */
+  location: Location;
+  /** Total idle duration in milliseconds. */
+  durationMs: number;
+  /** UTC ms when idling started. */
+  startedAt: number;
 }
 
 /**
@@ -960,6 +1052,16 @@ export interface BackgroundGeolocationPlugin {
    */
   getGeofences(): Promise<{ geofences: Geofence[] }>;
 
+  // ---------------- Driver intelligence ----------------
+
+  /**
+   * Return the {@link TripScore} for the most recently completed trip, or `null`
+   * if no trip has ended since the service started.
+   *
+   * @since 1.4.0
+   */
+  getTripScore(): Promise<TripScore | null>;
+
   // ---------------- Lifecycle ----------------
 
   /**
@@ -1102,13 +1204,14 @@ export interface BackgroundGeolocationPlugin {
   addListener(eventName: 'tripStart', listener: (event: Location) => void): Promise<PluginListenerHandle>;
 
   /**
-   * A trip ended (driver insights).
+   * A trip ended (driver insights). Includes a {@link TripScore} when
+   * `drivingEvents.enabled` is `true`.
    *
    * @since 1.0.0
    */
   addListener(
     eventName: 'tripEnd',
-    listener: (event: { location: Location; distance: number; durationMs: number }) => void,
+    listener: (event: { location: Location; distance: number; durationMs: number; score?: TripScore }) => void,
   ): Promise<PluginListenerHandle>;
 
   /**
@@ -1252,6 +1355,21 @@ export interface BackgroundGeolocationPlugin {
    * @since 1.3.0
    */
   addListener(eventName: 'geofenceDwell', listener: (event: GeofenceEvent) => void): Promise<PluginListenerHandle>;
+
+  /**
+   * Vehicle has been stationary during an active trip for at least
+   * `drivingEvents.idleThresholdMs` (default 5 min).
+   *
+   * @since 1.4.0
+   */
+  addListener(eventName: 'idleStart', listener: (event: IdleStartEvent) => void): Promise<PluginListenerHandle>;
+
+  /**
+   * Vehicle resumed continuous movement after an idle episode.
+   *
+   * @since 1.4.0
+   */
+  addListener(eventName: 'idleEnd', listener: (event: IdleEndEvent) => void): Promise<PluginListenerHandle>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1293,6 +1411,8 @@ export enum BackgroundGeolocationEvents {
   geofenceEnter = 'geofenceEnter',
   geofenceExit = 'geofenceExit',
   geofenceDwell = 'geofenceDwell',
+  idleStart = 'idleStart',
+  idleEnd = 'idleEnd',
 }
 
 /** Location error codes. @since 1.0.0 */

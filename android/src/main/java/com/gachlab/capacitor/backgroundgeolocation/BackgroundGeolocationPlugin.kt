@@ -24,6 +24,7 @@ import com.gachlab.geolocation.BGFacade
 import com.gachlab.geolocation.BGGeofence
 import com.gachlab.geolocation.BGLocation
 import com.gachlab.geolocation.ServiceEvent
+import com.gachlab.geolocation.TripScore
 import com.gachlab.geolocation.network.HeadlessWorker
 import org.json.JSONArray
 import java.util.concurrent.TimeUnit
@@ -86,6 +87,16 @@ class BackgroundGeolocationPlugin : Plugin() {
                 put("location",   event.loc.toJSONObjectWithId())
                 put("distance",   event.distanceMeters)
                 put("durationMs", event.durationMs)
+                event.score?.let { put("score", scoreToJS(it)) }
+            })
+            is ServiceEvent.IdleStart         -> notifyListeners("idleStart", JSObject().apply {
+                put("location", event.loc.toJSONObjectWithId())
+                put("startedAt", event.startedAt)
+            })
+            is ServiceEvent.IdleEnd           -> notifyListeners("idleEnd", JSObject().apply {
+                put("location", event.loc.toJSONObjectWithId())
+                put("durationMs", event.durationMs)
+                put("startedAt", event.startedAt)
             })
             is ServiceEvent.Speeding          -> notifyListeners("speeding", JSObject().apply {
                 put("location", event.loc.toJSONObjectWithId())
@@ -461,6 +472,25 @@ class BackgroundGeolocationPlugin : Plugin() {
     @PluginMethod
     override fun removeAllListeners(call: PluginCall) = super.removeAllListeners(call)
 
+    @PluginMethod
+    fun getTripScore(call: PluginCall) {
+        val score = facade.getTripScore()
+        if (score != null) {
+            call.resolve(scoreToJS(score))
+        } else {
+            call.resolve(JSObject().apply {
+                put("overall", 100)
+                put("breakdown", JSObject().apply {
+                    put("speeding", 100); put("hardBraking", 100); put("rapidAcceleration", 100)
+                    put("sharpTurns", 100); put("phoneUsage", 100)
+                })
+                put("events", JSONArray())
+                put("tripId", ""); put("startedAt", 0); put("endedAt", 0)
+                put("distanceKm", 0.0); put("totalIdleMs", 0L); put("idleCount", 0)
+            })
+        }
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private fun BGLocation.toJS(): JSObject = try {
@@ -477,6 +507,36 @@ class BackgroundGeolocationPlugin : Plugin() {
         return arr
     }
 
+    private fun scoreToJS(score: TripScore): JSObject = JSObject().apply {
+        put("overall", score.overall)
+        put("breakdown", JSObject().apply {
+            put("speeding",          score.breakdown.speeding)
+            put("hardBraking",       score.breakdown.hardBraking)
+            put("rapidAcceleration", score.breakdown.rapidAcceleration)
+            put("sharpTurns",        score.breakdown.sharpTurns)
+            put("phoneUsage",        score.breakdown.phoneUsage)
+        })
+        val evArr = JSONArray()
+        score.events.forEach { e ->
+            evArr.put(org.json.JSONObject().apply {
+                put("type",      e.type)
+                put("timestamp", e.timestamp)
+                put("penalty",   e.penalty)
+                put("location",  org.json.JSONObject().apply {
+                    put("latitude",  e.latitude)
+                    put("longitude", e.longitude)
+                })
+            })
+        }
+        put("events",      evArr)
+        put("tripId",      score.tripId)
+        put("startedAt",   score.startedAt)
+        put("endedAt",     score.endedAt)
+        put("distanceKm",  score.distanceKm)
+        put("totalIdleMs", score.totalIdleMs)
+        put("idleCount",   score.idleCount)
+    }
+
     private fun hasPermission(ctx: Context, permission: String): Boolean = try {
         ctx.packageManager.checkPermission(permission, ctx.packageName) == PackageManager.PERMISSION_GRANTED
     } catch (_: Exception) { false }
@@ -490,6 +550,6 @@ class BackgroundGeolocationPlugin : Plugin() {
     }
 
     companion object {
-        private const val PLUGIN_VERSION = "1.1.0"
+        private const val PLUGIN_VERSION = "1.4.0"
     }
 }

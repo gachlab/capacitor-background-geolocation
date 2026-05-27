@@ -130,6 +130,10 @@ class BGConfig() : Parcelable {
         val sensorCrashCooldownMs: Long   = 10_000L,
         val phoneUsageWindowMs: Long      = 4_000L,
         val phoneUsageCooldownMs: Long    = 60_000L,
+        // v1.4 driver intelligence
+        val idleThresholdMs: Long         = 300_000L,
+        val idleEndThresholdMs: Long      = 30_000L,
+        val scoringWeights: ScoringWeights? = null,
     )
 
     // ── toString ──────────────────────────────────────────────────────────────
@@ -233,6 +237,15 @@ class BGConfig() : Parcelable {
         bundle.putSerializable("queryParams", queryParams)
         bundle.putSerializable("template",    template as? java.io.Serializable)
         headlessTaskTimeoutMs?.let { bundle.putLong("headlessTaskTimeoutMs", it) }
+        de?.idleThresholdMs?.let { bundle.putLong("idleThresholdMs", it) }
+        de?.idleEndThresholdMs?.let { bundle.putLong("idleEndThresholdMs", it) }
+        de?.scoringWeights?.let { sw ->
+            bundle.putInt("scoring_speeding",    sw.speeding)
+            bundle.putInt("scoring_hardBraking", sw.hardBraking)
+            bundle.putInt("scoring_rapidAccel",  sw.rapidAccel)
+            bundle.putInt("scoring_sharpTurn",   sw.sharpTurn)
+            bundle.putInt("scoring_phoneUsage",  sw.phoneUsage)
+        }
         dest.writeBundle(bundle)
     }
 
@@ -544,6 +557,22 @@ class BGConfig() : Parcelable {
                     c.template    = bundle.getSerializable("template")
                     val htms = bundle.getLong("headlessTaskTimeoutMs", -1L)
                     if (htms >= 0) c.headlessTaskTimeoutMs = htms
+                    if (c.drivingEvents != null) {
+                        val idleMs    = bundle.getLong("idleThresholdMs", -1L)
+                        val idleEndMs = bundle.getLong("idleEndThresholdMs", -1L)
+                        val hasScoring = bundle.containsKey("scoring_speeding")
+                        c.drivingEvents = c.drivingEvents?.copy(
+                            idleThresholdMs    = if (idleMs    >= 0) idleMs    else 300_000L,
+                            idleEndThresholdMs = if (idleEndMs >= 0) idleEndMs else 30_000L,
+                            scoringWeights     = if (hasScoring) ScoringWeights(
+                                speeding    = bundle.getInt("scoring_speeding",    30),
+                                hardBraking = bundle.getInt("scoring_hardBraking", 25),
+                                rapidAccel  = bundle.getInt("scoring_rapidAccel",  20),
+                                sharpTurn   = bundle.getInt("scoring_sharpTurn",   15),
+                                phoneUsage  = bundle.getInt("scoring_phoneUsage",  10),
+                            ) else null
+                        )
+                    }
                 }
                 return c
             }

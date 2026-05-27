@@ -28,6 +28,8 @@ class BGFacade(private val context: Context) {
     @Volatile var isRunning = false
         private set
 
+    @Volatile private var lastScore: TripScore? = null
+
     private val configDAO   = ConfigDAO(context.applicationContext)
     private val locationDAO = LocationDAO(context.applicationContext)
     private val sessionDAO  = SessionDAO(context.applicationContext)
@@ -124,6 +126,10 @@ class BGFacade(private val context: Context) {
     fun switchMode(mode: Int)          = startedService()?.switchMode(mode)
     fun triggerSOS(locationId: Long?)  = startedService()?.triggerSOS(locationId)
 
+    // ── Driver intelligence ───────────────────────────────────────────────────
+
+    fun getTripScore(): TripScore? = lastScore
+
     // ── Geofencing ────────────────────────────────────────────────────────────
 
     fun addGeofences(geofences: List<BGGeofence>) =
@@ -149,6 +155,7 @@ class BGFacade(private val context: Context) {
         when (event) {
             is ServiceEvent.ServiceStarted -> isRunning = true
             is ServiceEvent.ServiceStopped -> isRunning = false
+            is ServiceEvent.TripEnd        -> lastScore = event.score
             else -> Unit
         }
         // Satisfy any pending getCurrentLocation() call.
