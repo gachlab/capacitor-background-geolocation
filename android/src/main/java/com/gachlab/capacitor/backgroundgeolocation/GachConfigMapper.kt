@@ -139,6 +139,18 @@ object GachConfigMapper {
 
         if (has(j, "drivingEvents")) c.drivingEvents = drivingEventsFromJSON(j.getJSONObject("drivingEvents"))
 
+        if (j.has("prioritySyncEvents") && !j.isNull("prioritySyncEvents")) {
+            val arr = j.getJSONArray("prioritySyncEvents")
+            c.prioritySyncEvents = (0 until arr.length()).map { arr.getString(it) }
+        }
+        if (has(j, "prioritySyncUrl"))     c.prioritySyncUrl    = j.getString("prioritySyncUrl")
+        if (j.has("prioritySyncRetries") && !j.isNull("prioritySyncRetries"))
+            c.prioritySyncRetries = j.getInt("prioritySyncRetries")
+        if (j.has("prioritySyncRetryDelays") && !j.isNull("prioritySyncRetryDelays")) {
+            val arr = j.getJSONArray("prioritySyncRetryDelays")
+            c.prioritySyncRetryDelays = (0 until arr.length()).map { arr.getLong(it) }
+        }
+
         return c
     }
 
@@ -200,6 +212,11 @@ object GachConfigMapper {
         json.put("mockLocationPolicy", config.mockLocationPolicy ?: BGConfig.DEFAULT_MOCK_LOCATION_POLICY)
 
         config.drivingEvents?.let { json.put("drivingEvents", drivingEventsToJSON(it)) }
+
+        config.prioritySyncEvents?.let { json.put("prioritySyncEvents", JSONArray(it)) }
+        config.prioritySyncUrl?.let    { json.put("prioritySyncUrl", it) }
+        config.prioritySyncRetries?.let { json.put("prioritySyncRetries", it) }
+        config.prioritySyncRetryDelays?.let { json.put("prioritySyncRetryDelays", JSONArray(it)) }
 
         json.put("includeBattery",             config.includeBattery ?: true)
         json.put("wakeLockMode",               config.wakeLockMode ?: BGConfig.DEFAULT_WAKE_LOCK_MODE)
@@ -267,6 +284,10 @@ object GachConfigMapper {
         config.httpHeaders?.let { j.put("httpHeaders", JSONObject(it)) }
         config.queryParams?.let { j.put("queryParams", JSONObject(it)) }
         config.drivingEvents?.let { j.put("drivingEvents", drivingEventsToJSON(it)) }
+        config.prioritySyncEvents?.let { j.put("prioritySyncEvents", JSONArray(it)) }
+        config.prioritySyncUrl?.let    { j.put("prioritySyncUrl", it) }
+        config.prioritySyncRetries?.let { j.put("prioritySyncRetries", it) }
+        config.prioritySyncRetryDelays?.let { j.put("prioritySyncRetryDelays", JSONArray(it)) }
         return j
     }
 

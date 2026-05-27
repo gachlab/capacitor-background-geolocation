@@ -31,4 +31,7 @@ public extension Notification.Name {
     static let BGGeofenceExit              = Notification.Name("BGGeofenceExit")
     static let BGGeofenceDwell             = Notification.Name("BGGeofenceDwell")
     static let BGGeofenceError             = Notification.Name("BGGeofenceError")
+    // Priority sync result events — userInfo: ["eventType": String, "attemptNumber": Int] / ["eventType": String, "httpStatus": Int, "attempts": Int]
+    static let BGPrioritySyncSuccess       = Notification.Name("BGPrioritySyncSuccess")
+    static let BGPrioritySyncFailed        = Notification.Name("BGPrioritySyncFailed")
 }

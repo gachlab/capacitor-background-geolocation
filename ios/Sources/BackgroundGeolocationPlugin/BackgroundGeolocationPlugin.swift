@@ -65,7 +65,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         CAPPluginMethod(name: "getTripScore", returnType: CAPPluginReturnPromise)
     ]
 
-    private static let pluginVersion = "1.0.0"
+    private static let pluginVersion = "1.5.0"
 
     private var facade: BGFacade?
     private var currentConfig: BGConfig?
@@ -74,6 +74,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     private let drivingDetector = DrivingEventsDetector()
     private var lastBGLocation: BGLocation?
     private var lastTripScore: TripScore?
+    private var prioritySyncManager: PrioritySyncManager?
 
     override public func load() {
         let f = BGFacade()
@@ -110,6 +111,9 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         nc.addObserver(self, selector: #selector(onGeofenceN(_:)), name: .BGGeofenceEnter, object: nil)
         nc.addObserver(self, selector: #selector(onGeofenceN(_:)), name: .BGGeofenceExit,  object: nil)
         nc.addObserver(self, selector: #selector(onGeofenceN(_:)), name: .BGGeofenceDwell, object: nil)
+
+        nc.addObserver(self, selector: #selector(onPrioritySyncSuccessN(_:)), name: .BGPrioritySyncSuccess, object: nil)
+        nc.addObserver(self, selector: #selector(onPrioritySyncFailedN(_:)),  name: .BGPrioritySyncFailed,  object: nil)
     }
 
     deinit {
@@ -136,6 +140,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         let cfg = BGConfig.from(dictionary: opts)
         currentConfig = cfg
         configureDrivingDetector(from: opts)
+        prioritySyncManager = PrioritySyncManager(config: cfg)
         do {
             try facade.configure(cfg)
             call.resolve()
@@ -763,9 +768,20 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         } else {
             p["location"] = NSNull()
         }
-        p["speedKmh"] = (note.userInfo?["speedKmh"] as? NSNumber)?.doubleValue ?? 0
-        p["limitKmh"] = (note.userInfo?["limitKmh"] as? NSNumber)?.doubleValue ?? 0
+        let speedKmh = (note.userInfo?["speedKmh"] as? NSNumber)?.doubleValue ?? 0
+        let limitKmh = (note.userInfo?["limitKmh"] as? NSNumber)?.doubleValue ?? 0
+        p["speedKmh"] = speedKmh
+        p["limitKmh"] = limitKmh
         notifyListeners("speeding", data: p)
+
+        let allowed = currentConfig?.prioritySyncEvents ?? PrioritySyncManager.defaultEvents
+        if allowed.contains("speeding"), let loc = note.userInfo?["location"] as? BGLocation {
+            prioritySyncManager?.submit(eventType: "speeding", payload: [
+                "type": "speeding", "timestamp": Int64(loc.time),
+                "location": ["latitude": loc.latitude, "longitude": loc.longitude],
+                "speedKmh": speedKmh, "limitKmh": limitKmh, "source": "gps"
+            ])
+        }
     }
 
     @objc private func onProviderChangeN(_ note: Notification) {
@@ -784,6 +800,15 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
             p["location"] = NSNull()
         }
         notifyListeners("sos", data: p)
+
+        let allowed = currentConfig?.prioritySyncEvents ?? PrioritySyncManager.defaultEvents
+        if allowed.contains("sos") {
+            var payload: [String: Any] = ["type": "sos", "timestamp": Int64(Date().timeIntervalSince1970 * 1000)]
+            if let loc = note.userInfo?["location"] as? BGLocation {
+                payload["location"] = ["latitude": loc.latitude, "longitude": loc.longitude]
+            }
+            prioritySyncManager?.submit(eventType: "sos", payload: payload)
+        }
     }
 
     private func emitDrivingEvent(_ name: String, note: Notification) {
@@ -796,12 +821,34 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         p["value"] = (note.userInfo?["value"] as? NSNumber)?.doubleValue ?? 0
         if let source = note.userInfo?["source"] as? String { p["source"] = source }
         notifyListeners(name, data: p)
+
+        let allowed = currentConfig?.prioritySyncEvents ?? PrioritySyncManager.defaultEvents
+        guard allowed.contains(name), let loc = note.userInfo?["location"] as? BGLocation else { return }
+        prioritySyncManager?.submit(eventType: name, payload: [
+            "type": name,
+            "timestamp": Int64(loc.time),
+            "location": ["latitude": loc.latitude, "longitude": loc.longitude],
+            "source": (note.userInfo?["source"] as? String) ?? "gps"
+        ])
     }
 
     @objc private func onHardBrakeN(_ note: Notification)         { emitDrivingEvent("hardBrake",         note: note) }
     @objc private func onRapidAccelerationN(_ note: Notification) { emitDrivingEvent("rapidAcceleration", note: note) }
     @objc private func onSharpTurnN(_ note: Notification)         { emitDrivingEvent("sharpTurn",         note: note) }
     @objc private func onPossibleCrashN(_ note: Notification)     { emitDrivingEvent("possibleCrash",     note: note) }
+
+    @objc private func onPrioritySyncSuccessN(_ note: Notification) {
+        let eventType = (note.userInfo?["eventType"] as? String) ?? ""
+        let attempt   = (note.userInfo?["attemptNumber"] as? Int) ?? 1
+        notifyListeners("prioritySyncSuccess", data: ["eventType": eventType, "attemptNumber": attempt])
+    }
+
+    @objc private func onPrioritySyncFailedN(_ note: Notification) {
+        let eventType  = (note.userInfo?["eventType"] as? String) ?? ""
+        let httpStatus = (note.userInfo?["httpStatus"] as? Int) ?? -1
+        let attempts   = (note.userInfo?["attempts"]   as? Int) ?? 1
+        notifyListeners("prioritySyncFailed", data: ["eventType": eventType, "httpStatus": httpStatus, "attempts": attempts])
+    }
 
     @objc private func onPhoneUsageWhileDrivingN(_ note: Notification) {
         if let loc = note.userInfo?["location"] as? BGLocation {

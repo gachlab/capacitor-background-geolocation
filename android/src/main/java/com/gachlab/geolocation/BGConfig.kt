@@ -81,6 +81,16 @@ class BGConfig() : Parcelable {
     // ── Driving events (v4.0+) ────────────────────────────────────────────────
     var drivingEvents: DrivingEventsOptions? = null
 
+    // ── Priority sync (v1.5+) ─────────────────────────────────────────────────
+    /** Events that trigger an immediate POST (default: `["possibleCrash","sos"]`). */
+    var prioritySyncEvents: List<String>?    = null
+    /** Override endpoint for priority events; falls back to [url]. */
+    var prioritySyncUrl: String?             = null
+    /** Max retry attempts on HTTP failure (default: 3). */
+    var prioritySyncRetries: Int?            = null
+    /** Milliseconds between retries (default: [10000, 30000, 60000]). */
+    var prioritySyncRetryDelays: List<Long>? = null
+
     // ── Battery / wake-lock (v4.4+) ───────────────────────────────────────────
     var includeBattery: Boolean? = null
     var wakeLockMode: String?    = null
@@ -246,6 +256,10 @@ class BGConfig() : Parcelable {
             bundle.putInt("scoring_sharpTurn",   sw.sharpTurn)
             bundle.putInt("scoring_phoneUsage",  sw.phoneUsage)
         }
+        prioritySyncEvents?.let { bundle.putStringArrayList("prioritySyncEvents", ArrayList(it)) }
+        prioritySyncUrl?.let { bundle.putString("prioritySyncUrl", it) }
+        prioritySyncRetries?.let { bundle.putInt("prioritySyncRetries", it) }
+        prioritySyncRetryDelays?.let { bundle.putLongArray("prioritySyncRetryDelays", it.toLongArray()) }
         dest.writeBundle(bundle)
     }
 
@@ -400,6 +414,10 @@ class BGConfig() : Parcelable {
             result.activityConfidenceThreshold = b.activityConfidenceThreshold
             result.maxAcceptedAccuracy         = b.maxAcceptedAccuracy
             result.headlessTaskTimeoutMs       = b.headlessTaskTimeoutMs
+            result.prioritySyncEvents          = b.prioritySyncEvents
+            result.prioritySyncUrl             = b.prioritySyncUrl
+            result.prioritySyncRetries         = b.prioritySyncRetries
+            result.prioritySyncRetryDelays     = b.prioritySyncRetryDelays
 
             // Apply override
             val o = override ?: return result
@@ -454,6 +472,10 @@ class BGConfig() : Parcelable {
             o.activityConfidenceThreshold?.let { result.activityConfidenceThreshold = it }
             o.maxAcceptedAccuracy?.let         { result.maxAcceptedAccuracy         = it }
             o.headlessTaskTimeoutMs?.let       { result.headlessTaskTimeoutMs       = it }
+            o.prioritySyncEvents?.let          { result.prioritySyncEvents          = it }
+            o.prioritySyncUrl?.let             { result.prioritySyncUrl             = it }
+            o.prioritySyncRetries?.let         { result.prioritySyncRetries         = it }
+            o.prioritySyncRetryDelays?.let     { result.prioritySyncRetryDelays     = it }
 
             return result
         }
@@ -572,6 +594,13 @@ class BGConfig() : Parcelable {
                                 phoneUsage  = bundle.getInt("scoring_phoneUsage",  10),
                             ) else null
                         )
+                    }
+                    c.prioritySyncEvents = bundle.getStringArrayList("prioritySyncEvents")
+                    bundle.getString("prioritySyncUrl")?.let { c.prioritySyncUrl = it }
+                    val psRetries = bundle.getInt("prioritySyncRetries", -1)
+                    if (psRetries >= 0) c.prioritySyncRetries = psRetries
+                    bundle.getLongArray("prioritySyncRetryDelays")?.let {
+                        c.prioritySyncRetryDelays = it.toList()
                     }
                 }
                 return c

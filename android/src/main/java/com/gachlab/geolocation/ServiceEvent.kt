@@ -52,6 +52,10 @@ sealed class ServiceEvent {
     object AbortRequested : ServiceEvent()
     object HttpAuthorization : ServiceEvent()
 
+    // ── Priority sync events ──────────────────────────────────────────────────
+    data class PrioritySyncSuccess(val eventType: String, val attemptNumber: Int) : ServiceEvent()
+    data class PrioritySyncFailed(val eventType: String, val httpStatus: Int, val attempts: Int) : ServiceEvent()
+
     companion object {
         const val REASON_WATCHDOG    = "watchdog"
         const val REASON_SYSTEM_KILL = "system_kill"
