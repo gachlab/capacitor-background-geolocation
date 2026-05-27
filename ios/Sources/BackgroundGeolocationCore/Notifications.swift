@@ -21,4 +21,6 @@ public extension Notification.Name {
     static let BGSharpTurn                 = Notification.Name("BGSharpTurn")
     static let BGPossibleCrash             = Notification.Name("BGPossibleCrash")
     static let BGPhoneUsageWhileDriving    = Notification.Name("BGPhoneUsageWhileDriving")
+    /** Fired when the iOS location provider switches to a background fallback strategy. */
+    static let BGFallbackActivated         = Notification.Name("BGFallbackActivated")
 }

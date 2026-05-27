@@ -28,6 +28,16 @@ public final class BGConfig: NSObject, NSCopying {
     public var stopOnTerminate:         Bool?
     public var saveBatteryOnBackground: Bool?
     public var maxLocations:            Int?
+    /**
+     * iOS-only background survival fallback strategy.
+     * - `"significantChanges"` (default when saveBatteryOnBackground=true): uses
+     *   `startMonitoringSignificantLocationChanges()` which survives app kill.
+     * - `"regionMonitoring"`: uses `startMonitoring(for:)` on a geofence around
+     *   the last known position to wake the app when the user moves significantly.
+     * - `"none"`: no fallback; rely on `startOnBoot` / BootReceiver equivalents.
+     * Fires a `iosFallbackActivated` plugin event when the fallback activates.
+     */
+    public var iosBackgroundFallback:   String?
 
     // MARK: – HTTP sync
     public var url:            String?
@@ -129,6 +139,7 @@ public final class BGConfig: NSObject, NSCopying {
         setBool(\.includeBattery, "includeBattery")
         if let v = d["postTemplate"]  { c.template = v }
         else if let v = d["bodyTemplate"] { c.template = v }
+        if let v = (d["iosBackgroundFallback"] as? String)?.lowercased() { c.iosBackgroundFallback = v }
         return c
     }
 
@@ -149,6 +160,7 @@ public final class BGConfig: NSObject, NSCopying {
         apply(\.httpMode); apply(\.syncMode); apply(\.queryParams)
         apply(\.debug); apply(\.heartbeatInterval); apply(\.mockLocationPolicy)
         apply(\.drivingEvents); apply(\.includeBattery); apply(\.template)
+        apply(\.iosBackgroundFallback)
         return m
     }
 
@@ -233,6 +245,7 @@ public final class BGConfig: NSObject, NSCopying {
         if let v = maxLocations      { d["maxLocations"]      = v }
         if let v = pauseLocationUpdates { d["pauseLocationUpdates"] = v }
         if let v = locationProvider  { d["locationProvider"]  = v }
+        if let v = iosBackgroundFallback { d["iosBackgroundFallback"] = v }
         d["postTemplate"] = resolvedTemplate
         return d
     }
@@ -270,6 +283,7 @@ public final class BGConfig: NSObject, NSCopying {
         c.drivingEvents             = drivingEvents
         c.includeBattery            = includeBattery
         c.template                  = template
+        c.iosBackgroundFallback     = iosBackgroundFallback
         return c
     }
 }

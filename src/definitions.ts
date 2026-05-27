@@ -174,6 +174,28 @@ export interface ConfigureOptions {
    * Android only. @default true
    */
   restartOnKill?: boolean;
+  /**
+   * Periodic interval (ms) for the WorkManager headless sync job registered by
+   * `registerHeadlessTask()`. WorkManager enforces a minimum of 15 minutes.
+   * Android only. @default 900000 (15 min)
+   * @since 1.2.0
+   */
+  headlessTaskTimeoutMs?: number;
+  /**
+   * iOS-only background survival strategy activated when the app enters the background
+   * and `saveBatteryOnBackground` is `true`.
+   *
+   * - `'significantChanges'` (default): calls
+   *   `startMonitoringSignificantLocationChanges()` — survives app kill, low battery
+   *   drain, ~500 m accuracy.
+   * - `'regionMonitoring'`: sets a geofence around the last known position so iOS
+   *   wakes the app when the user moves out of the region.
+   * - `'none'`: no fallback — rely on push-to-restart or `startOnBoot` equivalents.
+   *
+   * Emits `iosFallbackActivated` when the fallback mode activates.
+   * iOS only. @since 1.2.0
+   */
+  iosBackgroundFallback?: 'significantChanges' | 'regionMonitoring' | 'none';
   /** Show local notifications during tracking/sync. Android. @default true */
   notificationsEnabled?: boolean;
   /** Run the sync service in foreground (Android requires a notification). @default false */
@@ -484,6 +506,14 @@ export interface ServiceRestartedEvent {
    * - `'app_removed'` — user removed the task from recents; service survived (`stopOnTerminate: false`).
    */
   reason: 'watchdog' | 'system_kill' | 'boot' | 'app_removed';
+}
+
+/**
+ * Payload of the `iosFallbackActivated` event. @since 1.2.0
+ */
+export interface IosFallbackActivatedEvent {
+  /** Which fallback strategy was activated. */
+  strategy: 'significantchanges' | 'regionmonitoring';
 }
 
 /** iOS background task handle returned by {@link BackgroundGeolocationPlugin.startTask}. @since 1.0.0 */
@@ -1113,6 +1143,20 @@ export interface BackgroundGeolocationPlugin {
     eventName: 'serviceRestarted',
     listener: (event: ServiceRestartedEvent) => void,
   ): Promise<PluginListenerHandle>;
+
+  /**
+   * iOS only. Fired when the location provider switches to a background fallback
+   * strategy (significant-location changes or region monitoring). Useful to inform
+   * the UI that accuracy has been reduced to save battery.
+   *
+   * `strategy` is `'significantchanges'` or `'regionmonitoring'`.
+   *
+   * @since 1.2.0
+   */
+  addListener(
+    eventName: 'iosFallbackActivated',
+    listener: (event: IosFallbackActivatedEvent) => void,
+  ): Promise<PluginListenerHandle>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1150,6 +1194,7 @@ export enum BackgroundGeolocationEvents {
   possibleCrash = 'possibleCrash',
   phoneUsageWhileDriving = 'phoneUsageWhileDriving',
   serviceRestarted = 'serviceRestarted',
+  iosFallbackActivated = 'iosFallbackActivated',
 }
 
 /** Location error codes. @since 1.0.0 */
