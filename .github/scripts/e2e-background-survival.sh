@@ -36,12 +36,21 @@ adb shell pm grant "$PACKAGE" android.permission.ACCESS_BACKGROUND_LOCATION
 
 # ── launch + configure ────────────────────────────────────────────────────────
 
+adb logcat -c  # clear buffer so the readiness check below only sees this session
 echo "→ Launching app"
 adb shell am start -n "${PACKAGE}/${ACTIVITY}"
-# Wait for WebView to fully render before tapping.
-sleep 6
+# Wait for Capacitor WebView to finish registering all event listeners.
+# On CI (swiftshader emulator) this takes ~60 s; polling is more reliable than a
+# fixed sleep. We check for "phoneUsageWhileDriving" which is the LAST addListener
+# call in main.js — once it appears the onclick handlers are wired up.
+echo "→ Waiting for WebView ready…"
+for i in $(seq 1 90); do
+  adb logcat -d 2>/dev/null | grep -q "phoneUsageWhileDriving" && break
+  sleep 2
+done
+sleep 2  # brief settle after last listener registers
 
-# Dismiss any permission/system dialog that might appear on first launch.
+# Dismiss any system dialog (location / notification) that may still be visible.
 adb shell input keyevent KEYCODE_BACK || true
 sleep 1
 
