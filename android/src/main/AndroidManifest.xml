@@ -52,6 +52,12 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Receives geofence transition intents from Google Play Services. -->
+        <receiver
+            android:name="com.gachlab.geolocation.GeofenceBroadcastReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
         <!-- Restart the service after device reboot when startOnBoot is enabled. -->
         <receiver
             android:name="com.gachlab.geolocation.BootReceiver"

@@ -495,6 +495,55 @@ export interface HeadlessTaskEvent {
 }
 
 /**
+ * A user-defined geofence region for entry/exit/dwell detection.
+ *
+ * - **Android**: backed by Google Play Services `GeofencingClient`. Up to 100 simultaneous geofences.
+ * - **iOS**: backed by `CLLocationManager.startMonitoring(for:)`. Up to ~19 user-defined geofences
+ *   (one slot is used by the internal stationary region). Dwell detection uses a per-region Timer,
+ *   which requires the app to be foreground or background-active.
+ *
+ * @since 1.3.0
+ */
+export interface Geofence {
+  /** Unique identifier for this geofence. */
+  id: string;
+  /** Center latitude. */
+  latitude: number;
+  /** Center longitude. */
+  longitude: number;
+  /** Radius in meters. @default 200 */
+  radius?: number;
+  /** Emit `geofenceEnter` when the device enters the region. @default true */
+  notifyOnEntry?: boolean;
+  /** Emit `geofenceExit` when the device exits the region. @default false */
+  notifyOnExit?: boolean;
+  /**
+   * Emit `geofenceDwell` after the device has been inside the region for
+   * `loiteringDelay` milliseconds without exiting.
+   * @default false
+   */
+  notifyOnDwell?: boolean;
+  /**
+   * Dwell threshold in milliseconds. Android uses the native GMS loitering
+   * delay; iOS uses a Timer (app must be active).
+   * @default 30000
+   */
+  loiteringDelay?: number;
+}
+
+/**
+ * Payload emitted by `geofenceEnter`, `geofenceExit`, and `geofenceDwell`. @since 1.3.0
+ */
+export interface GeofenceEvent {
+  /** Identifier of the geofence that triggered the event. */
+  id: string;
+  /** Transition type. */
+  action: 'ENTER' | 'EXIT' | 'DWELL';
+  /** Location fix at the moment of the transition (may be absent). */
+  location?: Location;
+}
+
+/**
  * Payload of the `serviceRestarted` event. @since 1.1.0
  */
 export interface ServiceRestartedEvent {
@@ -886,6 +935,31 @@ export interface BackgroundGeolocationPlugin {
    */
   headlessTask(task: (event: HeadlessTaskEvent) => unknown): Promise<void>;
 
+  // ---------------- Geofencing ----------------
+
+  /**
+   * Register one or more geofences. Existing geofences with the same `id` are replaced.
+   * Geofences are persisted and survive app restarts. Android GMS clears geofences on
+   * device reboot or app update — they are automatically re-registered on next startup.
+   *
+   * @since 1.3.0
+   */
+  addGeofences(options: { geofences: Geofence[] }): Promise<void>;
+
+  /**
+   * Remove geofences by id. If `ids` is omitted, **all** geofences are removed.
+   *
+   * @since 1.3.0
+   */
+  removeGeofences(options?: { ids?: string[] }): Promise<void>;
+
+  /**
+   * Return the current list of registered geofences.
+   *
+   * @since 1.3.0
+   */
+  getGeofences(): Promise<{ geofences: Geofence[] }>;
+
   // ---------------- Lifecycle ----------------
 
   /**
@@ -1157,6 +1231,27 @@ export interface BackgroundGeolocationPlugin {
     eventName: 'iosFallbackActivated',
     listener: (event: IosFallbackActivatedEvent) => void,
   ): Promise<PluginListenerHandle>;
+
+  /**
+   * Device entered a registered geofence.
+   *
+   * @since 1.3.0
+   */
+  addListener(eventName: 'geofenceEnter', listener: (event: GeofenceEvent) => void): Promise<PluginListenerHandle>;
+
+  /**
+   * Device exited a registered geofence.
+   *
+   * @since 1.3.0
+   */
+  addListener(eventName: 'geofenceExit', listener: (event: GeofenceEvent) => void): Promise<PluginListenerHandle>;
+
+  /**
+   * Device has been inside a geofence for `loiteringDelay` milliseconds.
+   *
+   * @since 1.3.0
+   */
+  addListener(eventName: 'geofenceDwell', listener: (event: GeofenceEvent) => void): Promise<PluginListenerHandle>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1195,6 +1290,9 @@ export enum BackgroundGeolocationEvents {
   phoneUsageWhileDriving = 'phoneUsageWhileDriving',
   serviceRestarted = 'serviceRestarted',
   iosFallbackActivated = 'iosFallbackActivated',
+  geofenceEnter = 'geofenceEnter',
+  geofenceExit = 'geofenceExit',
+  geofenceDwell = 'geofenceDwell',
 }
 
 /** Location error codes. @since 1.0.0 */
