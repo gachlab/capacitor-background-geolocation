@@ -13,10 +13,11 @@ core (a fork of [`mauron85/cordova-plugin-background-geolocation`](https://githu
 ported to the Capacitor bridge with a Promise-based API and `addListener`
 events.
 
-v1.0.0 brings full TypeScript-API parity with the Cordova source plugin:
-**40 methods + 28 events**, the full `ConfigureOptions` surface, extended
+Full TypeScript-API parity with the Cordova source plugin:
+**40+ methods · 32 events**, the full `ConfigureOptions` surface, extended
 `Diagnostics`, OEM helpers, sync/session queue management, driver-insight
-events, and `@awesome-cordova-plugins`-style compatibility enums.
+events, idle detection, trip scoring (v1.4.0), and priority sync for
+safety-critical events (v1.5.0).
 
 ## Install
 
@@ -193,6 +194,12 @@ sub.remove();
 | `triggerSOS(payload?)` | Emit an `sos` event with the latest known location. |
 | `headlessTask(fn)` | Android: register a JS callback that runs even when the activity has been killed. iOS no-op. |
 
+### Driver intelligence
+
+| Method | Description |
+| --- | --- |
+| `getTripScore()` | Returns the `TripScore` for the most recently completed trip, or `null` if no trip has ended yet. @since 1.4.0 |
+
 ### Config & logs
 
 | Method | Description |
@@ -241,6 +248,15 @@ detaches a single listener.
 | `sharpTurn` | `{ location, value }` | GPS-derived sharp turn. |
 | `possibleCrash` | `{ location, value, source }` | Heuristic crash detection. |
 | `phoneUsageWhileDriving` | `{ location? }` | Sustained phone interaction during a trip. |
+| `idleStart` | `IdleStartEvent` | Vehicle stationary for `idleThresholdMs` during an active trip. @since 1.4.0 |
+| `idleEnd` | `IdleEndEvent` | Vehicle resumed movement after an idle episode. @since 1.4.0 |
+| `serviceRestarted` | `ServiceRestartedEvent` | Android service restarted by watchdog, OS kill, or boot. @since 1.1.0 |
+| `iosFallbackActivated` | `IosFallbackActivatedEvent` | iOS background fallback strategy activated. @since 1.2.0 |
+| `geofenceEnter` | `GeofenceEvent` | Device entered a registered geofence. @since 1.3.0 |
+| `geofenceExit` | `GeofenceEvent` | Device exited a registered geofence. @since 1.3.0 |
+| `geofenceDwell` | `GeofenceEvent` | Device has been inside a geofence for `loiteringDelay` ms. @since 1.3.0 |
+| `prioritySyncSuccess` | `PrioritySyncSuccessEvent` | Priority POST delivered; carries `eventType` and `attemptNumber`. @since 1.5.0 |
+| `prioritySyncFailed` | `PrioritySyncFailedEvent` | Priority POST exhausted retries; carries `eventType`, `httpStatus`, and `attempts`. @since 1.5.0 |
 
 ## Headless task (Android)
 
@@ -305,27 +321,100 @@ GPS-derived driver-insight pipeline. The native core then emits:
   user before notifying anyone** — false positives are possible.
 - `phoneUsageWhileDriving` — only when `drivingEvents.sensorFusion: true`,
   via accelerometer + gyroscope jitter.
+- `idleStart`, `idleEnd` — vehicle stationary for ≥ `idleThresholdMs` (default 5 min)
+  during an active trip; `idleEnd` carries `durationMs`. @since 1.4.0
 
 ```ts
 await BackgroundGeolocation.configure({
   // ...tracking options
   drivingEvents: {
     enabled: true,
-    speedLimit: 90,          // km/h, 0 to disable
-    minTripSpeed: 3.0,       // m/s
-    minTripDuration: 30000,  // ms
-    sensorFusion: false,     // true → accel/gyro pipeline
+    speedLimit: 90,           // km/h, 0 to disable
+    minTripSpeed: 3.0,        // m/s
+    minTripDuration: 30000,   // ms
+    sensorFusion: false,      // true → accel/gyro pipeline
+    idleThresholdMs: 300000,  // ms of stillness to emit idleStart (default 5 min)
+    idleEndThresholdMs: 30000, // ms of movement to confirm idleEnd (default 30 s)
   },
 });
 
-BackgroundGeolocation.addListener('tripStart', (loc) => console.log('trip', loc));
-BackgroundGeolocation.addListener('tripEnd', (e) =>
-  console.log('trip end', e.distance, 'm in', e.durationMs, 'ms'),
+BackgroundGeolocation.addListener('tripStart', (loc) => console.log('trip started', loc));
+BackgroundGeolocation.addListener('tripEnd', (e) => {
+  console.log('trip end', e.distance, 'm in', e.durationMs, 'ms');
+  if (e.score) console.log('score', e.score.overall, '/100');
+});
+BackgroundGeolocation.addListener('idleStart', (e) =>
+  console.log('idle since', new Date(e.startedAt)),
+);
+BackgroundGeolocation.addListener('idleEnd', (e) =>
+  console.log('idle ended after', e.durationMs, 'ms'),
 );
 BackgroundGeolocation.addListener('speeding', (e) =>
   console.warn('over limit', e.speedKmh, 'vs', e.limitKmh),
 );
 ```
+
+### Trip scoring @since 1.4.0
+
+When `drivingEvents.enabled: true` and `drivingEvents.scoring` is set, each
+completed trip accumulates a penalty-based score. `tripEnd` includes
+`score?: TripScore`, and `getTripScore()` retrieves the last score on demand.
+
+```ts
+await BackgroundGeolocation.configure({
+  drivingEvents: {
+    enabled: true,
+    scoring: {
+      speeding: 30,       // penalty weight (must sum to 100)
+      hardBraking: 25,
+      rapidAccel: 20,
+      sharpTurn: 15,
+      phoneUsage: 10,
+    },
+  },
+});
+
+BackgroundGeolocation.addListener('tripEnd', async (e) => {
+  const score = e.score ?? await BackgroundGeolocation.getTripScore();
+  if (score) {
+    console.log('overall', score.overall, '/100');
+    console.log('distance', score.distanceKm, 'km');
+    console.log('idle episodes', score.idleCount, 'total', score.totalIdleMs, 'ms');
+  }
+});
+```
+
+## Priority sync @since 1.5.0
+
+Safety-critical events (`possibleCrash`, `sos` by default) are delivered
+immediately via a dedicated HTTP POST that bypasses the regular sync queue.
+The channel retries automatically on failure and queues events offline until
+connectivity is restored.
+
+```ts
+await BackgroundGeolocation.configure({
+  url: 'https://api.example.com/locations',
+  // Optional: separate endpoint just for priority events
+  prioritySyncUrl: 'https://api.example.com/priority',
+  // Which events trigger an immediate POST (default: ['possibleCrash', 'sos'])
+  prioritySyncEvents: ['possibleCrash', 'sos', 'hardBrake'],
+  // Max retry attempts before prioritySyncFailed fires (default: 3)
+  prioritySyncRetries: 3,
+  // Milliseconds between retries (default: [10000, 30000, 60000])
+  prioritySyncRetryDelays: [10_000, 30_000, 60_000],
+});
+
+BackgroundGeolocation.addListener('prioritySyncSuccess', (e) => {
+  console.log(`${e.eventType} delivered on attempt ${e.attemptNumber}`);
+});
+BackgroundGeolocation.addListener('prioritySyncFailed', (e) => {
+  console.warn(`${e.eventType} failed after ${e.attempts} attempts (HTTP ${e.httpStatus})`);
+});
+```
+
+The priority channel deduplicates by event timestamp so retries never double-post
+the same event. When there is no network, events are queued in memory and flushed
+as soon as connectivity is restored.
 
 ## Configuration reference
 
@@ -353,7 +442,11 @@ BackgroundGeolocation.addListener('speeding', (e) =>
   `includeBattery`.
 - **Driver insights**: `drivingEvents.{enabled, speedLimit, minTripSpeed,
   hardBrakeMps2, rapidAccelMps2, sharpTurnDegPerSec, crashImpactKmh,
-  sensorFusion, crashImpactG, phoneUsageWindowMs, …}`.
+  sensorFusion, crashImpactG, phoneUsageWindowMs, idleThresholdMs,
+  idleEndThresholdMs, scoring.{speeding, hardBraking, rapidAccel, sharpTurn,
+  phoneUsage}, …}`.
+- **Priority sync** _(v1.5.0)_: `prioritySyncEvents`, `prioritySyncUrl`,
+  `prioritySyncRetries`, `prioritySyncRetryDelays`.
 
 Inspect `src/definitions.ts` (or the generated `.d.ts` in `dist/esm/`)
 for the full annotated list with default values and JSDoc.
