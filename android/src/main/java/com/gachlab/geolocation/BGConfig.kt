@@ -139,6 +139,8 @@ class BGConfig() : Parcelable {
         val sensorCrashCooldownMs: Long   = 10_000L,
         val phoneUsageWindowMs: Long      = 4_000L,
         val phoneUsageCooldownMs: Long    = 60_000L,
+        // v1.6 crash confirmation window
+        val crashConfirmWindowMs: Long    = 0L,
         // v1.4 driver intelligence
         val idleThresholdMs: Long         = 300_000L,
         val idleEndThresholdMs: Long      = 30_000L,
@@ -245,6 +247,7 @@ class BGConfig() : Parcelable {
         bundle.putSerializable("httpHeaders", httpHeaders)
         bundle.putSerializable("queryParams", queryParams)
         bundle.putSerializable("template",    template as? java.io.Serializable)
+        de?.crashConfirmWindowMs?.let { bundle.putLong("crashConfirmWindowMs", it) }
         de?.idleThresholdMs?.let { bundle.putLong("idleThresholdMs", it) }
         de?.idleEndThresholdMs?.let { bundle.putLong("idleEndThresholdMs", it) }
         de?.scoringWeights?.let { sw ->
@@ -577,7 +580,9 @@ class BGConfig() : Parcelable {
                         val idleMs    = bundle.getLong("idleThresholdMs", -1L)
                         val idleEndMs = bundle.getLong("idleEndThresholdMs", -1L)
                         val hasScoring = bundle.containsKey("scoring_speeding")
-                        c.drivingEvents = c.drivingEvents?.copy(
+                        val confirmMs = bundle.getLong("crashConfirmWindowMs", -1L)
+                    c.drivingEvents = c.drivingEvents?.copy(
+                            crashConfirmWindowMs = if (confirmMs >= 0) confirmMs else 0L,
                             idleThresholdMs    = if (idleMs    >= 0) idleMs    else 300_000L,
                             idleEndThresholdMs = if (idleEndMs >= 0) idleEndMs else 30_000L,
                             scoringWeights     = if (hasScoring) ScoringWeights(

@@ -166,6 +166,10 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         if let v = (de["sharpTurnDegPerSec"] as? NSNumber)?.doubleValue { drivingDetector.sharpTurnDegPerSec = v }
         if let v = (de["crashImpactKmh"]     as? NSNumber)?.doubleValue { drivingDetector.crashImpactKmh     = v }
         if let v = (de["crashWindowSec"]     as? NSNumber)?.doubleValue { drivingDetector.crashWindowSec     = v }
+        if let v = (de["crashConfirmWindowMs"] as? NSNumber)?.doubleValue { drivingDetector.crashConfirmWindowSec = v / 1000.0 }
+        if let v = de["sensorFusion"]        as? Bool                    { drivingDetector.sensorFusion          = v }
+        if let v = (de["phoneUsageWindowMs"]  as? NSNumber)?.doubleValue { drivingDetector.phoneUsageWindowSec   = v / 1000.0 }
+        if let v = (de["phoneUsageCooldownMs"] as? NSNumber)?.doubleValue { drivingDetector.phoneUsageCooldownSec = v / 1000.0 }
         // v1.4 idle + scoring
         if let v = (de["idleThresholdMs"]    as? NSNumber)?.doubleValue { drivingDetector.idleThresholdSec    = v / 1000.0 }
         if let v = (de["idleEndThresholdMs"] as? NSNumber)?.doubleValue { drivingDetector.idleEndThresholdSec = v / 1000.0 }
@@ -944,6 +948,10 @@ extension BackgroundGeolocationPlugin {
 
     func detectorOnPossibleCrash(_ location: DLLocation, dropKmh: Double) {
         postSensorNote(.BGPossibleCrash, value: dropKmh)
+    }
+
+    func detectorOnPhoneUsageWhileDriving(_ location: DLLocation) {
+        postDrivingNote(.BGPhoneUsageWhileDriving)
     }
 
     private func postDrivingNote(_ name: Notification.Name) {

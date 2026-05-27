@@ -25,6 +25,7 @@ protocol DrivingEventsDetectorDelegate: AnyObject {
     func detectorOnPossibleCrash(_ location: DLLocation, dropKmh: Double)
     func detectorOnIdleStart(_ location: DLLocation, startedAt: Double)
     func detectorOnIdleEnd(_ location: DLLocation, durationMs: Int64, startedAt: Double)
+    func detectorOnPhoneUsageWhileDriving(_ location: DLLocation)
 }
 
 // Pure-Swift driving-events state machine — exact port of the Java DrivingEventsDetector.
@@ -42,10 +43,14 @@ final class DrivingEventsDetector {
     var hardBrakeMps2       = 3.5
     var rapidAccelMps2      = 3.5
     var sharpTurnDegPerSec  = 30.0
-    var crashImpactKmh       = 25.0
-    var crashWindowSec       = 2.0
-    var idleThresholdSec     = 300.0
-    var idleEndThresholdSec  = 30.0
+    var crashImpactKmh        = 25.0
+    var crashWindowSec        = 2.0
+    var crashConfirmWindowSec = 0.0
+    var sensorFusion          = false
+    var phoneUsageWindowSec   = 4.0
+    var phoneUsageCooldownSec = 60.0
+    var idleThresholdSec      = 300.0
+    var idleEndThresholdSec   = 30.0
     var scoringWeights: ScoringWeights?
 
     weak var delegate: DrivingEventsDetectorDelegate?
@@ -84,6 +89,16 @@ final class DrivingEventsDetector {
     private var idleThresholdFired   = false
     private var postIdleMovingAt     = 0.0
 
+    // Crash confirmation state
+    private var pendingCrashLoc:          DLLocation?
+    private var pendingCrashDropKmh       = 0.0
+    private var pendingCrashDetectedAt    = 0.0
+
+    // Phone usage jitter state
+    private var jitterWindowStart  = 0.0
+    private var jitterCount        = 0
+    private var lastPhoneUsageAt   = 0.0
+
     private static let cooldown = 4.0
 
     // ── Public API ────────────────────────────────────────────────────────────
@@ -109,6 +124,8 @@ final class DrivingEventsDetector {
         lastCrashAt         = 0
         scoreCalc = nil; tripId = ""
         idleStartedAt = 0; idleThresholdFired = false; postIdleMovingAt = 0
+        pendingCrashLoc = nil; pendingCrashDropKmh = 0; pendingCrashDetectedAt = 0
+        jitterWindowStart = 0; jitterCount = 0; lastPhoneUsageAt = 0
     }
 
     func feed(_ location: DLLocation) {
@@ -231,30 +248,65 @@ final class DrivingEventsDetector {
                     let dropKmh = (prevSpeedMps - speed) * 3.6
                     if dropKmh >= crashImpactKmh && speed < 1.5
                         && prevSpeedMps * 3.6 >= crashImpactKmh
-                        && (now - lastCrashAt) >= Self.cooldown {
-                        lastCrashAt = now
-                        delegate?.detectorOnPossibleCrash(location, dropKmh: dropKmh)
+                        && (now - lastCrashAt) >= Self.cooldown
+                        && pendingCrashLoc == nil {
+                        if crashConfirmWindowSec <= 0 {
+                            lastCrashAt = now
+                            delegate?.detectorOnPossibleCrash(location, dropKmh: dropKmh)
+                        } else {
+                            pendingCrashLoc = location
+                            pendingCrashDropKmh = dropKmh
+                            pendingCrashDetectedAt = now
+                        }
                     }
                 }
             }
         }
 
-        // Sharp turn
-        if sharpTurnDegPerSec > 0, let bearing = location.bearing, speed >= 5.0, hasPrevBearing {
-            let dt = now - prevBearingAt
-            if dt > 0 && dt <= 5.0 {
+        // Sharp turn + phone usage (both computed before updating prevBearing)
+        if let bearing = location.bearing {
+            if hasPrevBearing {
                 var diff = abs(bearing - prevBearing)
                 if diff > 180 { diff = 360 - diff }
-                let rate = diff / dt
-                if rate >= sharpTurnDegPerSec && (now - lastSharpTurnAt) >= Self.cooldown {
-                    lastSharpTurnAt = now
-                    scoreCalc?.recordSharpTurn(location, ts: now)
-                    delegate?.detectorOnSharpTurn(location, degPerSec: rate)
+                let bearingDt = now - prevBearingAt
+
+                if sharpTurnDegPerSec > 0 && speed >= 5.0 && bearingDt > 0 && bearingDt <= 5.0 {
+                    let rate = diff / bearingDt
+                    if rate >= sharpTurnDegPerSec && (now - lastSharpTurnAt) >= Self.cooldown {
+                        lastSharpTurnAt = now
+                        scoreCalc?.recordSharpTurn(location, ts: now)
+                        delegate?.detectorOnSharpTurn(location, degPerSec: rate)
+                    }
+                }
+
+                // ── Phone usage (GPS bearing jitter) ──────────────────────────
+                if !sensorFusion && phoneUsageWindowSec > 0 && tripActive
+                        && speed >= 1.39 && speed <= 22.2
+                        && bearingDt > 0 && bearingDt <= 5.0 && diff >= 5.0 && diff <= 25.0 {
+                    if jitterWindowStart == 0 { jitterWindowStart = now }
+                    jitterCount += 1
+                }
+                if jitterWindowStart > 0 && (now - jitterWindowStart) >= phoneUsageWindowSec {
+                    if jitterCount >= 3 && (now - lastPhoneUsageAt) >= phoneUsageCooldownSec {
+                        lastPhoneUsageAt = now
+                        delegate?.detectorOnPhoneUsageWhileDriving(location)
+                    }
+                    jitterWindowStart = 0; jitterCount = 0
                 }
             }
-            prevBearing = bearing; prevBearingAt = now
-        } else if let bearing = location.bearing {
             prevBearing = bearing; prevBearingAt = now; hasPrevBearing = true
+        }
+
+        // ── Pending crash confirmation ─────────────────────────────────────────
+        if let pLoc = pendingCrashLoc {
+            if speed > 2.0 {
+                pendingCrashLoc = nil; pendingCrashDropKmh = 0; pendingCrashDetectedAt = 0
+            } else if (now - pendingCrashDetectedAt) >= crashConfirmWindowSec {
+                lastCrashAt = now
+                pendingCrashLoc = nil
+                delegate?.detectorOnPossibleCrash(pLoc, dropKmh: pendingCrashDropKmh)
+                pendingCrashDropKmh = 0; pendingCrashDetectedAt = 0
+            }
         }
 
         prevSpeedMps = speed; prevSpeedAt = now

@@ -78,7 +78,8 @@ class BackgroundGeolocationPlugin : Plugin() {
             is ServiceEvent.HardBrake         -> notify("hardBrake",          event.loc.toJS())
             is ServiceEvent.RapidAcceleration -> notify("rapidAcceleration",  event.loc.toJS())
             is ServiceEvent.SharpTurn         -> notify("sharpTurn",          event.loc.toJS())
-            is ServiceEvent.PossibleCrash     -> notify("possibleCrash",      event.loc.toJS())
+            is ServiceEvent.PossibleCrash          -> notify("possibleCrash",         event.loc.toJS())
+            is ServiceEvent.PhoneUsageWhileDriving -> notify("phoneUsageWhileDriving", event.loc.toJS())
             is ServiceEvent.TripEnd           -> notifyListeners("tripEnd", JSObject().apply {
                 put("location",   event.loc.toJSONObjectWithId())
                 put("distance",   event.distanceMeters)

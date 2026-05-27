@@ -261,20 +261,24 @@ class LocationService : Service() {
             drivingDetector?.reset(); drivingDetector = null; return
         }
         val detectorCfg = DrivingEventsDetector.Config(
-            enabled            = opts.enabled,
-            speedLimitKmh      = opts.speedLimitKmh,
-            minMovingSpeedMps  = opts.minMovingSpeedMps,
-            stoppedDurationMs  = opts.stoppedDurationMs,
-            minTripSpeedMps    = opts.minTripSpeedMps,
-            minTripDurationMs  = opts.minTripDurationMs,
-            hardBrakeMps2      = opts.hardBrakeMps2,
-            rapidAccelMps2     = opts.rapidAccelMps2,
-            sharpTurnDegPerSec = opts.sharpTurnDegPerSec,
-            crashImpactKmh     = opts.crashImpactKmh,
-            crashWindowMs      = opts.crashWindowMs,
-            idleThresholdMs    = opts.idleThresholdMs,
-            idleEndThresholdMs = opts.idleEndThresholdMs,
-            scoringWeights     = opts.scoringWeights,
+            enabled              = opts.enabled,
+            speedLimitKmh        = opts.speedLimitKmh,
+            minMovingSpeedMps    = opts.minMovingSpeedMps,
+            stoppedDurationMs    = opts.stoppedDurationMs,
+            minTripSpeedMps      = opts.minTripSpeedMps,
+            minTripDurationMs    = opts.minTripDurationMs,
+            hardBrakeMps2        = opts.hardBrakeMps2,
+            rapidAccelMps2       = opts.rapidAccelMps2,
+            sharpTurnDegPerSec   = opts.sharpTurnDegPerSec,
+            crashImpactKmh       = opts.crashImpactKmh,
+            crashWindowMs        = opts.crashWindowMs,
+            idleThresholdMs      = opts.idleThresholdMs,
+            idleEndThresholdMs   = opts.idleEndThresholdMs,
+            scoringWeights       = opts.scoringWeights,
+            crashConfirmWindowMs = opts.crashConfirmWindowMs,
+            sensorFusion         = opts.sensorFusion,
+            phoneUsageWindowMs   = opts.phoneUsageWindowMs,
+            phoneUsageCooldownMs = opts.phoneUsageCooldownMs,
         )
         if (drivingDetector == null) drivingDetector = DrivingEventsDetector(drivingListener)
         drivingDetector!!.setConfig(detectorCfg)
@@ -304,6 +308,9 @@ class LocationService : Service() {
         }
         override fun onPossibleCrash(loc: BGLocation, velocityDropKmh: Double) {
             loc.addDrivingEvent("possibleCrash"); fire(ServiceEvent.PossibleCrash(loc))
+        }
+        override fun onPhoneUsageWhileDriving(loc: BGLocation) {
+            loc.addDrivingEvent("phoneUsageWhileDriving"); fire(ServiceEvent.PhoneUsageWhileDriving(loc))
         }
     }
 

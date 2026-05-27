@@ -333,8 +333,9 @@ object GachConfigMapper {
         var sensorFusion        = false
         var crashImpactG        = 3.0
         var sensorCrashCooldownMs = 10_000L
-        var phoneUsageWindowMs  = 4_000L
+        var phoneUsageWindowMs   = 4_000L
         var phoneUsageCooldownMs = 60_000L
+        var crashConfirmWindowMs = 0L
 
         if (de.has("enabled"))               enabled             = de.getBoolean("enabled")
         if (de.has("speedLimit"))            speedLimitKmh       = de.getDouble("speedLimit")
@@ -350,8 +351,9 @@ object GachConfigMapper {
         if (de.has("sensorFusion"))          sensorFusion        = de.getBoolean("sensorFusion")
         if (de.has("crashImpactG"))          crashImpactG        = de.getDouble("crashImpactG")
         if (de.has("sensorCrashCooldownMs")) sensorCrashCooldownMs = de.getLong("sensorCrashCooldownMs")
-        if (de.has("phoneUsageWindowMs"))    phoneUsageWindowMs  = de.getLong("phoneUsageWindowMs")
+        if (de.has("phoneUsageWindowMs"))    phoneUsageWindowMs   = de.getLong("phoneUsageWindowMs")
         if (de.has("phoneUsageCooldownMs"))  phoneUsageCooldownMs = de.getLong("phoneUsageCooldownMs")
+        if (de.has("crashConfirmWindowMs"))  crashConfirmWindowMs = de.getLong("crashConfirmWindowMs")
 
         var idleThresholdMs    = 300_000L
         var idleEndThresholdMs = 30_000L
@@ -387,9 +389,10 @@ object GachConfigMapper {
             sensorFusion        = sensorFusion,
             crashImpactG        = crashImpactG,
             sensorCrashCooldownMs = sensorCrashCooldownMs,
-            phoneUsageWindowMs  = phoneUsageWindowMs,
+            phoneUsageWindowMs   = phoneUsageWindowMs,
             phoneUsageCooldownMs = phoneUsageCooldownMs,
-            idleThresholdMs     = idleThresholdMs,
+            crashConfirmWindowMs = crashConfirmWindowMs,
+            idleThresholdMs      = idleThresholdMs,
             idleEndThresholdMs  = idleEndThresholdMs,
             scoringWeights      = scoringWeights,
         )
@@ -412,9 +415,10 @@ object GachConfigMapper {
         j.put("sensorFusion",        de.sensorFusion)
         j.put("crashImpactG",        de.crashImpactG)
         j.put("sensorCrashCooldownMs", de.sensorCrashCooldownMs)
-        j.put("phoneUsageWindowMs",  de.phoneUsageWindowMs)
+        j.put("phoneUsageWindowMs",   de.phoneUsageWindowMs)
         j.put("phoneUsageCooldownMs", de.phoneUsageCooldownMs)
-        j.put("idleThresholdMs",    de.idleThresholdMs)
+        j.put("crashConfirmWindowMs", de.crashConfirmWindowMs)
+        j.put("idleThresholdMs",      de.idleThresholdMs)
         j.put("idleEndThresholdMs", de.idleEndThresholdMs)
         de.scoringWeights?.let { sw ->
             j.put("scoring", org.json.JSONObject().apply {

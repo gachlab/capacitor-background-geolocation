@@ -286,6 +286,12 @@ export interface ConfigureOptions {
     crashImpactKmh?: number;
     /** Window (ms) used to evaluate the crash impact. */
     crashWindowMs?: number;
+    /**
+     * If > 0, delay firing `possibleCrash` until the vehicle remains stopped for
+     * this many ms after the impact. Reduces false positives from GPS glitches.
+     * @default 0 (fire immediately) @since 1.6.0
+     */
+    crashConfirmWindowMs?: number;
     /** Enable accelerometer/gyroscope sensor fusion. @default false */
     sensorFusion?: boolean;
     /** Crash impact threshold in g for the sensor pipeline. */

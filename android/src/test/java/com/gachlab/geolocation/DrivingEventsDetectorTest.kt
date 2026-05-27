@@ -48,6 +48,7 @@ class DrivingEventsDetectorTest {
         override fun onRapidAcceleration(loc: BGLocation, accelMps2: Double) { events += "rapidAccel" }
         override fun onSharpTurn(loc: BGLocation, degPerSec: Double) { events += "sharpTurn" }
         override fun onPossibleCrash(loc: BGLocation, velocityDropKmh: Double) { events += "crash" }
+        override fun onPhoneUsageWhileDriving(loc: BGLocation) { events += "phoneUsage" }
     }
 
     @BeforeEach fun setup() {
@@ -178,6 +179,112 @@ class DrivingEventsDetectorTest {
             }
             det.onLocation(stoppedLoc)
             assertTrue(!events.contains("idleStart"), "idleStart should not fire before trip")
+        }
+    }
+
+    @Nested @DisplayName("crash confirmation window")
+    inner class CrashConfirmation {
+        private fun makeLoc(speed: Float, lat: Double = 19.43, lon: Double = -99.13): BGLocation =
+            BGLocation("gps").also {
+                it.latitude = lat; it.longitude = lon
+                it.speed = speed; it.time = System.currentTimeMillis()
+            }
+
+        @Test @DisplayName("fires immediately when crashConfirmWindowMs=0")
+        fun immediateWithNoWindow() {
+            val det = DrivingEventsDetector(listener)
+            det.setConfig(cfg.copy(crashConfirmWindowMs = 0L))
+            det.onLocation(makeLoc(25f))
+            Thread.sleep(100)
+            det.onLocation(makeLoc(0f))
+            assertTrue(events.contains("crash"), "expected crash with no confirm window: $events")
+        }
+
+        @Test @DisplayName("defers crash until confirm window elapses")
+        fun deferredFires() {
+            val det = DrivingEventsDetector(listener)
+            det.setConfig(cfg.copy(crashConfirmWindowMs = 150L))
+            det.onLocation(makeLoc(25f))
+            Thread.sleep(10)
+            det.onLocation(makeLoc(0f))
+            assertTrue(!events.contains("crash"), "crash should not fire before confirm window: $events")
+            Thread.sleep(200)
+            det.onLocation(makeLoc(0f))
+            assertTrue(events.contains("crash"), "expected crash after confirm window: $events")
+        }
+
+        @Test @DisplayName("cancels crash if speed recovers before confirm window")
+        fun cancelledOnRecovery() {
+            val det = DrivingEventsDetector(listener)
+            det.setConfig(cfg.copy(crashConfirmWindowMs = 300L))
+            det.onLocation(makeLoc(25f))
+            Thread.sleep(10)
+            det.onLocation(makeLoc(0f))
+            Thread.sleep(20)
+            det.onLocation(makeLoc(10f))  // speed recovery
+            Thread.sleep(400)
+            det.onLocation(makeLoc(0f))
+            assertTrue(!events.contains("crash"), "crash should be cancelled on speed recovery: $events")
+        }
+    }
+
+    @Nested @DisplayName("phone usage GPS heuristic")
+    inner class PhoneUsageDetection {
+        private fun makeBearingLoc(speed: Float, bearing: Float, lat: Double = 19.43, lon: Double = -99.13): BGLocation =
+            BGLocation("gps").also {
+                it.latitude = lat; it.longitude = lon
+                it.speed = speed; it.time = System.currentTimeMillis()
+                it.bearing = bearing; it.hasBearing = true
+            }
+
+        @Test @DisplayName("fires after 3+ jitter events within window, sensorFusion=false")
+        fun firesOnJitter() {
+            val det = DrivingEventsDetector(listener)
+            det.setConfig(cfg.copy(
+                sensorFusion       = false,
+                phoneUsageWindowMs = 500L,
+                phoneUsageCooldownMs = 60_000L,
+            ))
+            // Drive into TRIP_ACTIVE
+            val startLoc = BGLocation("gps").also {
+                it.latitude = 19.43; it.longitude = -99.13
+                it.speed = 10f; it.time = System.currentTimeMillis()
+            }
+            det.onLocation(startLoc)
+            // Inject jitter events (bearing delta ~10° each)
+            var bearing = 90f
+            repeat(4) {
+                Thread.sleep(60)
+                bearing += 10f
+                det.onLocation(makeBearingLoc(10f, bearing))
+            }
+            Thread.sleep(600)
+            det.onLocation(makeBearingLoc(10f, bearing + 10f))
+            assertTrue(events.contains("phoneUsage"), "expected phoneUsage event: $events")
+        }
+
+        @Test @DisplayName("does NOT fire when sensorFusion=true")
+        fun suppressedWhenSensorFusion() {
+            val det = DrivingEventsDetector(listener)
+            det.setConfig(cfg.copy(
+                sensorFusion       = true,
+                phoneUsageWindowMs = 200L,
+                phoneUsageCooldownMs = 60_000L,
+            ))
+            val startLoc = BGLocation("gps").also {
+                it.latitude = 19.43; it.longitude = -99.13
+                it.speed = 10f; it.time = System.currentTimeMillis()
+            }
+            det.onLocation(startLoc)
+            var bearing = 90f
+            repeat(6) {
+                Thread.sleep(30)
+                bearing += 10f
+                det.onLocation(makeBearingLoc(10f, bearing))
+            }
+            Thread.sleep(300)
+            det.onLocation(makeBearingLoc(10f, bearing + 10f))
+            assertTrue(!events.contains("phoneUsage"), "phoneUsage should be suppressed with sensorFusion=true: $events")
         }
     }
 
