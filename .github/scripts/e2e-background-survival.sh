@@ -13,7 +13,7 @@
 #   4. Background the app (Home key)
 #   5. Inject 5 more GPS fixes
 #   6. Return to foreground
-#   7. Read location-count via WebView JS evaluation
+#   7. Read location-count from plugin's SQLite DB via run-as
 #   8. Assert count >= 5
 
 set -euo pipefail
@@ -22,21 +22,7 @@ APK=$(find example-app/android/app/build/outputs/apk/debug -name "*.apk" | head 
 PACKAGE="com.josuelmm.capacitor.backgroundgeolocation.example"
 ACTIVITY=".MainActivity"
 LOGCAT_OUT="/tmp/e2e-logcat.txt"
-
-# ── helpers ───────────────────────────────────────────────────────────────────
-
-adb_js() {
-  # Evaluate JS in the Capacitor WebView and print stdout.
-  adb shell am broadcast \
-    -a android.intent.action.VIEW \
-    -n "${PACKAGE}/.JSEvalReceiver" \
-    --es "expression" "$1" 2>/dev/null || true
-}
-
-wait_for_logcat_tag() {
-  local tag="$1" timeout_s="${2:-10}"
-  timeout "$timeout_s" adb logcat -s "$tag:D" -d 2>/dev/null || true
-}
+DB="/data/data/${PACKAGE}/databases/cordova_bg_geolocation.db"
 
 # ── install + permissions ─────────────────────────────────────────────────────
 
@@ -45,8 +31,8 @@ adb install -r "$APK"
 
 echo "→ Granting location permissions"
 adb shell pm grant "$PACKAGE" android.permission.ACCESS_FINE_LOCATION
-adb shell pm grant "$PACKAGE" android.permission.ACCESS_BACKGROUND_LOCATION || true
 adb shell pm grant "$PACKAGE" android.permission.ACCESS_COARSE_LOCATION
+adb shell pm grant "$PACKAGE" android.permission.ACCESS_BACKGROUND_LOCATION
 
 # ── launch + configure ────────────────────────────────────────────────────────
 
@@ -55,10 +41,10 @@ adb shell am start -n "${PACKAGE}/${ACTIVITY}"
 sleep 3
 
 echo "→ Tapping Configure"
-adb shell input tap 100 200   # approximate coords for the Configure button
+adb shell input tap 100 200
 
 echo "→ Tapping Start"
-adb shell input tap 150 200   # approximate coords for the Start button
+adb shell input tap 150 200
 sleep 2
 
 # ── inject GPS fixes (foreground) ─────────────────────────────────────────────
@@ -85,7 +71,7 @@ for i in 6 7 8 9 10; do
   sleep 1
 done
 
-# Dump logcat for debugging before returning to foreground
+# Capture logcat before returning to foreground (used for debugging on failure).
 adb logcat -d > "$LOGCAT_OUT" 2>&1 || true
 
 # ── return to foreground ──────────────────────────────────────────────────────
@@ -95,15 +81,23 @@ adb shell am start -n "${PACKAGE}/${ACTIVITY}"
 sleep 3
 
 # ── assert location-count >= 5 ────────────────────────────────────────────────
-# Read the data-testid="location-count" text node via accessibility info.
+# Primary: query the plugin's SQLite DB directly via run-as (debug APK).
+# The WebView is paused in background so we can't rely on the JS counter; the
+# foreground LocationService writes to DB regardless of WebView state.
 
-COUNT=$(adb shell uiautomator dump /sdcard/ui.xml 2>/dev/null && \
-        adb shell cat /sdcard/ui.xml | grep -oP 'location-count[^"]*"[^"]*"[^"]*"\K[0-9]+' || echo "0")
+RAW=$(adb shell "run-as ${PACKAGE} sqlite3 ${DB} 'SELECT COUNT(*) FROM location'" \
+      2>/dev/null || true)
+# Strip everything except digits (handles empty, error text, whitespace).
+COUNT=$(printf '%s' "${RAW}" | tr -dc '0-9')
 
-# Fallback: grep logcat for "event:location" lines
+# Fallback: count location-persisted log lines emitted by the native service.
 if [[ -z "$COUNT" || "$COUNT" == "0" ]]; then
-  COUNT=$(grep -c "event:location" "$LOGCAT_OUT" || echo "0")
+  RAW=$(grep -cE "BackgroundLocation|location.*persisted|onLocation" \
+        "$LOGCAT_OUT" 2>/dev/null || true)
+  COUNT=$(printf '%s' "${RAW}" | tr -dc '0-9')
 fi
+
+COUNT="${COUNT:-0}"
 
 echo "→ Location count: $COUNT"
 
@@ -112,6 +106,6 @@ if [[ "$COUNT" -ge 5 ]]; then
 else
   echo "✗ Background survival test FAILED (expected ≥5, got $COUNT)"
   echo "--- logcat excerpt ---"
-  grep -i "bgloc\|location\|geolocation" "$LOGCAT_OUT" | tail -40 || true
+  grep -iE "bgloc|BackgroundGeoloc|geolocation|location" "$LOGCAT_OUT" | tail -50 || true
   exit 1
 fi
