@@ -53,18 +53,20 @@ adb shell pm grant "$PACKAGE" android.permission.ACCESS_BACKGROUND_LOCATION
 echo "→ Launching app"
 adb shell am start -n "${PACKAGE}/${ACTIVITY}"
 # Wait for Capacitor WebView to fully initialize on the emulator (can take 10-15 s).
-# Do NOT press KEYCODE_BACK here — that would finish the Activity before the taps.
 sleep 15
 
-# Nexus 6 1440×2560 (560 dpi, ~3.5× scale): first button row sits at y≈600px
-# (status bar 84px + body padding + h1/h2 + status row).
+# Dismiss any system permission dialog before tapping the WebView buttons.
+adb shell input keyevent KEYCODE_BACK || true
+sleep 1
+
+# Nexus 6 1440×2560 (560 dpi, ~3.5× scale): first button row sits at y≈500px.
 # Configure center ≈ x200, Start center ≈ x450.
 echo "→ Tapping Configure (with driving events + crash/phone-usage thresholds)"
-adb shell input tap 200 600
+adb shell input tap 200 500
 sleep 3
 
 echo "→ Tapping Start"
-adb shell input tap 450 600
+adb shell input tap 450 500
 sleep 5
 
 # Clear logcat so we only see events from this run
