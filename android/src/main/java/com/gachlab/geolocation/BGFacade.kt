@@ -42,12 +42,14 @@ class BGFacade(private val context: Context) {
     fun init(onEvent: (ServiceEvent) -> Unit) {
         pluginListener = onEvent
         LocationService.eventListener = ::dispatch
+        GeofenceManager.init(context.applicationContext, ::dispatch)
     }
 
     fun destroy() {
         pluginListener = null
         pendingLocation?.invoke(null)
         pendingLocation = null
+        GeofenceManager.destroy()
         // Only clear the static listener if it's still ours.
         if (LocationService.eventListener === ::dispatch) {
             LocationService.eventListener = null
@@ -121,6 +123,16 @@ class BGFacade(private val context: Context) {
 
     fun switchMode(mode: Int)          = startedService()?.switchMode(mode)
     fun triggerSOS(locationId: Long?)  = startedService()?.triggerSOS(locationId)
+
+    // ── Geofencing ────────────────────────────────────────────────────────────
+
+    fun addGeofences(geofences: List<BGGeofence>) =
+        GeofenceManager.add(context.applicationContext, geofences)
+
+    fun removeGeofences(ids: List<String>?) =
+        GeofenceManager.remove(context.applicationContext, ids)
+
+    fun getGeofences(): List<BGGeofence> = GeofenceManager.getAll()
 
     fun getBackgroundKillReason(): Pair<String?, Long?> {
         val prefs = context.applicationContext

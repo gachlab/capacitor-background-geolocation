@@ -58,6 +58,9 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "registerHeadlessTask", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getBackgroundKillReason", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "addGeofences", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "removeGeofences", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getGeofences", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise)
     ]
 
@@ -100,6 +103,9 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
         nc.addObserver(self, selector: #selector(onPhoneUsageWhileDrivingN(_:)), name: .BGPhoneUsageWhileDriving, object: nil)
         nc.addObserver(self, selector: #selector(onFallbackActivatedN(_:)), name: .BGFallbackActivated, object: nil)
+        nc.addObserver(self, selector: #selector(onGeofenceN(_:)), name: .BGGeofenceEnter, object: nil)
+        nc.addObserver(self, selector: #selector(onGeofenceN(_:)), name: .BGGeofenceExit,  object: nil)
+        nc.addObserver(self, selector: #selector(onGeofenceN(_:)), name: .BGGeofenceDwell, object: nil)
     }
 
     deinit {
@@ -444,6 +450,27 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         call.resolve(["reason": NSNull(), "timestamp": NSNull()])
     }
 
+    // MARK: - Geofencing
+
+    @objc func addGeofences(_ call: CAPPluginCall) {
+        guard let facade = facade else { call.reject("facade not initialized"); return }
+        let arr = call.getArray("geofences") as? [[String: Any]] ?? []
+        facade.addGeofences(arr)
+        call.resolve()
+    }
+
+    @objc func removeGeofences(_ call: CAPPluginCall) {
+        guard let facade = facade else { call.reject("facade not initialized"); return }
+        let ids = call.getArray("ids") as? [String]
+        facade.removeGeofences(ids)
+        call.resolve()
+    }
+
+    @objc func getGeofences(_ call: CAPPluginCall) {
+        guard let facade = facade else { call.reject("facade not initialized"); return }
+        call.resolve(["geofences": facade.getGeofences()])
+    }
+
     @objc func registerHeadlessTask(_ call: CAPPluginCall) {
         call.resolve()
     }
@@ -702,6 +729,22 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     @objc private func onFallbackActivatedN(_ note: Notification) {
         let strategy = (note.userInfo?["strategy"] as? String) ?? "significantchanges"
         notifyListeners("iosFallbackActivated", data: ["strategy": strategy])
+    }
+
+    @objc private func onGeofenceN(_ note: Notification) {
+        guard let id = note.userInfo?["id"] as? String,
+              let action = note.userInfo?["action"] as? String else { return }
+        var p: [String: Any] = ["id": id, "action": action]
+        if let loc = note.userInfo?["location"] as? BGLocation {
+            p["location"] = loc.toDictionaryWithId()
+        }
+        let eventName: String
+        switch action {
+        case "ENTER": eventName = "geofenceEnter"
+        case "EXIT":  eventName = "geofenceExit"
+        default:      eventName = "geofenceDwell"
+        }
+        notifyListeners(eventName, data: p)
     }
 }
 

@@ -293,6 +293,18 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     throw this.unimplemented(NOT_AVAILABLE);
   }
 
+  async addGeofences(_options: { geofences: import('./definitions').Geofence[] }): Promise<void> {
+    throw this.unimplemented(NOT_AVAILABLE);
+  }
+
+  async removeGeofences(_options?: { ids?: string[] }): Promise<void> {
+    throw this.unimplemented(NOT_AVAILABLE);
+  }
+
+  async getGeofences(): Promise<{ geofences: import('./definitions').Geofence[] }> {
+    return { geofences: [] };
+  }
+
   // ---------------- Config & logs ----------------
 
   async getConfig(): Promise<ConfigureOptions> {

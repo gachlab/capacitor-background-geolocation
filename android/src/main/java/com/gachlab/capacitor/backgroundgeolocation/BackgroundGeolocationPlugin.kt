@@ -21,6 +21,7 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import com.gachlab.geolocation.BGFacade
+import com.gachlab.geolocation.BGGeofence
 import com.gachlab.geolocation.BGLocation
 import com.gachlab.geolocation.ServiceEvent
 import com.gachlab.geolocation.network.HeadlessWorker
@@ -104,6 +105,15 @@ class BackgroundGeolocationPlugin : Plugin() {
             ServiceEvent.ServiceStopped       -> notifyListeners("stop",               JSObject())
             is ServiceEvent.ServiceRestarted  -> notifyListeners("serviceRestarted",
                 JSObject().apply { put("reason", event.reason) })
+            is ServiceEvent.GeofenceEnter     -> notifyListeners("geofenceEnter",
+                JSObject().apply { put("id", event.geofenceId); put("action", "ENTER")
+                    event.loc?.let { put("location", it.toJSONObjectWithId()) } })
+            is ServiceEvent.GeofenceExit      -> notifyListeners("geofenceExit",
+                JSObject().apply { put("id", event.geofenceId); put("action", "EXIT")
+                    event.loc?.let { put("location", it.toJSONObjectWithId()) } })
+            is ServiceEvent.GeofenceDwell     -> notifyListeners("geofenceDwell",
+                JSObject().apply { put("id", event.geofenceId); put("action", "DWELL")
+                    event.loc?.let { put("location", it.toJSONObjectWithId()) } })
             ServiceEvent.AbortRequested       -> notifyListeners("abort_requested",    JSObject())
             ServiceEvent.HttpAuthorization    -> notifyListeners("http_authorization", JSObject())
         }
@@ -392,6 +402,35 @@ class BackgroundGeolocationPlugin : Plugin() {
             put("granted", granted)
             if (!granted) put("denied", JSONArray().put("android.permission.POST_NOTIFICATIONS"))
         })
+    }
+
+    @PluginMethod
+    fun addGeofences(call: PluginCall) {
+        try {
+            val arr = call.getArray("geofences") ?: run { call.reject("geofences required", "400"); return }
+            val list = (0 until arr.length()).map { BGGeofence.fromJSON(arr.getJSONObject(it)) }
+            facade.addGeofences(list)
+            call.resolve()
+        } catch (e: Exception) { call.reject(e.message, "400", e) }
+    }
+
+    @PluginMethod
+    fun removeGeofences(call: PluginCall) {
+        try {
+            val ids = call.getArray("ids")?.let { arr ->
+                (0 until arr.length()).map { arr.getString(it) }
+            }
+            facade.removeGeofences(ids)
+            call.resolve()
+        } catch (e: Exception) { call.reject(e.message, "400", e) }
+    }
+
+    @PluginMethod
+    fun getGeofences(call: PluginCall) {
+        try {
+            val arr = BGGeofence.listToJSON(facade.getGeofences())
+            call.resolve(JSObject().apply { put("geofences", arr) })
+        } catch (e: Exception) { call.reject(e.message, "400", e) }
     }
 
     @PluginMethod

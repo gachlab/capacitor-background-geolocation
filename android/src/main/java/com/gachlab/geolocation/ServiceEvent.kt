@@ -33,6 +33,11 @@ sealed class ServiceEvent {
     data class SharpTurn(val loc: BGLocation) : ServiceEvent()
     data class PossibleCrash(val loc: BGLocation) : ServiceEvent()
 
+    // ── Geofence events ───────────────────────────────────────────────────────
+    data class GeofenceEnter(val geofenceId: String, val loc: BGLocation?) : ServiceEvent()
+    data class GeofenceExit(val geofenceId: String, val loc: BGLocation?)  : ServiceEvent()
+    data class GeofenceDwell(val geofenceId: String, val loc: BGLocation?) : ServiceEvent()
+
     // ── System events ─────────────────────────────────────────────────────────
     data class Heartbeat(val loc: BGLocation?) : ServiceEvent()
     data class Error(val message: String) : ServiceEvent()
