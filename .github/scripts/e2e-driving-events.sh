@@ -47,6 +47,7 @@ echo "→ Granting location permissions"
 adb shell pm grant "$PACKAGE" android.permission.ACCESS_FINE_LOCATION
 adb shell pm grant "$PACKAGE" android.permission.ACCESS_COARSE_LOCATION
 adb shell pm grant "$PACKAGE" android.permission.ACCESS_BACKGROUND_LOCATION
+adb shell pm grant "$PACKAGE" android.permission.ACTIVITY_RECOGNITION 2>/dev/null || true
 
 # ── launch + configure ────────────────────────────────────────────────────────
 

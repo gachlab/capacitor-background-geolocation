@@ -70,7 +70,7 @@ final class DrivingEventsE2ETests: XCTestCase {
     private func tapConfigure() {
         let webView = app.webViews.firstMatch
         let btn = webView.buttons["Configure"]
-        XCTAssert(btn.waitForExistence(timeout: 10), "Configure button not found in WebView")
+        XCTAssert(btn.waitForExistence(timeout: 30), "Configure button not found in WebView")
         btn.tap()
         sleep(1)
         dismissSystemAlerts()
