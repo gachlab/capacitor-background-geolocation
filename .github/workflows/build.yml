@@ -90,6 +90,44 @@ jobs:
           name: e2e-logcat
           path: /tmp/e2e-logcat.txt
 
+  android-e2e-driving:
+    name: Android — E2E driving events
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - run: npm ci
+      - run: npm run build
+      - name: Install example-app dependencies
+        working-directory: example-app
+        run: npm ci
+      - name: Build example APK
+        working-directory: example-app/android
+        run: ./gradlew assembleDebug --no-daemon
+      - name: Driving events test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          profile: Nexus 6
+          script: .github/scripts/e2e-driving-events.sh
+      - name: Upload logcat on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-driving-logcat
+          path: /tmp/e2e-driving-logcat.txt
+
   ios:
     name: iOS — build + unit tests
     runs-on: macos-15

@@ -307,9 +307,11 @@ class LocationService : Service() {
             loc.addDrivingEvent("sharpTurn"); fire(ServiceEvent.SharpTurn(loc))
         }
         override fun onPossibleCrash(loc: BGLocation, velocityDropKmh: Double) {
+            Log.i(TAG, "driving-event: possibleCrash drop=${velocityDropKmh.toInt()}kmh")
             loc.addDrivingEvent("possibleCrash"); fire(ServiceEvent.PossibleCrash(loc))
         }
         override fun onPhoneUsageWhileDriving(loc: BGLocation) {
+            Log.i(TAG, "driving-event: phoneUsageWhileDriving")
             loc.addDrivingEvent("phoneUsageWhileDriving"); fire(ServiceEvent.PhoneUsageWhileDriving(loc))
         }
     }

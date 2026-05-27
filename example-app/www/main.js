@@ -45,7 +45,19 @@ document.getElementById('configure').onclick = () =>
       notificationTitle: 'Example tracking',
       notificationText: 'Location enabled',
       heartbeatInterval: 30000,
-      drivingEvents: { enabled: true, speedLimit: 90 },
+      drivingEvents: {
+        enabled: true,
+        speedLimit: 90,
+        // Lowered thresholds for E2E emulator testing
+        crashImpactKmh: 10,
+        crashWindowMs: 4000,
+        crashConfirmWindowMs: 2000,
+        sensorFusion: false,
+        phoneUsageWindowMs: 3000,
+        phoneUsageCooldownMs: 5000,
+        minTripDurationMs: 0,
+        minMovingSpeedMps: 0.5,
+      },
     }),
   );
 
@@ -107,5 +119,16 @@ BackgroundGeolocation.addListener('tripStart', (loc) => log('event:tripStart', l
 BackgroundGeolocation.addListener('tripEnd', (t) => log('event:tripEnd', t));
 BackgroundGeolocation.addListener('speeding', (s) => log('event:speeding', s));
 BackgroundGeolocation.addListener('sos', (s) => log('event:sos', s));
+BackgroundGeolocation.addListener('hardBrake', (loc) => log('event:hardBrake', loc));
+BackgroundGeolocation.addListener('sharpTurn', (loc) => log('event:sharpTurn', loc));
+BackgroundGeolocation.addListener('rapidAcceleration', (loc) => log('event:rapidAcceleration', loc));
+BackgroundGeolocation.addListener('possibleCrash', (loc) => {
+  console.log('[BGGL-E2E] driving-event:possibleCrash');
+  log('event:possibleCrash', loc);
+});
+BackgroundGeolocation.addListener('phoneUsageWhileDriving', (loc) => {
+  console.log('[BGGL-E2E] driving-event:phoneUsageWhileDriving');
+  log('event:phoneUsageWhileDriving', loc);
+});
 
 log('ready');
