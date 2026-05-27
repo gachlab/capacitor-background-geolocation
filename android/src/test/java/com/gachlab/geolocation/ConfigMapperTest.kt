@@ -63,6 +63,22 @@ class ConfigMapperTest {
             assertEquals(120.0, cfg.drivingEvents!!.speedLimitKmh)
             assertEquals(4.0,   cfg.drivingEvents!!.hardBrakeMps2)
         }
+
+        @Test @DisplayName("reads crashConfirmWindowMs, sensorFusion, phoneUsage fields")
+        fun drivingEventsV16Fields() {
+            val de = JSONObject()
+                .put("enabled", true)
+                .put("crashConfirmWindowMs", 5000L)
+                .put("sensorFusion", true)
+                .put("phoneUsageWindowMs", 3000L)
+                .put("phoneUsageCooldownMs", 45000L)
+            val cfg = GachConfigMapper.fromJSONObject(JSONObject().put("drivingEvents", de))
+            val opts = cfg.drivingEvents!!
+            assertEquals(5000L,  opts.crashConfirmWindowMs)
+            assertTrue(opts.sensorFusion)
+            assertEquals(3000L,  opts.phoneUsageWindowMs)
+            assertEquals(45000L, opts.phoneUsageCooldownMs)
+        }
     }
 
     @Nested @DisplayName("round-trip JSON")
@@ -80,6 +96,26 @@ class ConfigMapperTest {
             assertEquals(350, result.distanceFilter)
             assertEquals("https://example.com/loc", result.url)
             assertEquals(true, result.syncEnabled)
+        }
+
+        @Test @DisplayName("drivingEvents v1.6 fields survive round-trip")
+        fun drivingEventsV16RoundTrip() {
+            val original = BGConfig().apply {
+                drivingEvents = BGConfig.DrivingEventsOptions(
+                    enabled              = true,
+                    crashConfirmWindowMs = 8000L,
+                    sensorFusion         = true,
+                    phoneUsageWindowMs   = 6000L,
+                    phoneUsageCooldownMs = 90_000L,
+                )
+            }
+            val json   = GachConfigMapper.toJSONObject(original)
+            val result = GachConfigMapper.fromJSONObject(json)
+            val opts   = result.drivingEvents!!
+            assertEquals(8000L,   opts.crashConfirmWindowMs)
+            assertTrue(opts.sensorFusion)
+            assertEquals(6000L,   opts.phoneUsageWindowMs)
+            assertEquals(90_000L, opts.phoneUsageCooldownMs)
         }
     }
 }
