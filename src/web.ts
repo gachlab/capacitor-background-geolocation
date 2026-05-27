@@ -14,6 +14,7 @@ import type {
   ConfigureOptions,
   CurrentLocationOptions,
   Diagnostics,
+  Geofence,
   Location,
   LogEntry,
   PermissionRequestResult,
@@ -293,7 +294,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     throw this.unimplemented(NOT_AVAILABLE);
   }
 
-  async addGeofences(_options: { geofences: import('./definitions').Geofence[] }): Promise<void> {
+  async addGeofences(_options: { geofences: Geofence[] }): Promise<void> {
     throw this.unimplemented(NOT_AVAILABLE);
   }
 
@@ -301,7 +302,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     throw this.unimplemented(NOT_AVAILABLE);
   }
 
-  async getGeofences(): Promise<{ geofences: import('./definitions').Geofence[] }> {
+  async getGeofences(): Promise<{ geofences: Geofence[] }> {
     return { geofences: [] };
   }
 

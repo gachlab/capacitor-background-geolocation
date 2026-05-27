@@ -1237,30 +1237,21 @@ export interface BackgroundGeolocationPlugin {
    *
    * @since 1.3.0
    */
-  addListener(
-    eventName: 'geofenceEnter',
-    listener: (event: GeofenceEvent) => void,
-  ): Promise<PluginListenerHandle>;
+  addListener(eventName: 'geofenceEnter', listener: (event: GeofenceEvent) => void): Promise<PluginListenerHandle>;
 
   /**
    * Device exited a registered geofence.
    *
    * @since 1.3.0
    */
-  addListener(
-    eventName: 'geofenceExit',
-    listener: (event: GeofenceEvent) => void,
-  ): Promise<PluginListenerHandle>;
+  addListener(eventName: 'geofenceExit', listener: (event: GeofenceEvent) => void): Promise<PluginListenerHandle>;
 
   /**
    * Device has been inside a geofence for `loiteringDelay` milliseconds.
    *
    * @since 1.3.0
    */
-  addListener(
-    eventName: 'geofenceDwell',
-    listener: (event: GeofenceEvent) => void,
-  ): Promise<PluginListenerHandle>;
+  addListener(eventName: 'geofenceDwell', listener: (event: GeofenceEvent) => void): Promise<PluginListenerHandle>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1300,7 +1291,7 @@ export enum BackgroundGeolocationEvents {
   serviceRestarted = 'serviceRestarted',
   iosFallbackActivated = 'iosFallbackActivated',
   geofenceEnter = 'geofenceEnter',
-  geofenceExit  = 'geofenceExit',
+  geofenceExit = 'geofenceExit',
   geofenceDwell = 'geofenceDwell',
 }
 
