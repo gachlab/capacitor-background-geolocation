@@ -18,7 +18,7 @@ import java.util.Locale
 /**
  * Maps between Capacitor's [JSObject] / [JSONObject] and [BGConfig].
  *
- * Kotlin port of `com.josuelmm.capacitor.backgroundgeolocation.ConfigMapper` and
+ * Kotlin port of `com.gachlab.capacitor.backgroundgeolocation.ConfigMapper` and
  * `com.marianhello.bgloc.data.ConfigJsonMapper`.
  *
  * All public functions are `@JvmStatic` for interoperability with the existing Java

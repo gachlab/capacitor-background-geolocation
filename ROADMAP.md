@@ -33,7 +33,7 @@ Mejoras a `DrivingEventsDetector` en Android y iOS:
 Reescritura completa del core Android en Kotlin puro bajo `com.gachlab.*`. Sin Java en el árbol principal.
 
 **Eliminado:**
-- `com.marianhello.*`, `com.josuelmm.*`, `com.evgenii.*`, `ru.andremoniy.*`, `org.apache.*`, `org.chromium.*`
+- `com.marianhello.*`, `com.evgenii.*`, `ru.andremoniy.*`, `org.apache.*`, `org.chromium.*`
 - Dependencias runtime: `gson`, `slf4j`, `logback-android`, `jparkie-promise`, `android-permissions`
 - SyncAdapter / AuthenticatorService / ContentProvider (reemplazados por WorkManager)
 

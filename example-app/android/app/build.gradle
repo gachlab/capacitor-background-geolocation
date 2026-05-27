@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.josuelmm.capacitor.backgroundgeolocation.example"
+    namespace = "com.gachlab.capacitor.backgroundgeolocation.example"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.josuelmm.capacitor.backgroundgeolocation.example"
+        applicationId "com.gachlab.capacitor.backgroundgeolocation.example"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

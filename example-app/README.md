@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- Copyright (c) 2026 JosueLMM -->
+<!-- Copyright (c) 2026 gachlab -->
 
 # Background Geolocation Example
 
-Minimal Capacitor 8 host app for `@josuelmm/capacitor-background-geolocation`.
+Minimal Capacitor 8 host app for `@gachlab/capacitor-background-geolocation`.
 
 ## Quick start
 

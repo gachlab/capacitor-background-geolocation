@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 gachlab
 //
-// Capacitor plugin definitions for @josuelmm/capacitor-background-geolocation.
-// Mirrors @josuelmm/cordova-background-geolocation's www/BackgroundGeolocation.d.ts
-// 1:1 for v1.0.0 parity. Cordova success/fail callbacks are collapsed into
-// Promises; `on(eventName, cb)` becomes Capacitor's `addListener` overloads.
+// Capacitor plugin definitions for @gachlab/capacitor-background-geolocation.
 
 import type { PermissionState, PluginListenerHandle } from '@capacitor/core';
 

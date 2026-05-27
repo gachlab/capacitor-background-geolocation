@@ -32,7 +32,7 @@ EXAMPLE_IOS="${REPO_ROOT}/example-app/ios/App"
 SCHEME="${XCODE_SCHEME:-AppUITests}"
 SIM_NAME="${SIMULATOR_NAME:-iPhone 17}"
 SIM_OS="${SIMULATOR_OS:-}"          # e.g. "iOS 26.5"; empty = any available
-APP_BUNDLE_ID="com.josuelmm.capacitor.backgroundgeolocation.example"
+APP_BUNDLE_ID="com.gachlab.capacitor.backgroundgeolocation.example"
 
 PASS=0
 FAIL=0
@@ -111,6 +111,12 @@ APP_PATH=$(find "${DERIVED}" -name "App.app" -path "*/Debug-iphonesimulator/*" 2
 log "Installing app on simulator…"
 xcrun simctl install "${UDID}" "${APP_PATH}"
 
+# Pre-grant location permissions (always + when-in-use) so CoreLocation delivers
+# updates without a dialog and background geolocation works correctly.
+log "Pre-granting location permission…"
+xcrun simctl privacy "${UDID}" grant location-always "${APP_BUNDLE_ID}" 2>/dev/null || true
+xcrun simctl privacy "${UDID}" grant location "${APP_BUNDLE_ID}" 2>/dev/null || true
+
 # ---------------------------------------------------------------------------
 # 3. Background GPS injection loop
 # ---------------------------------------------------------------------------
@@ -141,8 +147,11 @@ inject_gps_loop() {
       step=0.00003   # ~3 m per fix ≈ slow roll
     fi
     if [ $i -eq 35 ]; then
-      # Hard stop — same lat/lon for several ticks
-      for _ in 1 2 3; do
+      # Near-stop: micro-step ~0.0000045° ≈ 0.5 m per fix → speed ≈ 1 m/s < 1.5 m/s.
+      # Distinct positions so CoreLocation delivers every fix (deduplication workaround).
+      # 6 fixes × 0.5 s = 3 s; crash confirms after 5 (2.5 s > crashConfirmWindowSec=2 s).
+      for j in 1 2 3 4 5 6; do
+        lat=$(python3 -c "print(${lat} + 0.0000045)")
         xcrun simctl location "${udid}" set "${lat},${lon}" 2>/dev/null || true
         sleep 0.5
       done
@@ -158,7 +167,7 @@ inject_gps_loop "${UDID}" &
 GPS_PID=$!
 trap 'kill "${GPS_PID}" 2>/dev/null || true; xcrun simctl location "${UDID}" clear 2>/dev/null || true' EXIT
 
-sleep 3   # let a few fixes land before the app starts
+sleep 5   # let several fixes land and speed build up before the app starts
 
 # ---------------------------------------------------------------------------
 # 4. Run XCUITests
@@ -182,20 +191,20 @@ set -e
 # ---------------------------------------------------------------------------
 # 5. Parse results
 # ---------------------------------------------------------------------------
-TESTS_RUN=$(grep -c "Test Case '.*' passed\." /tmp/e2e-ios-xcodebuild.log 2>/dev/null || echo 0)
-TESTS_FAIL=$(grep -c "Test Case '.*' failed\." /tmp/e2e-ios-xcodebuild.log 2>/dev/null || echo 0)
+TESTS_RUN=$(grep -c "Test Case '.*' passed (" /tmp/e2e-ios-xcodebuild.log 2>/dev/null || true); TESTS_RUN=${TESTS_RUN:-0}
+TESTS_FAIL=$(grep -c "Test Case '.*' failed (" /tmp/e2e-ios-xcodebuild.log 2>/dev/null || true); TESTS_FAIL=${TESTS_FAIL:-0}
 
 while IFS= read -r line; do
   pass "${line}"
-done < <(grep "Test Case '.*' passed\." /tmp/e2e-ios-xcodebuild.log 2>/dev/null || true)
+done < <(grep "Test Case '.*' passed (" /tmp/e2e-ios-xcodebuild.log 2>/dev/null || true)
 
 while IFS= read -r line; do
   fail "${line}"
-done < <(grep "Test Case '.*' failed\." /tmp/e2e-ios-xcodebuild.log 2>/dev/null || true)
+done < <(grep "Test Case '.*' failed (" /tmp/e2e-ios-xcodebuild.log 2>/dev/null || true)
 
 echo ""
 echo "────────────────────────────────────────"
-if [ "${FAIL}" -eq 0 ] && [ "${TESTS_RUN}" -gt 0 ]; then
+if [ "${XCODE_EXIT}" -eq 0 ] && [ "${FAIL}" -eq 0 ] && [ "${TESTS_RUN}" -gt 0 ]; then
   echo "✓ Driving events iOS E2E PASSED (${TESTS_RUN}/${TESTS_RUN})"
   exit 0
 else

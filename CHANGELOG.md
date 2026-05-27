@@ -54,7 +54,7 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [1.0.0] - 2026-05-13
 
-Pulled in the v4.5.4 native bug-fix from `@josuelmm/cordova-background-geolocation`.
+Pulled in v4.5.4 native bug-fixes from upstream cordova plugin.
 
 ### Fixed
 - **HTTP POST: skip null / `JSONObject.NULL` / `NSNull` values when
@@ -69,8 +69,7 @@ Pulled in the v4.5.4 native bug-fix from `@josuelmm/cordova-background-geolocati
 
 ## [1.0.0] - 2026-05-12
 
-First public release. Full TypeScript-API parity with
-`@josuelmm/cordova-background-geolocation`.
+First public release.
 
 ### Added
 - **40 plugin methods** mirroring the Cordova spec. New entries since 0.1.0:
@@ -135,8 +134,7 @@ Initial scaffold and native bridges.
 
 ### Added
 - Capacitor 8+ plugin scaffold (`@gachlab/capacitor-background-geolocation`).
-- TypeScript API mirroring the legacy `@josuelmm/cordova-background-geolocation`
-  surface: `configure`, `start`, `stop`, `getCurrentLocation`,
+- TypeScript API mirroring the legacy Cordova plugin surface: `configure`, `start`, `stop`, `getCurrentLocation`,
   `getStationaryLocation`, `getValidLocations`, `getConfig`, `deleteLocation`,
   `deleteAllLocations`, `isLocationEnabled`, `showAppSettings`,
   `showLocationSettings`, `watchLocationMode`, `stopWatchingLocationMode`,

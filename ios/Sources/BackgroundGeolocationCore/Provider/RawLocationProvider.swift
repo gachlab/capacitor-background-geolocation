@@ -23,12 +23,14 @@ public final class RawLocationProvider: AbstractLocationProvider {
             mgr.showsBackgroundLocationIndicator = showIndicator
         }
         mgr.start()
+        delegate?.onLocationResume()
     }
 
     public override func onStop() throws {
         BGLocationManager.shared.stop()
         BGLocationManager.shared.delegate = nil
         isStarted = false
+        delegate?.onLocationPause()
     }
 
     public override func onTerminate() {

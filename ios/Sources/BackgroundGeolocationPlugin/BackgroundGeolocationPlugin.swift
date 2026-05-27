@@ -72,6 +72,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     private var lastLocationAt: Date?
     private let drivingDetector = DrivingEventsDetector()
     private var lastBGLocation: BGLocation?
+    private var prevDLLoc: (lat: Double, lon: Double, time: Date)?
     private var lastTripScore: TripScore?
     private var prioritySyncManager: PrioritySyncManager?
 
@@ -646,10 +647,26 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         lastLocationAt = Date()
         lastBGLocation = location
         if let lat = location.latitude, let lon = location.longitude {
+            let now = location.time ?? Date()
+            var speed = location.speed ?? -1
+            // Compute speed from consecutive fixes when sensor speed is unavailable
+            // (e.g. CLLocation injected by xcrun simctl provides speed = -1).
+            if speed < 0, let prev = prevDLLoc {
+                let dt = now.timeIntervalSince(prev.time)
+                if dt > 0 && dt < 10 {
+                    let dLat = (lat - prev.lat) * .pi / 180
+                    let dLon = (lon - prev.lon) * .pi / 180
+                    let a = sin(dLat/2) * sin(dLat/2)
+                        + cos(prev.lat * .pi / 180) * cos(lat * .pi / 180) * sin(dLon/2) * sin(dLon/2)
+                    let dist = 2 * 6_371_000.0 * asin(sqrt(a))
+                    speed = dist / dt
+                }
+            }
+            prevDLLoc = (lat: lat, lon: lon, time: now)
             let dl = DLLocation(
                 latitude:  lat,
                 longitude: lon,
-                speed:     location.speed ?? -1,
+                speed:     speed,
                 bearing:   location.heading,
                 provider:  location.provider
             )
@@ -664,6 +681,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
     public func onLocationPause() {
         drivingDetector.reset()
+        prevDLLoc = nil
         notifyListeners("stop", data: [:])
     }
 

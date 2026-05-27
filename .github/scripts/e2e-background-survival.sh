@@ -19,7 +19,7 @@
 set -euo pipefail
 
 APK=$(find example-app/android/app/build/outputs/apk/debug -name "*.apk" | head -1)
-PACKAGE="com.josuelmm.capacitor.backgroundgeolocation.example"
+PACKAGE="com.gachlab.capacitor.backgroundgeolocation.example"
 ACTIVITY=".MainActivity"
 LOGCAT_OUT="/tmp/e2e-logcat.txt"
 DB="/data/data/${PACKAGE}/databases/cordova_bg_geolocation.db"

@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- Copyright (c) 2026 JosueLMM -->
+<!-- Copyright (c) 2026 gachlab -->
 
 # @gachlab/capacitor-background-geolocation
 
@@ -8,9 +8,7 @@
 [![Capacitor](https://img.shields.io/badge/Capacitor-8%2B-119EFF.svg)](https://capacitorjs.com/)
 
 Capacitor 8+ plugin for accurate background geolocation tracking on iOS and
-Android. Derived from the `@josuelmm/cordova-background-geolocation` native
-core (a fork of [`mauron85/cordova-plugin-background-geolocation`](https://github.com/mauron85/cordova-plugin-background-geolocation)),
-ported to the Capacitor bridge with a Promise-based API and `addListener`
+Android, ported to the Capacitor bridge with a Promise-based API and `addListener`
 events.
 
 Full TypeScript-API parity with the Cordova source plugin:
@@ -409,7 +407,7 @@ for the full annotated list with default values and JSDoc.
 - Android API `>=23` (Android 6.0)
 - Web: foreground only via `navigator.geolocation`
 
-## Migration from `@josuelmm/cordova-background-geolocation`
+## Migration from Cordova
 
 The TypeScript surface is intentionally identical in shape, with two
 mechanical adaptations:

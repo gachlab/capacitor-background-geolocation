@@ -4,7 +4,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.josuelmm.capacitor.backgroundgeolocation.example',
+  appId: 'com.gachlab.capacitor.backgroundgeolocation.example',
   appName: 'Background Geolocation Example',
   webDir: 'www',
   server: {

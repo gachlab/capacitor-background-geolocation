@@ -33,7 +33,7 @@
 set -euo pipefail
 
 APK=$(find example-app/android/app/build/outputs/apk/debug -name "*.apk" | head -1)
-PACKAGE="com.josuelmm.capacitor.backgroundgeolocation.example"
+PACKAGE="com.gachlab.capacitor.backgroundgeolocation.example"
 ACTIVITY=".MainActivity"
 LOGCAT_OUT="/tmp/e2e-driving-logcat.txt"
 PASS=0
