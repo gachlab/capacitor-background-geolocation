@@ -33,9 +33,9 @@ jobs:
       - run: npm run test:coverage
 
   android:
-    name: Android — unit tests
+    name: Android — unit tests + E2E
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     needs: web
     steps:
       - uses: actions/checkout@v4
@@ -48,32 +48,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Run unit tests
+      - name: Unit tests
         working-directory: android
         run: ./gradlew test --no-daemon
-
-  android-e2e:
-    name: Android — E2E (background survival + driving events)
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    needs: android
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-      - uses: android-actions/setup-android@v3
-      - run: npm ci
       - run: npm run build
       - name: Install example-app dependencies
         working-directory: example-app
         run: npm ci
-      - name: Sync web assets and plugin metadata into Android project
+      - name: Sync web assets and plugin into Android project
         working-directory: example-app
         run: npx cap sync android
       - name: Build example APK
@@ -92,16 +74,16 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-logcat
+          name: android-e2e-logcat
           path: |
             /tmp/e2e-logcat.txt
             /tmp/e2e-driving-logcat.txt
 
-  ios-e2e:
-    name: iOS — E2E (driving events)
+  ios:
+    name: iOS — unit tests + E2E
     runs-on: macos-15
     timeout-minutes: 60
-    needs: ios
+    needs: web
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v5
@@ -109,6 +91,21 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Unit tests
+        run: |
+          SIMULATOR_ID=$(xcrun simctl list devices available --json \
+            | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          for runtime, devices in d['devices'].items():
+              for dev in devices:
+                  if 'iPhone' in dev['name'] and dev['isAvailable']:
+                      print(dev['udid'])
+                      exit()
+          ")
+          xcodebuild test \
+            -scheme GachlabCapacitorBackgroundGeolocation \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID"
       - run: npm run build
       - name: Install example-app deps
         working-directory: example-app
@@ -124,34 +121,3 @@ jobs:
         with:
           name: ios-e2e-xcresult
           path: /tmp/e2e-ios-results.xcresult
-
-  ios:
-    name: iOS — build + unit tests
-    runs-on: macos-15
-    timeout-minutes: 40
-    needs: web
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Run tests
-        run: |
-          SIMULATOR_ID=$(xcrun simctl list devices available --json \
-            | python3 -c "
-          import sys, json
-          d = json.load(sys.stdin)
-          for runtime, devices in d['devices'].items():
-              for dev in devices:
-                  if 'iPhone' in dev['name'] and dev['isAvailable']:
-                      print(dev['udid'])
-                      exit()
-          ")
-          xcodebuild test \
-            -scheme GachlabCapacitorBackgroundGeolocation \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
-            | xcpretty || xcodebuild test \
-              -scheme GachlabCapacitorBackgroundGeolocation \
-              -destination "platform=iOS Simulator,id=$SIMULATOR_ID"
