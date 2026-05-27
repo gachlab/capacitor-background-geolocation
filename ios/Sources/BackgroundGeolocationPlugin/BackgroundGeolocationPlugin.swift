@@ -57,6 +57,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "registerHeadlessTask", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getBackgroundKillReason", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise)
     ]
 
@@ -98,6 +99,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         nc.addObserver(self, selector: #selector(onPossibleCrashN(_:)),     name: .BGPossibleCrash,     object: nil)
 
         nc.addObserver(self, selector: #selector(onPhoneUsageWhileDrivingN(_:)), name: .BGPhoneUsageWhileDriving, object: nil)
+        nc.addObserver(self, selector: #selector(onFallbackActivatedN(_:)), name: .BGFallbackActivated, object: nil)
     }
 
     deinit {
@@ -437,6 +439,11 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         }
     }
 
+    @objc func getBackgroundKillReason(_ call: CAPPluginCall) {
+        // iOS does not expose a kill reason; return null fields for API parity.
+        call.resolve(["reason": NSNull(), "timestamp": NSNull()])
+    }
+
     @objc func registerHeadlessTask(_ call: CAPPluginCall) {
         call.resolve()
     }
@@ -690,6 +697,11 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         } else {
             notifyListeners("phoneUsageWhileDriving", data: [:])
         }
+    }
+
+    @objc private func onFallbackActivatedN(_ note: Notification) {
+        let strategy = (note.userInfo?["strategy"] as? String) ?? "significantchanges"
+        notifyListeners("iosFallbackActivated", data: ["strategy": strategy])
     }
 }
 

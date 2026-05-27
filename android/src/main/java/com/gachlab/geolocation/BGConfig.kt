@@ -71,11 +71,12 @@ class BGConfig() : Parcelable {
     var template: java.io.Serializable? = null
 
     // ── Diagnostics / watchdog ────────────────────────────────────────────────
-    var heartbeatInterval: Int?     = null
-    var mockLocationPolicy: String? = null
-    var enableWatchdog: Boolean?    = null
-    var watchdogIntervalMs: Long?   = null
-    var restartOnKill: Boolean?     = null  // true = START_STICKY (default); false = START_NOT_STICKY
+    var heartbeatInterval: Int?          = null
+    var mockLocationPolicy: String?      = null
+    var enableWatchdog: Boolean?         = null
+    var watchdogIntervalMs: Long?        = null
+    var restartOnKill: Boolean?          = null  // true = START_STICKY (default); false = START_NOT_STICKY
+    var headlessTaskTimeoutMs: Long?     = null  // WorkManager headless sync interval (ms); default 15 min
 
     // ── Driving events (v4.0+) ────────────────────────────────────────────────
     var drivingEvents: DrivingEventsOptions? = null
@@ -231,6 +232,7 @@ class BGConfig() : Parcelable {
         bundle.putSerializable("httpHeaders", httpHeaders)
         bundle.putSerializable("queryParams", queryParams)
         bundle.putSerializable("template",    template as? java.io.Serializable)
+        headlessTaskTimeoutMs?.let { bundle.putLong("headlessTaskTimeoutMs", it) }
         dest.writeBundle(bundle)
     }
 
@@ -384,6 +386,7 @@ class BGConfig() : Parcelable {
             result.stationaryPollFast          = b.stationaryPollFast
             result.activityConfidenceThreshold = b.activityConfidenceThreshold
             result.maxAcceptedAccuracy         = b.maxAcceptedAccuracy
+            result.headlessTaskTimeoutMs       = b.headlessTaskTimeoutMs
 
             // Apply override
             val o = override ?: return result
@@ -437,6 +440,7 @@ class BGConfig() : Parcelable {
             o.stationaryPollFast?.let          { result.stationaryPollFast          = it }
             o.activityConfidenceThreshold?.let { result.activityConfidenceThreshold = it }
             o.maxAcceptedAccuracy?.let         { result.maxAcceptedAccuracy         = it }
+            o.headlessTaskTimeoutMs?.let       { result.headlessTaskTimeoutMs       = it }
 
             return result
         }
@@ -538,6 +542,8 @@ class BGConfig() : Parcelable {
                     c.queryParams = bundle.getSerializable("queryParams") as? HashMap<String, String>
                     @Suppress("DEPRECATION")
                     c.template    = bundle.getSerializable("template")
+                    val htms = bundle.getLong("headlessTaskTimeoutMs", -1L)
+                    if (htms >= 0) c.headlessTaskTimeoutMs = htms
                 }
                 return c
             }

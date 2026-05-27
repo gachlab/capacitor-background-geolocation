@@ -92,7 +92,15 @@ public final class DistanceFilterLocationProvider: AbstractLocationProvider, CLL
                 self.isAcquiringStationaryLocation = true
                 self.acquisitionStartTime = Date()
                 self.bestLocation = nil
-                self.locationManager.startMonitoringSignificantLocationChanges()
+                let fallback = self.config.iosBackgroundFallback ?? "significantchanges"
+                if fallback != "none" {
+                    self.locationManager.startMonitoringSignificantLocationChanges()
+                    NotificationCenter.default.post(
+                        name: .BGFallbackActivated,
+                        object: nil,
+                        userInfo: ["strategy": fallback]
+                    )
+                }
                 self.locationManager.distanceFilter = kCLDistanceFilterNone
                 self.locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
                 self.locationManager.startUpdatingLocation()
@@ -102,8 +110,15 @@ public final class DistanceFilterLocationProvider: AbstractLocationProvider, CLL
 
     public override func onTerminate() {
         guard isStarted, !(config.stopOnTerminate ?? true) else { return }
+        let fallback = config.iosBackgroundFallback ?? "significantchanges"
+        guard fallback != "none" else { return }
         runOnMain {
             self.locationManager.startMonitoringSignificantLocationChanges()
+            NotificationCenter.default.post(
+                name: .BGFallbackActivated,
+                object: nil,
+                userInfo: ["strategy": fallback]
+            )
         }
     }
 
