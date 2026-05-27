@@ -52,18 +52,19 @@ adb shell pm grant "$PACKAGE" android.permission.ACCESS_BACKGROUND_LOCATION
 
 echo "→ Launching app"
 adb shell am start -n "${PACKAGE}/${ACTIVITY}"
-sleep 6
-adb shell input keyevent KEYCODE_BACK || true
-sleep 1
+# Wait for Capacitor WebView to fully initialize on the emulator (can take 10-15 s).
+# Do NOT press KEYCODE_BACK here — that would finish the Activity before the taps.
+sleep 15
 
-# Nexus 6 1440×2560: Configure≈x200 y500, Start≈x450 y500
+# Nexus 6 1440×2560 (560 dpi, ~3.5× scale): body padding 16dp → Configure center
+# ≈ x196px (dp 56), Start center ≈ x460px; both in first button row at y≈500px.
 echo "→ Tapping Configure (with driving events + crash/phone-usage thresholds)"
 adb shell input tap 200 500
-sleep 2
+sleep 3
 
 echo "→ Tapping Start"
 adb shell input tap 450 500
-sleep 3
+sleep 5
 
 # Clear logcat so we only see events from this run
 adb logcat -c
@@ -184,8 +185,11 @@ if [[ "$PASS" -eq 3 ]]; then
   echo "✓ Driving events E2E PASSED ($PASS/3)"
 else
   echo "✗ Driving events E2E FAILED ($PASS/3)"
-  echo "--- relevant logcat ---"
-  grep -iE "driving-event|DrivingEvents|possibleCrash|phoneUsage|LocationService" \
-    "$LOGCAT_OUT" | tail -60 || true
+  echo "--- LocationService logs ---"
+  grep "LocationService" "$LOGCAT_OUT" | tail -30 || echo "(none — service may not have started)"
+  echo "--- driving-event logs ---"
+  grep -iE "driving-event|possibleCrash|phoneUsage" "$LOGCAT_OUT" | tail -40 || echo "(none)"
+  echo "--- fatal/crash logs ---"
+  grep -iE "AndroidRuntime|FATAL EXCEPTION|E/Capacitor" "$LOGCAT_OUT" | tail -20 || echo "(none)"
   exit 1
 fi
