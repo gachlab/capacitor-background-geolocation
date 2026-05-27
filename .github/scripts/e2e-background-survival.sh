@@ -38,14 +38,23 @@ adb shell pm grant "$PACKAGE" android.permission.ACCESS_BACKGROUND_LOCATION
 
 echo "→ Launching app"
 adb shell am start -n "${PACKAGE}/${ACTIVITY}"
-sleep 3
+# Wait for WebView to fully render before tapping.
+sleep 6
 
+# Dismiss any permission/system dialog that might appear on first launch.
+adb shell input keyevent KEYCODE_BACK || true
+sleep 1
+
+# Nexus 6 emulator: 1440x2560 px at 3.5x density.
+# Button row renders at y≈500 physical px; Configure is at x≈200, Start at x≈450.
 echo "→ Tapping Configure"
-adb shell input tap 100 200
+adb shell input tap 200 500
+
+sleep 2
 
 echo "→ Tapping Start"
-adb shell input tap 150 200
-sleep 2
+adb shell input tap 450 500
+sleep 3
 
 # ── inject GPS fixes (foreground) ─────────────────────────────────────────────
 
@@ -92,7 +101,7 @@ COUNT=$(printf '%s' "${RAW}" | tr -dc '0-9')
 
 # Fallback: count location-persisted log lines emitted by the native service.
 if [[ -z "$COUNT" || "$COUNT" == "0" ]]; then
-  RAW=$(grep -cE "BackgroundLocation|location.*persisted|onLocation" \
+  RAW=$(grep -cE "LocationProvider|LocationService|BackgroundLocation|location.*persist|onLocation|persistLocation" \
         "$LOGCAT_OUT" 2>/dev/null || true)
   COUNT=$(printf '%s' "${RAW}" | tr -dc '0-9')
 fi
