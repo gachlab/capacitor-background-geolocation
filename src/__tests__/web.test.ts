@@ -384,7 +384,6 @@ describe('BackgroundGeolocationWeb', () => {
       ['showAppSettings', []],
       ['openSettings', []],
       ['showLocationSettings', []],
-      ['headlessTask', [() => {}]], // eslint-disable-line @typescript-eslint/no-empty-function
     ];
 
     for (const [method, args] of cases) {

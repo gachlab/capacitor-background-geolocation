@@ -192,7 +192,6 @@ sub.remove();
 | `startTask()` | iOS: begin a background task; returns `{ taskKey }`. |
 | `endTask({ taskKey })` | iOS: end the background task. |
 | `triggerSOS(payload?)` | Emit an `sos` event with the latest known location. |
-| `headlessTask(fn)` | Android: register a JS callback that runs even when the activity has been killed. iOS no-op. |
 
 ### Driver intelligence
 
@@ -257,54 +256,6 @@ detaches a single listener.
 | `geofenceDwell` | `GeofenceEvent` | Device has been inside a geofence for `loiteringDelay` ms. @since 1.3.0 |
 | `prioritySyncSuccess` | `PrioritySyncSuccessEvent` | Priority POST delivered; carries `eventType` and `attemptNumber`. @since 1.5.0 |
 | `prioritySyncFailed` | `PrioritySyncFailedEvent` | Priority POST exhausted retries; carries `eventType`, `httpStatus`, and `attempts`. @since 1.5.0 |
-
-## Headless task (Android)
-
-When `stopOnTerminate: false` and the user swipes the app away, Android
-keeps the foreground service alive but kills the host activity. In that
-state your regular `addListener` callbacks won't fire — the JS bridge no
-longer exists.
-
-`headlessTask` registers a small JS function that the plugin runs inside
-a hidden Android WebView every time a `location`, `stationary`, or
-`activity` event fires while the activity is gone.
-
-```ts
-import { BackgroundGeolocation } from '@gachlab/capacitor-background-geolocation';
-
-await BackgroundGeolocation.configure({
-  stopOnTerminate: false,
-  startOnBoot: true,
-  // ...other options
-});
-
-await BackgroundGeolocation.headlessTask(function (event) {
-  // event.name   : 'location' | 'stationary' | 'activity'
-  // event.params : the corresponding payload
-  if (event.name === 'location' || event.name === 'stationary') {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', 'https://example.com/headless');
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.send(JSON.stringify(event.params));
-  }
-  return 'processed: ' + event.name;
-});
-
-await BackgroundGeolocation.start();
-```
-
-Caveats:
-
-- **Android only.** On iOS the call resolves immediately — Apple does not
-  allow running JS in a killed-app scenario. Use the regular
-  `addListener('location', …)` flow on iOS.
-- **Isolated scope.** The function body is serialised via `fn.toString()`
-  and re-evaluated inside a fresh WebView. Closures, imports, and outer
-  variables are NOT available. Only `XMLHttpRequest`, `fetch`, `JSON`,
-  and the language built-ins.
-- **Prefer `url` / `syncUrl`.** Configuring an HTTP endpoint on the
-  native side is more reliable than headless JS — the native sync layer
-  handles retries, batching, and OS-level battery throttling.
 
 ## Driving events
 
@@ -484,10 +435,9 @@ Type names from the Cordova plugin (`ConfigureOptions`, `Location`,
 `BackgroundGeolocationLocationProvider`, etc.) are also re-exported so most
 codebases compile with only the import-path swap.
 
-`headlessTask(fn)` is supported on Android with the same signature as the
-Cordova plugin — see [Headless task (Android)](#headless-task-android).
-On iOS the call resolves as a no-op (Apple does not allow JS execution
-while the host process is killed).
+`headlessTask` from the Cordova plugin is not supported — configure `url`
+and `syncUrl` instead. The native service continues running and POSTing
+locations even when the host activity has been killed.
 
 ## License
 
