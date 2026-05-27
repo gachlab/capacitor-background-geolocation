@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 gachlab
 //
-// Browser fallback for @josuelmm/capacitor-background-geolocation.
-// Uses navigator.geolocation. Real background tracking is not possible on the
-// web platform — the service runs only while the page is alive.
+// Browser fallback for @gachlab/capacitor-background-geolocation.
+// Uses navigator.geolocation. Tracking runs only while the page is alive.
+// Locations, sessions, and the sync queue are kept in memory for the lifetime
+// of the page — no IndexedDB persistence across reloads.
 
 import { WebPlugin } from '@capacitor/core';
 import type { PermissionState } from '@capacitor/core';
@@ -24,8 +25,6 @@ import type {
 } from './definitions';
 import { AuthorizationStatus } from './definitions';
 
-const NOT_AVAILABLE = 'Not available on web.';
-
 interface BrowserPermissions {
   query?: (descriptor: { name: string }) => Promise<{ state: PermissionState }>;
 }
@@ -34,6 +33,12 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   private watchId: number | null = null;
   private config: ConfigureOptions = {};
   private lastLocation: Location | null = null;
+
+  // In-memory stores (cleared on page reload — foreground only)
+  private locations: Location[] = [];
+  private sessionLocations: Location[] = [];
+  private sessionActive = false;
+  private syncQueue: Location[] = [];
 
   // ---------------- Tracking control ----------------
 
@@ -45,14 +50,14 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     if (!('geolocation' in navigator)) {
       throw this.unavailable('Geolocation API is not available in this browser.');
     }
-    if (this.watchId !== null) {
-      return;
-    }
+    if (this.watchId !== null) return;
     this.watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const loc = this.toLocation(pos);
         this.lastLocation = loc;
+        this.storeLocation(loc);
         this.notifyListeners('location', loc);
+        if (this.config.url) void this.postLocation(loc);
       },
       (err) => {
         this.notifyListeners('error', this.toError(err));
@@ -75,7 +80,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   }
 
   async switchMode(_options: { mode: 0 | 1 }): Promise<void> {
-    throw this.unimplemented(NOT_AVAILABLE);
+    /* no-op on web — always foreground */
   }
 
   async checkStatus(): Promise<ServiceStatus> {
@@ -110,55 +115,72 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   }
 
   async getLocations(): Promise<{ locations: Location[] }> {
-    return { locations: [] };
+    return { locations: [...this.locations] };
   }
 
   async getValidLocations(): Promise<{ locations: Location[] }> {
-    return { locations: [] };
+    return { locations: [...this.locations] };
   }
 
   async getValidLocationsAndDelete(): Promise<{ locations: Location[] }> {
-    return { locations: [] };
+    const locations = [...this.locations];
+    this.locations = [];
+    return { locations };
   }
 
-  async deleteLocation(_options: { locationId: number }): Promise<void> {
-    throw this.unimplemented(NOT_AVAILABLE);
+  async deleteLocation(options: { locationId: number }): Promise<void> {
+    this.locations = this.locations.filter((l) => l.id !== options.locationId);
   }
 
   async deleteAllLocations(): Promise<void> {
-    throw this.unimplemented(NOT_AVAILABLE);
+    this.locations = [];
   }
 
   // ---------------- Sync queue ----------------
 
   async forceSync(): Promise<void> {
-    throw this.unimplemented(NOT_AVAILABLE);
+    const url = this.config.syncUrl ?? this.config.url;
+    if (!url || this.syncQueue.length === 0) return;
+    const batch = this.syncQueue.splice(0);
+    try {
+      const resp = await fetch(url, {
+        method: (this.config.syncHttpMethod ?? this.config.httpMethod ?? 'POST').toUpperCase(),
+        headers: { 'Content-Type': 'application/json', ...(this.config.httpHeaders ?? {}) },
+        body: JSON.stringify(batch),
+      });
+      if (!resp.ok) this.syncQueue.unshift(...batch);
+      else this.notifyListeners('syncSuccess', { sent: batch.length });
+    } catch {
+      this.syncQueue.unshift(...batch);
+    }
   }
 
   async clearSync(): Promise<void> {
-    throw this.unimplemented(NOT_AVAILABLE);
+    this.syncQueue = [];
   }
 
   async getPendingSyncCount(): Promise<{ count: number }> {
-    return { count: 0 };
+    return { count: this.syncQueue.length };
   }
 
   // ---------------- Sessions ----------------
 
   async startSession(): Promise<void> {
-    throw this.unimplemented(NOT_AVAILABLE);
+    this.sessionLocations = [];
+    this.sessionActive = true;
   }
 
   async getSessionLocations(): Promise<{ locations: Location[] }> {
-    return { locations: [] };
+    return { locations: [...this.sessionLocations] };
   }
 
   async clearSession(): Promise<void> {
-    throw this.unimplemented(NOT_AVAILABLE);
+    this.sessionLocations = [];
+    this.sessionActive = false;
   }
 
   async getSessionLocationsCount(): Promise<{ count: number }> {
-    return { count: 0 };
+    return { count: this.sessionLocations.length };
   }
 
   // ---------------- Diagnostics & OEMs ----------------
@@ -188,23 +210,16 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     /* no-op */
   }
 
-  async openAutoStartSettings(): Promise<{
-    opened: boolean;
-    manufacturer: string;
-    screen: string;
-  }> {
+  async openAutoStartSettings(): Promise<{ opened: boolean; manufacturer: string; screen: string }> {
     return { opened: false, manufacturer: 'web', screen: '' };
   }
 
-  async getManufacturerHelp(): Promise<{
-    manufacturer: string;
-    steps: string[];
-  }> {
+  async getManufacturerHelp(): Promise<{ manufacturer: string; steps: string[] }> {
     return { manufacturer: 'web', steps: [] };
   }
 
   async getPluginVersion(): Promise<{ version: string }> {
-    return { version: '1.0.1' };
+    return { version: '1.5.0' };
   }
 
   // ---------------- Permissions ----------------
@@ -216,24 +231,18 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
         const result = await perms.query({ name: 'geolocation' });
         return { location: result.state };
       } catch {
-        /* fall through to probe */
+        /* fall through */
       }
     }
     return { location: 'prompt' };
   }
 
   async requestPermissions(): Promise<{ location: PermissionState }> {
-    if (!('geolocation' in navigator)) {
-      return { location: 'denied' };
-    }
+    if (!('geolocation' in navigator)) return { location: 'denied' };
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
         () => resolve({ location: 'granted' }),
-        (err) => {
-          resolve({
-            location: err.code === err.PERMISSION_DENIED ? 'denied' : 'prompt',
-          });
-        },
+        (err) => resolve({ location: err.code === err.PERMISSION_DENIED ? 'denied' : 'prompt' }),
         { enableHighAccuracy: false, maximumAge: 60_000, timeout: 5_000 },
       );
     });
@@ -248,12 +257,8 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   }
 
   async requestNotificationPermission(): Promise<PermissionRequestResult> {
-    if (typeof Notification === 'undefined') {
-      return { granted: true, notRequired: true };
-    }
-    if (Notification.permission === 'granted') {
-      return { granted: true };
-    }
+    if (typeof Notification === 'undefined') return { granted: true, notRequired: true };
+    if (Notification.permission === 'granted') return { granted: true };
     try {
       const result = await Notification.requestPermission();
       return result === 'granted' ? { granted: true } : { granted: false, denied: ['notifications'] };
@@ -263,15 +268,15 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   }
 
   async showAppSettings(): Promise<void> {
-    throw this.unimplemented(NOT_AVAILABLE);
+    /* no-op */
   }
 
   async openSettings(): Promise<void> {
-    throw this.unimplemented(NOT_AVAILABLE);
+    /* no-op */
   }
 
   async showLocationSettings(): Promise<void> {
-    throw this.unimplemented(NOT_AVAILABLE);
+    /* no-op */
   }
 
   // ---------------- Tasks ----------------
@@ -285,23 +290,24 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   }
 
   async triggerSOS(payload?: Record<string, unknown>): Promise<void> {
-    this.notifyListeners('sos', {
-      ...(payload ?? {}),
-      location: this.lastLocation ?? undefined,
-    });
+    this.notifyListeners('sos', { ...(payload ?? {}), location: this.lastLocation ?? undefined });
   }
 
+  // ---------------- Geofencing ----------------
+
   async addGeofences(_options: { geofences: Geofence[] }): Promise<void> {
-    throw this.unimplemented(NOT_AVAILABLE);
+    /* no-op — browser has no native geofencing API */
   }
 
   async removeGeofences(_options?: { ids?: string[] }): Promise<void> {
-    throw this.unimplemented(NOT_AVAILABLE);
+    /* no-op */
   }
 
   async getGeofences(): Promise<{ geofences: Geofence[] }> {
     return { geofences: [] };
   }
+
+  // ---------------- Driver intelligence ----------------
 
   async getTripScore(): Promise<TripScore | null> {
     return null;
@@ -317,7 +323,35 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     return { entries: [] };
   }
 
-  // ---------------- Helpers ----------------
+  // ---------------- Lifecycle ----------------
+
+  async removeAllListeners(): Promise<void> {
+    await super.removeAllListeners();
+  }
+
+  // ---------------- Private ----------------
+
+  private storeLocation(loc: Location): void {
+    this.locations.push(loc);
+    const max = this.config.maxLocations ?? 10_000;
+    if (this.locations.length > max) this.locations.splice(0, this.locations.length - max);
+    if (this.sessionActive) this.sessionLocations.push(loc);
+  }
+
+  private async postLocation(loc: Location): Promise<void> {
+    const url = this.config.url;
+    if (!url) return;
+    try {
+      const resp = await fetch(url, {
+        method: (this.config.httpMethod ?? 'POST').toUpperCase(),
+        headers: { 'Content-Type': 'application/json', ...(this.config.httpHeaders ?? {}) },
+        body: JSON.stringify(loc),
+      });
+      if (!resp.ok) this.syncQueue.push(loc);
+    } catch {
+      this.syncQueue.push(loc);
+    }
+  }
 
   private toLocation(pos: GeolocationPosition): Location {
     const c = pos.coords;

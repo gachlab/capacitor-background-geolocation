@@ -370,33 +370,132 @@ describe('BackgroundGeolocationWeb', () => {
     });
   });
 
-  // ── Unimplemented methods ─────────────────────────────────────────────────
+  // ── No-op methods ─────────────────────────────────────────────────────────
 
-  describe('unimplemented methods', () => {
+  describe('no-op methods resolve without throwing', () => {
     const cases: [string, unknown[]][] = [
       ['switchMode', [{ mode: 0 }]],
-      ['deleteLocation', [{ locationId: 1 }]],
-      ['deleteAllLocations', []],
-      ['forceSync', []],
-      ['clearSync', []],
-      ['startSession', []],
-      ['clearSession', []],
       ['showAppSettings', []],
       ['openSettings', []],
       ['showLocationSettings', []],
     ];
 
     for (const [method, args] of cases) {
-      it(`${method}() throws`, async () => {
-        await assert.rejects(
-          () => (plugin as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[method](...args),
-          (err: Error) => {
-            assert.ok(err instanceof Error, `expected Error, got ${typeof err}`);
-            return true;
-          },
-        );
+      it(`${method}() resolves`, async () => {
+        await (plugin as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[method](...args);
       });
     }
+  });
+
+  // ── Location store ────────────────────────────────────────────────────────
+
+  describe('location store', () => {
+    it('accumulates locations as fixes arrive', async () => {
+      await plugin.start();
+      onWatchSuccess?.(makePosition({ latitude: 1 }));
+      onWatchSuccess?.(makePosition({ latitude: 2 }));
+      const { locations } = await plugin.getLocations();
+      assert.equal(locations.length, 2);
+      assert.equal(locations[0].latitude, 1);
+      assert.equal(locations[1].latitude, 2);
+    });
+
+    it('deleteLocation removes the matching entry', async () => {
+      await plugin.start();
+      onWatchSuccess?.(makePosition());
+      const { locations } = await plugin.getLocations();
+      await plugin.deleteLocation({ locationId: locations[0].id });
+      assert.equal((await plugin.getLocations()).locations.length, 0);
+    });
+
+    it('deleteAllLocations empties the store', async () => {
+      await plugin.start();
+      onWatchSuccess?.(makePosition());
+      onWatchSuccess?.(makePosition());
+      await plugin.deleteAllLocations();
+      assert.equal((await plugin.getLocations()).locations.length, 0);
+    });
+
+    it('getValidLocationsAndDelete returns and clears', async () => {
+      await plugin.start();
+      onWatchSuccess?.(makePosition({ latitude: 10 }));
+      const { locations } = await plugin.getValidLocationsAndDelete();
+      assert.equal(locations.length, 1);
+      assert.equal(locations[0].latitude, 10);
+      assert.equal((await plugin.getLocations()).locations.length, 0);
+    });
+
+    it('respects maxLocations config', async () => {
+      await plugin.configure({ maxLocations: 3 });
+      await plugin.start();
+      for (let i = 0; i < 5; i++) onWatchSuccess?.(makePosition({ latitude: i }));
+      const { locations } = await plugin.getLocations();
+      assert.equal(locations.length, 3);
+      assert.equal(locations[0].latitude, 2);
+      assert.equal(locations[2].latitude, 4);
+    });
+  });
+
+  // ── Sessions ──────────────────────────────────────────────────────────────
+
+  describe('sessions', () => {
+    it('session is inactive by default — locations not tracked', async () => {
+      await plugin.start();
+      onWatchSuccess?.(makePosition());
+      assert.equal((await plugin.getSessionLocations()).locations.length, 0);
+      assert.equal((await plugin.getSessionLocationsCount()).count, 0);
+    });
+
+    it('startSession activates session tracking', async () => {
+      await plugin.startSession();
+      await plugin.start();
+      onWatchSuccess?.(makePosition({ latitude: 5 }));
+      onWatchSuccess?.(makePosition({ latitude: 6 }));
+      const { locations } = await plugin.getSessionLocations();
+      assert.equal(locations.length, 2);
+      assert.equal((await plugin.getSessionLocationsCount()).count, 2);
+    });
+
+    it('clearSession empties session and stops tracking', async () => {
+      await plugin.startSession();
+      await plugin.start();
+      onWatchSuccess?.(makePosition());
+      await plugin.clearSession();
+      assert.equal((await plugin.getSessionLocations()).locations.length, 0);
+      // new fixes after clear do not accumulate
+      onWatchSuccess?.(makePosition());
+      assert.equal((await plugin.getSessionLocations()).locations.length, 0);
+    });
+
+    it('pre-session locations are not included', async () => {
+      await plugin.start();
+      onWatchSuccess?.(makePosition({ latitude: 1 }));
+      await plugin.startSession();
+      onWatchSuccess?.(makePosition({ latitude: 2 }));
+      assert.equal((await plugin.getSessionLocations()).locations.length, 1);
+      assert.equal((await plugin.getSessionLocations()).locations[0].latitude, 2);
+    });
+  });
+
+  // ── Sync queue ────────────────────────────────────────────────────────────
+
+  describe('sync queue', () => {
+    it('clearSync empties the queue', async () => {
+      // Populate queue via a failing POST — simulate by configuring url and
+      // letting the fetch mock fail. We can't easily intercept fetch in node:test
+      // without globals, so we test clearSync on an initially-empty queue.
+      await plugin.clearSync();
+      assert.equal((await plugin.getPendingSyncCount()).count, 0);
+    });
+
+    it('forceSync is a no-op when queue is empty', async () => {
+      await plugin.configure({ url: 'https://example.com/loc' });
+      await plugin.forceSync(); // should not throw
+    });
+
+    it('forceSync is a no-op when no url is configured', async () => {
+      await plugin.forceSync(); // should not throw
+    });
   });
 
   // ── triggerSOS ────────────────────────────────────────────────────────────
