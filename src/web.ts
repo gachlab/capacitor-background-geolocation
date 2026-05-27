@@ -161,6 +161,10 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
 
   // ---------------- Diagnostics & OEMs ----------------
 
+  async getBackgroundKillReason(): Promise<{ reason: string | null; timestamp: number | null }> {
+    return { reason: null, timestamp: null };
+  }
+
   async getDiagnostics(): Promise<Diagnostics> {
     return {
       isRunning: this.watchId !== null,

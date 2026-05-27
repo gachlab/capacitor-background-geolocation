@@ -462,6 +462,16 @@ describe('BackgroundGeolocationWeb', () => {
     });
   });
 
+  // ── getBackgroundKillReason ───────────────────────────────────────────────
+
+  describe('getBackgroundKillReason()', () => {
+    it('returns null fields on web', async () => {
+      const result = await plugin.getBackgroundKillReason();
+      assert.equal(result.reason, null);
+      assert.equal(result.timestamp, null);
+    });
+  });
+
   // ── getCurrentLocation ────────────────────────────────────────────────────
 
   describe('getCurrentLocation()', () => {

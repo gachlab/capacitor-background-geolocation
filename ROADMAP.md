@@ -6,6 +6,29 @@ Prioridad de plataforma: Android primero.
 
 ---
 
+## Completado
+
+### v1.1 — Kotlin Rewrite (Android)
+
+Reescritura completa del core Android en Kotlin puro bajo `com.gachlab.*`. Sin Java en el árbol principal.
+
+**Eliminado:**
+- `com.marianhello.*`, `com.josuelmm.*`, `com.evgenii.*`, `ru.andremoniy.*`, `org.apache.*`, `org.chromium.*`
+- Dependencias runtime: `gson`, `slf4j`, `logback-android`, `jparkie-promise`, `android-permissions`
+- SyncAdapter / AuthenticatorService / ContentProvider (reemplazados por WorkManager)
+
+**Nuevo:**
+- `DrivingEventsDetector` — state machine pura Kotlin, sin imports Android, totalmente testeable en JVM
+- `BackgroundSync` — WorkManager worker, reemplaza el SyncAdapter/AuthenticatorService complejo
+- `LocationDAO`, `SessionDAO`, `ConfigDAO` — SQL inline, sin ORM de terceros
+- `OemHelper` — intents de autostart para Xiaomi, Huawei, Oppo, Vivo, Samsung, OnePlus, Asus
+- `NotificationHelper`, `BootReceiver`, `BGFacade`, `BackgroundGeolocationPlugin`
+- Suite de tests JUnit 5: `DrivingEventsDetectorTest`, `ConfigMapperTest`, `MockTripBuilder`
+
+**Licencia:** todo código nuevo bajo MIT (`SPDX-License-Identifier: MIT / Copyright (c) 2026 gachlab`).
+
+---
+
 ## Prioridad 1 — Testing (Línea Base)
 
 Antes de tocar cualquier feature, necesitamos saber qué funciona y qué no. El repo actualmente solo tiene un smoke test en iOS — no hay forma de saber el impacto de un cambio sin tests.
@@ -94,7 +117,7 @@ Este es el test más importante dado el pain point #1.
 
 Una vez que la suite base esté, agregar en CI:
 - TS: 80% coverage mínimo en `src/`
-- Android: 70% en `com.josuelmm.capacitor.backgroundgeolocation`
+- Android: 70% en `com.gachlab.geolocation`
 - iOS: 70% en `BackgroundGeolocationPlugin.swift`
 
 ---
