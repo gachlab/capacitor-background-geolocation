@@ -19,7 +19,7 @@
     "NOTICE.md"
   ],
   "author": "Guillermo Carrillo",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/gachlab/capacitor-background-geolocation.git"

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 package com.josuelmm.capacitor.backgroundgeolocation.fixtures;
 
 import com.marianhello.bgloc.data.BackgroundLocation;

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # E2E: background-survival test for capacitor-background-geolocation.
 #
 # Pre-conditions (satisfied by android-emulator-runner@v2):

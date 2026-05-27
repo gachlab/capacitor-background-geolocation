@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2026 JosueLMM
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 gachlab
 //
 // Adapted from `com.marianhello.bgloc.cordova.ConfigMapper` in the upstream
 // Cordova plugin. Capacitor's JSObject extends org.json.JSONObject, so the

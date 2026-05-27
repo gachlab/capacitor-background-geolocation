@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2026 JosueLMM
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 gachlab
 //
 // Task runner that evaluates a user-supplied JS function in a hidden WebView
 // when the Android background service fires a location/stationary/activity event

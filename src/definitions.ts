@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2026 JosueLMM
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 gachlab
 //
 // Capacitor plugin definitions for @josuelmm/capacitor-background-geolocation.
 // Mirrors @josuelmm/cordova-background-geolocation's www/BackgroundGeolocation.d.ts

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2026 JosueLMM
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 gachlab
 //
 // Capacitor 8+ bridge for the upstream `com.marianhello.bgloc` native core.
 // The Cordova entry point (com.tenforwardconsulting.bgloc.cordova.BackgroundGeolocationPlugin)

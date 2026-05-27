@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2026 JosueLMM
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 gachlab
 //
 // Browser fallback for @josuelmm/capacitor-background-geolocation.
 // Uses navigator.geolocation. Real background tracking is not possible on the

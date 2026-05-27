@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2026 JosueLMM
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 gachlab
 //
 // Holds the JS function body registered via `BackgroundGeolocation.headlessTask(fn)`.
 // The native `JsEvaluatorTaskRunner` reads this string when the Android service
