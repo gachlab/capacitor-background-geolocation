@@ -39,14 +39,14 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('configure').onclick = () =>
     safe('configure', () =>
       BackgroundGeolocation.configure({
-        locationProvider: 'DISTANCE_FILTER',
+        locationProvider: 2,
         desiredAccuracy: 'HIGH',
         stationaryRadius: 25,
-        distanceFilter: 10,
+        distanceFilter: 0,
         debug: false,
         stopOnTerminate: false,
         startOnBoot: false,
-        interval: 5000,
+        interval: 1000,
         notificationsEnabled: true,
         startForeground: true,
         notificationTitle: 'Example tracking',
