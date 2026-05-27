@@ -16,6 +16,18 @@ Prioridad de plataforma: Android primero.
 
 ## Completado
 
+### v1.6.0 — Driver Intelligence: Crash Confirm + Phone-Usage GPS Heuristic
+
+Mejoras a `DrivingEventsDetector` en Android y iOS:
+
+- **`crashConfirmWindowMs`**: ventana de confirmación diferida para `possibleCrash`. Elimina falsos positivos por glitch de GPS. Si el vehículo recupera velocidad antes de que expire la ventana, el crash se cancela.
+- **`phoneUsageWhileDriving` vía GPS**: heurística de jitter de bearing cuando `sensorFusion: false`. Detecta el patrón de bearing oscilante típico de un conductor mirando el teléfono sin requerir giroscopio.
+- E2E script (`e2e-driving-events.sh`) con 3 escenarios + job CI `android-e2e-driving`.
+- Web: implementación real de location store, sessions y sync queue en `src/web.ts`.
+- Eliminado: `registerHeadlessTask` de iOS (era no-op; Android sin cambios).
+
+---
+
 ### v1.1 — Kotlin Rewrite (Android)
 
 Reescritura completa del core Android en Kotlin puro bajo `com.gachlab.*`. Sin Java en el árbol principal.

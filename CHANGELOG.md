@@ -6,6 +6,29 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-05-27
+
+### Added
+- **`crashConfirmWindowMs`** (Android + iOS): deferred `possibleCrash` confirmation window.
+  When > 0, the crash event is held until the vehicle stays stopped for the configured ms
+  after the velocity drop; if speed recovers before the window elapses the event is
+  cancelled. Default `0` preserves existing fire-immediately behaviour.
+- **`phoneUsageWhileDriving` GPS heuristic** (Android + iOS): bearing-jitter detection for
+  the case where `sensorFusion: false`. Fires `phoneUsageWhileDriving` when ≥ 3 bearing
+  oscillations (5–25° deltas at 5–80 km/h) occur within `phoneUsageWindowMs`.
+  New config fields: `sensorFusion`, `phoneUsageWindowMs`, `phoneUsageCooldownMs`.
+- **E2E driving-events test** (`.github/scripts/e2e-driving-events.sh`): three scenarios —
+  crash detection, phone-usage jitter, and crash-confirm cancellation on speed recovery —
+  wired into CI as the `android-e2e-driving` job.
+- **Web implementation** (`src/web.ts`): location store (SQLite-like in-memory), session
+  support, and sync queue. Methods that require native GPS resolve with empty/stub results
+  on web as documented.
+
+### Removed
+- `registerHeadlessTask` removed from the iOS bridge. The method was a no-op on iOS since
+  headless tasks are an Android-only concept; keeping it caused confusion and stale test
+  coverage. Android support is unchanged.
+
 ## [1.0.2] - 2026-05-25
 
 ### Fixed
