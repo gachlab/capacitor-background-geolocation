@@ -1,4 +1,4 @@
-package com.josuelmm.capacitor.backgroundgeolocation.example;
+package com.gachlab.capacitor.backgroundgeolocation.example;
 
 import com.getcapacitor.BridgeActivity;
 

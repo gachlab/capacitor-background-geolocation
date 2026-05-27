@@ -99,10 +99,11 @@ RAW=$(adb shell "run-as ${PACKAGE} sqlite3 ${DB} 'SELECT COUNT(*) FROM location'
 # Strip everything except digits (handles empty, error text, whitespace).
 COUNT=$(printf '%s' "${RAW}" | tr -dc '0-9')
 
-# Fallback: count location-persisted log lines emitted by the native service.
+# Fallback: count lines tagged "LocationService" from our native service.
+# Only matches lines like "I LocationService: ..." — excludes Android system
+# services (LocationManagerService, GnssLocationProvider, etc.).
 if [[ -z "$COUNT" || "$COUNT" == "0" ]]; then
-  RAW=$(grep -cE "LocationProvider|LocationService|BackgroundLocation|location.*persist|onLocation|persistLocation" \
-        "$LOGCAT_OUT" 2>/dev/null || true)
+  RAW=$(grep -cE "[IDWEV] LocationService[: ]" "$LOGCAT_OUT" 2>/dev/null || true)
   COUNT=$(printf '%s' "${RAW}" | tr -dc '0-9')
 fi
 
