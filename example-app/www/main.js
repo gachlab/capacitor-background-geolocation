@@ -1,111 +1,142 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2026 JosueLMM
+// Copyright (c) 2026 gachlab
 //
 // Minimal host page exercising the plugin's public API on web/Android/iOS.
+//
+// No bundler is used. The Capacitor native-bridge.js is injected before this
+// script runs, so window.Capacitor.Plugins.BackgroundGeolocation is available
+// without any npm imports.
 
-import { BackgroundGeolocation } from '@josuelmm/capacitor-background-geolocation';
+/* global Capacitor */
 
-const out = document.getElementById('log');
-const statusEl = document.querySelector('[data-testid="service-status"]');
-const countEl  = document.querySelector('[data-testid="location-count"]');
-const lastEvEl = document.querySelector('[data-testid="last-event"]');
+document.addEventListener('DOMContentLoaded', () => {
+  const BackgroundGeolocation = Capacitor.Plugins.BackgroundGeolocation;
 
-let locationCount = 0;
+  const out      = document.getElementById('log');
+  const statusEl = document.querySelector('[data-testid="service-status"]');
+  const countEl  = document.querySelector('[data-testid="location-count"]');
+  const lastEvEl = document.querySelector('[data-testid="last-event"]');
 
-const log = (label, data) => {
-  const line = `[${new Date().toISOString().slice(11, 19)}] ${label}` +
-    (data === undefined ? '' : ' ' + JSON.stringify(data));
-  out.textContent = line + '\n' + out.textContent;
-  lastEvEl.textContent = label;
-};
+  let locationCount = 0;
 
-async function safe(label, fn) {
-  try {
-    const r = await fn();
-    log(label, r);
-  } catch (e) {
-    log(label + ' ERROR', { message: e?.message ?? String(e) });
+  const log = (label, data) => {
+    const line = `[${new Date().toISOString().slice(11, 19)}] ${label}` +
+      (data === undefined ? '' : ' ' + JSON.stringify(data));
+    out.textContent = line + '\n' + out.textContent;
+    lastEvEl.textContent = label;
+  };
+
+  async function safe(label, fn) {
+    try {
+      const r = await fn();
+      log(label, r);
+    } catch (e) {
+      log(label + ' ERROR', { message: e?.message ?? String(e) });
+    }
   }
-}
 
-// Tracking
-document.getElementById('configure').onclick = () =>
-  safe('configure', () =>
-    BackgroundGeolocation.configure({
-      locationProvider: 'DISTANCE_FILTER',
-      desiredAccuracy: 'HIGH',
-      stationaryRadius: 25,
-      distanceFilter: 10,
-      debug: false,
-      stopOnTerminate: false,
-      startOnBoot: false,
-      interval: 5000,
-      notificationsEnabled: true,
-      startForeground: true,
-      notificationTitle: 'Example tracking',
-      notificationText: 'Location enabled',
-      heartbeatInterval: 30000,
-      drivingEvents: { enabled: true, speedLimit: 90 },
-    }),
-  );
+  // Tracking
+  document.getElementById('configure').onclick = () =>
+    safe('configure', () =>
+      BackgroundGeolocation.configure({
+        locationProvider: 2,
+        desiredAccuracy: 0,
+        stationaryRadius: 25,
+        distanceFilter: 0,
+        debug: false,
+        stopOnTerminate: false,
+        startOnBoot: false,
+        interval: 1000,
+        notificationsEnabled: true,
+        startForeground: true,
+        notificationTitle: 'Example tracking',
+        notificationText: 'Location enabled',
+        heartbeatInterval: 30000,
+        drivingEvents: {
+          enabled: true,
+          speedLimit: 90,
+          // Lowered thresholds for E2E emulator testing
+          crashImpactKmh: 10,
+          crashWindowMs: 6000,
+          crashConfirmWindowMs: 2000,
+          sensorFusion: false,
+          phoneUsageWindowMs: 3000,
+          phoneUsageCooldownMs: 5000,
+          minTripDuration: 0,
+          minMovingSpeed: 0.5,
+        },
+      }),
+    );
 
-document.getElementById('start').onclick = () => safe('start', () => BackgroundGeolocation.start());
-document.getElementById('stop').onclick = () => safe('stop', () => BackgroundGeolocation.stop());
-document.getElementById('status').onclick = () => safe('checkStatus', () => BackgroundGeolocation.checkStatus());
-document.getElementById('current').onclick = () =>
-  safe('getCurrentLocation', () =>
-    BackgroundGeolocation.getCurrentLocation({ enableHighAccuracy: true, timeout: 15000 }),
-  );
+  document.getElementById('start').onclick = () => safe('start', () => BackgroundGeolocation.start());
+  document.getElementById('stop').onclick = () => safe('stop', () => BackgroundGeolocation.stop());
+  document.getElementById('status').onclick = () => safe('checkStatus', () => BackgroundGeolocation.checkStatus());
+  document.getElementById('current').onclick = () =>
+    safe('getCurrentLocation', () =>
+      BackgroundGeolocation.getCurrentLocation({ enableHighAccuracy: true, timeout: 15000 }),
+    );
 
-// Locations
-document.getElementById('valid').onclick = () =>
-  safe('getValidLocations', () => BackgroundGeolocation.getValidLocations());
-document.getElementById('clear').onclick = () =>
-  safe('deleteAllLocations', () => BackgroundGeolocation.deleteAllLocations());
+  // Locations
+  document.getElementById('valid').onclick = () =>
+    safe('getValidLocations', () => BackgroundGeolocation.getValidLocations());
+  document.getElementById('clear').onclick = () =>
+    safe('deleteAllLocations', () => BackgroundGeolocation.deleteAllLocations());
 
-// Diagnostics
-document.getElementById('diag').onclick = () =>
-  safe('getDiagnostics', async () => {
-    const d = await BackgroundGeolocation.getDiagnostics();
-    return JSON.parse(JSON.stringify(d));
+  // Diagnostics
+  document.getElementById('diag').onclick = () =>
+    safe('getDiagnostics', async () => {
+      const d = await BackgroundGeolocation.getDiagnostics();
+      return JSON.parse(JSON.stringify(d));
+    });
+  document.getElementById('ver').onclick = () =>
+    safe('getPluginVersion', () => BackgroundGeolocation.getPluginVersion());
+  document.getElementById('sos').onclick = () =>
+    safe('triggerSOS', () => BackgroundGeolocation.triggerSOS({ reason: 'manual' }));
+
+  // Permissions
+  document.getElementById('perm').onclick = () =>
+    safe('requestPermissions', () => BackgroundGeolocation.requestPermissions());
+  document.getElementById('bgperm').onclick = () =>
+    safe('requestBackgroundLocationPermission', () =>
+      BackgroundGeolocation.requestBackgroundLocationPermission(),
+    );
+  document.getElementById('actperm').onclick = () =>
+    safe('requestActivityRecognitionPermission', () =>
+      BackgroundGeolocation.requestActivityRecognitionPermission(),
+    );
+  document.getElementById('notifperm').onclick = () =>
+    safe('requestNotificationPermission', () =>
+      BackgroundGeolocation.requestNotificationPermission(),
+    );
+
+  // Event subscriptions
+  BackgroundGeolocation.addListener('location', (loc) => {
+    locationCount++;
+    countEl.textContent = String(locationCount);
+    log('event:location', loc);
   });
-document.getElementById('ver').onclick = () =>
-  safe('getPluginVersion', () => BackgroundGeolocation.getPluginVersion());
-document.getElementById('sos').onclick = () =>
-  safe('triggerSOS', () => BackgroundGeolocation.triggerSOS({ reason: 'manual' }));
+  BackgroundGeolocation.addListener('stationary', (loc) => log('event:stationary', loc));
+  BackgroundGeolocation.addListener('error', (err) => log('event:error', err));
+  BackgroundGeolocation.addListener('start', () => { statusEl.textContent = 'running'; log('event:start'); });
+  BackgroundGeolocation.addListener('stop',  () => { statusEl.textContent = 'stopped'; log('event:stop'); });
+  BackgroundGeolocation.addListener('activity', (a) => log('event:activity', a));
+  BackgroundGeolocation.addListener('authorization', (a) => log('event:authorization', a));
+  BackgroundGeolocation.addListener('heartbeat', (h) => log('event:heartbeat', h));
+  BackgroundGeolocation.addListener('tripStart', (loc) => log('event:tripStart', loc));
+  BackgroundGeolocation.addListener('tripEnd', (t) => log('event:tripEnd', t));
+  BackgroundGeolocation.addListener('speeding', (s) => log('event:speeding', s));
+  BackgroundGeolocation.addListener('sos', (s) => log('event:sos', s));
+  BackgroundGeolocation.addListener('hardBrake', (loc) => log('event:hardBrake', loc));
+  BackgroundGeolocation.addListener('sharpTurn', (loc) => log('event:sharpTurn', loc));
+  BackgroundGeolocation.addListener('rapidAcceleration', (loc) => log('event:rapidAcceleration', loc));
+  BackgroundGeolocation.addListener('possibleCrash', (loc) => {
+    console.log('[BGGL-E2E] driving-event:possibleCrash');
+    log('event:possibleCrash', loc);
+  });
+  BackgroundGeolocation.addListener('phoneUsageWhileDriving', (loc) => {
+    console.log('[BGGL-E2E] driving-event:phoneUsageWhileDriving');
+    log('event:phoneUsageWhileDriving', loc);
+  });
 
-// Permissions
-document.getElementById('perm').onclick = () =>
-  safe('requestPermissions', () => BackgroundGeolocation.requestPermissions());
-document.getElementById('bgperm').onclick = () =>
-  safe('requestBackgroundLocationPermission', () =>
-    BackgroundGeolocation.requestBackgroundLocationPermission(),
-  );
-document.getElementById('actperm').onclick = () =>
-  safe('requestActivityRecognitionPermission', () =>
-    BackgroundGeolocation.requestActivityRecognitionPermission(),
-  );
-document.getElementById('notifperm').onclick = () =>
-  safe('requestNotificationPermission', () =>
-    BackgroundGeolocation.requestNotificationPermission(),
-  );
-
-// Event subscriptions
-BackgroundGeolocation.addListener('location', (loc) => {
-  locationCount++;
-  countEl.textContent = String(locationCount);
-  log('event:location', loc);
+  log('ready');
 });
-BackgroundGeolocation.addListener('stationary', (loc) => log('event:stationary', loc));
-BackgroundGeolocation.addListener('error', (err) => log('event:error', err));
-BackgroundGeolocation.addListener('start', () => { statusEl.textContent = 'running'; log('event:start'); });
-BackgroundGeolocation.addListener('stop',  () => { statusEl.textContent = 'stopped'; log('event:stop'); });
-BackgroundGeolocation.addListener('activity', (a) => log('event:activity', a));
-BackgroundGeolocation.addListener('authorization', (a) => log('event:authorization', a));
-BackgroundGeolocation.addListener('heartbeat', (h) => log('event:heartbeat', h));
-BackgroundGeolocation.addListener('tripStart', (loc) => log('event:tripStart', loc));
-BackgroundGeolocation.addListener('tripEnd', (t) => log('event:tripEnd', t));
-BackgroundGeolocation.addListener('speeding', (s) => log('event:speeding', s));
-BackgroundGeolocation.addListener('sos', (s) => log('event:sos', s));
-
-log('ready');

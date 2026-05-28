@@ -19,7 +19,7 @@
 set -euo pipefail
 
 APK=$(find example-app/android/app/build/outputs/apk/debug -name "*.apk" | head -1)
-PACKAGE="com.josuelmm.capacitor.backgroundgeolocation.example"
+PACKAGE="com.gachlab.capacitor.backgroundgeolocation.example"
 ACTIVITY=".MainActivity"
 LOGCAT_OUT="/tmp/e2e-logcat.txt"
 DB="/data/data/${PACKAGE}/databases/cordova_bg_geolocation.db"
@@ -34,26 +34,47 @@ adb shell pm grant "$PACKAGE" android.permission.ACCESS_FINE_LOCATION
 adb shell pm grant "$PACKAGE" android.permission.ACCESS_COARSE_LOCATION
 adb shell pm grant "$PACKAGE" android.permission.ACCESS_BACKGROUND_LOCATION
 
+# Enable high-accuracy location mode and prevent screen auto-lock during test.
+adb shell settings put secure location_mode 3
+adb shell settings put system screen_off_timeout 300000
+
 # ── launch + configure ────────────────────────────────────────────────────────
 
+# Pre-warm the GPS engine so the first fix arrives immediately when the service
+# starts. On arm64 emulators the GPS has a ~40s TTFF on first use; this eliminates
+# that delay so fixes land within ~1s of each `adb emu geo fix` injection.
+echo "→ Pre-warming GPS engine"
+adb emu geo fix -99.133200 19.432600
+sleep 5
+
+adb logcat -c  # clear buffer so the readiness check below only sees this session
 echo "→ Launching app"
 adb shell am start -n "${PACKAGE}/${ACTIVITY}"
-# Wait for WebView to fully render before tapping.
-sleep 6
+# Wait for Capacitor WebView to finish registering all event listeners.
+# On CI (swiftshader emulator) this takes ~60 s; polling is more reliable than a
+# fixed sleep. We check for "phoneUsageWhileDriving" which is the LAST addListener
+# call in main.js — once it appears the onclick handlers are wired up.
+echo "→ Waiting for WebView ready…"
+for i in $(seq 1 90); do
+  adb logcat -d 2>/dev/null | grep -q "phoneUsageWhileDriving" && break
+  sleep 2
+done
+sleep 2  # brief settle after last listener registers
 
-# Dismiss any permission/system dialog that might appear on first launch.
-adb shell input keyevent KEYCODE_BACK || true
+# Wake the screen and dismiss keyguard so taps land on the app, not the lock screen.
+adb shell input keyevent KEYCODE_WAKEUP || true
+adb shell wm dismiss-keyguard || true
 sleep 1
 
 # Nexus 6 emulator: 1440x2560 px at 3.5x density.
-# Button row renders at y≈500 physical px; Configure is at x≈200, Start at x≈450.
+# Button row center: y=567 physical px (UIAutomator bounds [511,623]). Configure x≈200, Start x≈450.
 echo "→ Tapping Configure"
-adb shell input tap 200 500
+adb shell input tap 200 567
 
 sleep 2
 
 echo "→ Tapping Start"
-adb shell input tap 450 500
+adb shell input tap 450 567
 sleep 3
 
 # ── inject GPS fixes (foreground) ─────────────────────────────────────────────
@@ -99,10 +120,11 @@ RAW=$(adb shell "run-as ${PACKAGE} sqlite3 ${DB} 'SELECT COUNT(*) FROM location'
 # Strip everything except digits (handles empty, error text, whitespace).
 COUNT=$(printf '%s' "${RAW}" | tr -dc '0-9')
 
-# Fallback: count location-persisted log lines emitted by the native service.
+# Fallback: count lines tagged "LocationService" from our native service.
+# Only matches lines like "I LocationService: ..." — excludes Android system
+# services (LocationManagerService, GnssLocationProvider, etc.).
 if [[ -z "$COUNT" || "$COUNT" == "0" ]]; then
-  RAW=$(grep -cE "LocationProvider|LocationService|BackgroundLocation|location.*persist|onLocation|persistLocation" \
-        "$LOGCAT_OUT" 2>/dev/null || true)
+  RAW=$(grep -cE "[IDWEV] LocationService[: ]" "$LOGCAT_OUT" 2>/dev/null || true)
   COUNT=$(printf '%s' "${RAW}" | tr -dc '0-9')
 fi
 

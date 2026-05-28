@@ -34,6 +34,7 @@ sealed class ServiceEvent {
     data class RapidAcceleration(val loc: BGLocation) : ServiceEvent()
     data class SharpTurn(val loc: BGLocation) : ServiceEvent()
     data class PossibleCrash(val loc: BGLocation) : ServiceEvent()
+    data class PhoneUsageWhileDriving(val loc: BGLocation) : ServiceEvent()
 
     // ── Geofence events ───────────────────────────────────────────────────────
     data class GeofenceEnter(val geofenceId: String, val loc: BGLocation?) : ServiceEvent()

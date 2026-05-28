@@ -89,7 +89,7 @@ final class SessionDAO {
         defer { sqlite3_finalize(stmt) }
 
         while sqlite3_step(stmt) == SQLITE_ROW {
-            result.append(rowToLocation(stmt))
+            result.append(rowToLocation(stmt!))
         }
         return result
     }

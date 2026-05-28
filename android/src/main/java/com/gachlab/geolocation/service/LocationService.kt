@@ -238,7 +238,24 @@ class LocationService : Service() {
 
     private fun handleLocation(loc: BGLocation) {
         lastLocationTime = System.currentTimeMillis()
-        latestLocation   = loc
+        val prev = latestLocation
+        latestLocation = loc
+
+        // Emulators (`adb emu geo fix`) and some low-end chipsets report speed=0
+        // with hasSpeed=true, or omit speed/bearing entirely. Derive both from
+        // consecutive-fix displacement so the driving detector works correctly.
+        if (prev != null) {
+            val prevL = prev.getLocation()
+            val currL = loc.getLocation()
+            val dt = (loc.time - prev.time) / 1000.0
+            if (dt in 0.5..30.0) {
+                val dist = prevL.distanceTo(currL)
+                if (!loc.hasSpeed || loc.speed == 0f)
+                    loc.speed = (dist / dt).toFloat()
+                if ((!loc.hasBearing || loc.bearing == 0f) && dist > 1.0f)
+                    loc.bearing = prevL.bearingTo(currL)
+            }
+        }
 
         drivingDetector?.onLocation(loc)
         attachBattery(loc)
@@ -261,31 +278,37 @@ class LocationService : Service() {
             drivingDetector?.reset(); drivingDetector = null; return
         }
         val detectorCfg = DrivingEventsDetector.Config(
-            enabled            = opts.enabled,
-            speedLimitKmh      = opts.speedLimitKmh,
-            minMovingSpeedMps  = opts.minMovingSpeedMps,
-            stoppedDurationMs  = opts.stoppedDurationMs,
-            minTripSpeedMps    = opts.minTripSpeedMps,
-            minTripDurationMs  = opts.minTripDurationMs,
-            hardBrakeMps2      = opts.hardBrakeMps2,
-            rapidAccelMps2     = opts.rapidAccelMps2,
-            sharpTurnDegPerSec = opts.sharpTurnDegPerSec,
-            crashImpactKmh     = opts.crashImpactKmh,
-            crashWindowMs      = opts.crashWindowMs,
-            idleThresholdMs    = opts.idleThresholdMs,
-            idleEndThresholdMs = opts.idleEndThresholdMs,
-            scoringWeights     = opts.scoringWeights,
+            enabled              = opts.enabled,
+            speedLimitKmh        = opts.speedLimitKmh,
+            minMovingSpeedMps    = opts.minMovingSpeedMps,
+            stoppedDurationMs    = opts.stoppedDurationMs,
+            minTripSpeedMps      = opts.minTripSpeedMps,
+            minTripDurationMs    = opts.minTripDurationMs,
+            hardBrakeMps2        = opts.hardBrakeMps2,
+            rapidAccelMps2       = opts.rapidAccelMps2,
+            sharpTurnDegPerSec   = opts.sharpTurnDegPerSec,
+            crashImpactKmh       = opts.crashImpactKmh,
+            crashWindowMs        = opts.crashWindowMs,
+            idleThresholdMs      = opts.idleThresholdMs,
+            idleEndThresholdMs   = opts.idleEndThresholdMs,
+            scoringWeights       = opts.scoringWeights,
+            crashConfirmWindowMs = opts.crashConfirmWindowMs,
+            sensorFusion         = opts.sensorFusion,
+            phoneUsageWindowMs   = opts.phoneUsageWindowMs,
+            phoneUsageCooldownMs = opts.phoneUsageCooldownMs,
         )
         if (drivingDetector == null) drivingDetector = DrivingEventsDetector(drivingListener)
         drivingDetector!!.setConfig(detectorCfg)
     }
 
     private val drivingListener = object : DrivingEventsDetector.Listener {
-        override fun onMoving(loc: BGLocation)        = fire(ServiceEvent.Moving(loc))
-        override fun onStopped(loc: BGLocation)       = fire(ServiceEvent.Stopped(loc))
-        override fun onTripStart(loc: BGLocation)     = fire(ServiceEvent.TripStart(loc))
-        override fun onTripEnd(loc: BGLocation, distanceMeters: Double, durationMs: Long, score: com.gachlab.geolocation.TripScore) =
+        override fun onMoving(loc: BGLocation)        { Log.i(TAG, "driving-event: moving");   fire(ServiceEvent.Moving(loc)) }
+        override fun onStopped(loc: BGLocation)       { Log.i(TAG, "driving-event: stopped");  fire(ServiceEvent.Stopped(loc)) }
+        override fun onTripStart(loc: BGLocation)     { Log.i(TAG, "driving-event: tripStart"); fire(ServiceEvent.TripStart(loc)) }
+        override fun onTripEnd(loc: BGLocation, distanceMeters: Double, durationMs: Long, score: com.gachlab.geolocation.TripScore) {
+            Log.i(TAG, "driving-event: tripEnd dist=${distanceMeters.toInt()}m dur=${durationMs}ms")
             fire(ServiceEvent.TripEnd(loc, distanceMeters, durationMs, score))
+        }
         override fun onIdleStart(loc: BGLocation, startedAt: Long) =
             fire(ServiceEvent.IdleStart(loc, startedAt))
         override fun onIdleEnd(loc: BGLocation, durationMs: Long, startedAt: Long) =
@@ -303,7 +326,12 @@ class LocationService : Service() {
             loc.addDrivingEvent("sharpTurn"); fire(ServiceEvent.SharpTurn(loc))
         }
         override fun onPossibleCrash(loc: BGLocation, velocityDropKmh: Double) {
+            Log.i(TAG, "driving-event: possibleCrash drop=${velocityDropKmh.toInt()}kmh")
             loc.addDrivingEvent("possibleCrash"); fire(ServiceEvent.PossibleCrash(loc))
+        }
+        override fun onPhoneUsageWhileDriving(loc: BGLocation) {
+            Log.i(TAG, "driving-event: phoneUsageWhileDriving")
+            loc.addDrivingEvent("phoneUsageWhileDriving"); fire(ServiceEvent.PhoneUsageWhileDriving(loc))
         }
     }
 

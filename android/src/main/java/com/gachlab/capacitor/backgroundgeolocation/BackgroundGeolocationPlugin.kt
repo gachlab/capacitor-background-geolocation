@@ -9,8 +9,6 @@ import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.Build
 import android.os.PowerManager
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.getcapacitor.JSObject
 import com.getcapacitor.PermissionState
@@ -25,9 +23,7 @@ import com.gachlab.geolocation.BGGeofence
 import com.gachlab.geolocation.BGLocation
 import com.gachlab.geolocation.ServiceEvent
 import com.gachlab.geolocation.TripScore
-import com.gachlab.geolocation.network.HeadlessWorker
 import org.json.JSONArray
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 @CapacitorPlugin(
@@ -82,7 +78,8 @@ class BackgroundGeolocationPlugin : Plugin() {
             is ServiceEvent.HardBrake         -> notify("hardBrake",          event.loc.toJS())
             is ServiceEvent.RapidAcceleration -> notify("rapidAcceleration",  event.loc.toJS())
             is ServiceEvent.SharpTurn         -> notify("sharpTurn",          event.loc.toJS())
-            is ServiceEvent.PossibleCrash     -> notify("possibleCrash",      event.loc.toJS())
+            is ServiceEvent.PossibleCrash          -> notify("possibleCrash",         event.loc.toJS())
+            is ServiceEvent.PhoneUsageWhileDriving -> notify("phoneUsageWhileDriving", event.loc.toJS())
             is ServiceEvent.TripEnd           -> notifyListeners("tripEnd", JSObject().apply {
                 put("location",   event.loc.toJSONObjectWithId())
                 put("distance",   event.distanceMeters)
@@ -460,22 +457,6 @@ class BackgroundGeolocationPlugin : Plugin() {
             if (reason != null) put("reason", reason) else put("reason", JSObject.NULL)
             if (timestamp != null) put("timestamp", timestamp) else put("timestamp", JSObject.NULL)
         })
-    }
-
-    @PluginMethod
-    fun registerHeadlessTask(call: PluginCall) {
-        val intervalMs = (facade.getConfig().headlessTaskTimeoutMs ?: HeadlessWorker.DEFAULT_INTERVAL_MS)
-            .coerceAtLeast(15 * 60 * 1000L)
-        val req = PeriodicWorkRequestBuilder<HeadlessWorker>(intervalMs, TimeUnit.MILLISECONDS)
-            .addTag(HeadlessWorker.WORK_TAG)
-            .build()
-        WorkManager.getInstance(bridge.activity.applicationContext)
-            .enqueueUniquePeriodicWork(
-                HeadlessWorker.WORK_TAG,
-                ExistingPeriodicWorkPolicy.KEEP,
-                req
-            )
-        call.resolve()
     }
 
     @PluginMethod

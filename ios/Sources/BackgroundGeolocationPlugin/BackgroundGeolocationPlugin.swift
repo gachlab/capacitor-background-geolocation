@@ -56,7 +56,6 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         CAPPluginMethod(name: "requestNotificationPermission", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "registerHeadlessTask", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getBackgroundKillReason", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "addGeofences", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "removeGeofences", returnType: CAPPluginReturnPromise),
@@ -73,6 +72,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     private var lastLocationAt: Date?
     private let drivingDetector = DrivingEventsDetector()
     private var lastBGLocation: BGLocation?
+    private var prevDLLoc: (lat: Double, lon: Double, time: Date)?
     private var lastTripScore: TripScore?
     private var prioritySyncManager: PrioritySyncManager?
 
@@ -136,7 +136,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
     @objc func configure(_ call: CAPPluginCall) {
         guard let facade = facade else { call.reject("facade not initialized"); return }
-        let opts = call.options ?? [:]
+        let opts: [String: Any] = call.options as? [String: Any] ?? [:]
         let cfg = BGConfig.from(dictionary: opts)
         currentConfig = cfg
         configureDrivingDetector(from: opts)
@@ -166,7 +166,11 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         if let v = (de["rapidAccelMps2"]     as? NSNumber)?.doubleValue { drivingDetector.rapidAccelMps2     = v }
         if let v = (de["sharpTurnDegPerSec"] as? NSNumber)?.doubleValue { drivingDetector.sharpTurnDegPerSec = v }
         if let v = (de["crashImpactKmh"]     as? NSNumber)?.doubleValue { drivingDetector.crashImpactKmh     = v }
-        if let v = (de["crashWindowSec"]     as? NSNumber)?.doubleValue { drivingDetector.crashWindowSec     = v }
+        if let v = (de["crashWindowMs"]      as? NSNumber)?.doubleValue { drivingDetector.crashWindowSec     = v / 1000.0 }
+        if let v = (de["crashConfirmWindowMs"] as? NSNumber)?.doubleValue { drivingDetector.crashConfirmWindowSec = v / 1000.0 }
+        if let v = de["sensorFusion"]        as? Bool                    { drivingDetector.sensorFusion          = v }
+        if let v = (de["phoneUsageWindowMs"]  as? NSNumber)?.doubleValue { drivingDetector.phoneUsageWindowSec   = v / 1000.0 }
+        if let v = (de["phoneUsageCooldownMs"] as? NSNumber)?.doubleValue { drivingDetector.phoneUsageCooldownSec = v / 1000.0 }
         // v1.4 idle + scoring
         if let v = (de["idleThresholdMs"]    as? NSNumber)?.doubleValue { drivingDetector.idleThresholdSec    = v / 1000.0 }
         if let v = (de["idleEndThresholdMs"] as? NSNumber)?.doubleValue { drivingDetector.idleEndThresholdSec = v / 1000.0 }
@@ -494,10 +498,6 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         call.resolve(["geofences": facade.getGeofences()])
     }
 
-    @objc func registerHeadlessTask(_ call: CAPPluginCall) {
-        call.resolve()
-    }
-
     @objc func getTripScore(_ call: CAPPluginCall) {
         if let score = lastTripScore {
             call.resolve(scoreToDict(score))
@@ -647,10 +647,27 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         lastLocationAt = Date()
         lastBGLocation = location
         if let lat = location.latitude, let lon = location.longitude {
+            let now = location.time ?? Date()
+            var speed = location.speed ?? -1
+            // Compute speed from consecutive fixes when sensor speed is unavailable
+            // (e.g. CLLocation injected by xcrun simctl provides speed = -1).
+            // dt < 30 s to tolerate slow CI runners where xcrun simctl can take 3-4 s/call.
+            if speed < 0, let prev = prevDLLoc {
+                let dt = now.timeIntervalSince(prev.time)
+                if dt > 0 && dt < 30 {
+                    let dLat = (lat - prev.lat) * .pi / 180
+                    let dLon = (lon - prev.lon) * .pi / 180
+                    let a = sin(dLat/2) * sin(dLat/2)
+                        + cos(prev.lat * .pi / 180) * cos(lat * .pi / 180) * sin(dLon/2) * sin(dLon/2)
+                    let dist = 2 * 6_371_000.0 * asin(sqrt(a))
+                    speed = dist / dt
+                }
+            }
+            prevDLLoc = (lat: lat, lon: lon, time: now)
             let dl = DLLocation(
                 latitude:  lat,
                 longitude: lon,
-                speed:     location.speed ?? -1,
+                speed:     speed,
                 bearing:   location.heading,
                 provider:  location.provider
             )
@@ -665,6 +682,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
     public func onLocationPause() {
         drivingDetector.reset()
+        prevDLLoc = nil
         notifyListeners("stop", data: [:])
     }
 
@@ -777,8 +795,8 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         let allowed = currentConfig?.prioritySyncEvents ?? PrioritySyncManager.defaultEvents
         if allowed.contains("speeding"), let loc = note.userInfo?["location"] as? BGLocation {
             prioritySyncManager?.submit(eventType: "speeding", payload: [
-                "type": "speeding", "timestamp": Int64(loc.time),
-                "location": ["latitude": loc.latitude, "longitude": loc.longitude],
+                "type": "speeding", "timestamp": loc.time.map { Int64($0.timeIntervalSince1970 * 1000) } as Any,
+                "location": ["latitude": loc.latitude as Any, "longitude": loc.longitude as Any],
                 "speedKmh": speedKmh, "limitKmh": limitKmh, "source": "gps"
             ])
         }
@@ -826,8 +844,8 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         guard allowed.contains(name), let loc = note.userInfo?["location"] as? BGLocation else { return }
         prioritySyncManager?.submit(eventType: name, payload: [
             "type": name,
-            "timestamp": Int64(loc.time),
-            "location": ["latitude": loc.latitude, "longitude": loc.longitude],
+            "timestamp": loc.time.map { Int64($0.timeIntervalSince1970 * 1000) } as Any,
+            "location": ["latitude": loc.latitude as Any, "longitude": loc.longitude as Any],
             "source": (note.userInfo?["source"] as? String) ?? "gps"
         ])
     }
@@ -949,6 +967,10 @@ extension BackgroundGeolocationPlugin {
 
     func detectorOnPossibleCrash(_ location: DLLocation, dropKmh: Double) {
         postSensorNote(.BGPossibleCrash, value: dropKmh)
+    }
+
+    func detectorOnPhoneUsageWhileDriving(_ location: DLLocation) {
+        postDrivingNote(.BGPhoneUsageWhileDriving)
     }
 
     private func postDrivingNote(_ name: Notification.Name) {

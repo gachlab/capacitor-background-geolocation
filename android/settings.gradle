@@ -15,7 +15,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = 'josuelmm-capacitor-background-geolocation'
+rootProject.name = 'gachlab-capacitor-background-geolocation'
 
 include ':capacitor-android'
 project(':capacitor-android').projectDir = new File('../node_modules/@capacitor/android/capacitor')

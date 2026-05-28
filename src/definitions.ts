@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 gachlab
 //
-// Capacitor plugin definitions for @josuelmm/capacitor-background-geolocation.
-// Mirrors @josuelmm/cordova-background-geolocation's www/BackgroundGeolocation.d.ts
-// 1:1 for v1.0.0 parity. Cordova success/fail callbacks are collapsed into
-// Promises; `on(eventName, cb)` becomes Capacitor's `addListener` overloads.
+// Capacitor plugin definitions for @gachlab/capacitor-background-geolocation.
 
 import type { PermissionState, PluginListenerHandle } from '@capacitor/core';
 
@@ -122,13 +119,6 @@ export type ActivityType =
  */
 export type LocationErrorCode = 1 | 2 | 3;
 
-/**
- * Headless task event name. Reserved for a future `BackgroundFetch`-style hook.
- *
- * @since 1.0.0
- */
-export type HeadlessTaskEventName = 'location' | 'stationary' | 'activity';
-
 // ---------------------------------------------------------------------------
 // ConfigureOptions (a.k.a. LocationOptions in <1.0)
 // ---------------------------------------------------------------------------
@@ -174,13 +164,6 @@ export interface ConfigureOptions {
    * Android only. @default true
    */
   restartOnKill?: boolean;
-  /**
-   * Periodic interval (ms) for the WorkManager headless sync job registered by
-   * `registerHeadlessTask()`. WorkManager enforces a minimum of 15 minutes.
-   * Android only. @default 900000 (15 min)
-   * @since 1.2.0
-   */
-  headlessTaskTimeoutMs?: number;
   /**
    * iOS-only background survival strategy activated when the app enters the background
    * and `saveBatteryOnBackground` is `true`.
@@ -300,6 +283,12 @@ export interface ConfigureOptions {
     crashImpactKmh?: number;
     /** Window (ms) used to evaluate the crash impact. */
     crashWindowMs?: number;
+    /**
+     * If > 0, delay firing `possibleCrash` until the vehicle remains stopped for
+     * this many ms after the impact. Reduces false positives from GPS glitches.
+     * @default 0 (fire immediately) @since 1.6.0
+     */
+    crashConfirmWindowMs?: number;
     /** Enable accelerometer/gyroscope sensor fusion. @default false */
     sensorFusion?: boolean;
     /** Crash impact threshold in g for the sensor pipeline. */
@@ -521,18 +510,6 @@ export interface LogEntry {
   message: string;
   /** Stack trace (Android only — iOS folds it into `message`). */
   stackTrace: string;
-}
-
-/**
- * Headless task event payload (reserved for a future v1.1 hook).
- *
- * @since 1.0.0
- */
-export interface HeadlessTaskEvent {
-  /** Event name. */
-  name: HeadlessTaskEventName;
-  /** Event parameters. */
-  params: unknown;
 }
 
 /**
@@ -1044,30 +1021,6 @@ export interface BackgroundGeolocationPlugin {
     /** Minimum severity to include. */
     minLevel?: LogLevel;
   }): Promise<{ entries: LogEntry[] }>;
-
-  // ---------------- Headless task (Android) ----------------
-
-  /**
-   * **Android only.** Register a JS callback that runs on `location`,
-   * `stationary`, and `activity` events even when the host activity has
-   * been killed by the system — as long as `stopOnTerminate: false` and
-   * the foreground service is still alive.
-   *
-   * The function body is serialised with `task.toString()` and evaluated
-   * inside a hidden Android WebView via the upstream `JsEvaluator`
-   * pipeline. Variables from the outer scope CANNOT be referenced — the
-   * callback runs in an isolated context. Plain `XMLHttpRequest`,
-   * `fetch`, and `JSON` are available.
-   *
-   * On iOS this call resolves immediately as a no-op (Apple does not
-   * allow running JS in a killed-app scenario). On Web it throws
-   * `unimplemented`. Prefer the regular `addListener` flow whenever
-   * possible — `headlessTask` is only useful when the app has been
-   * killed by the OS but the service must still react to GPS events.
-   *
-   * @since 1.0.0
-   */
-  headlessTask(task: (event: HeadlessTaskEvent) => unknown): Promise<void>;
 
   // ---------------- Geofencing ----------------
 

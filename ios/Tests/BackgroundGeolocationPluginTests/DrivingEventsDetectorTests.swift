@@ -11,7 +11,7 @@ private final class RecordingDelegate: DrivingEventsDetectorDelegate {
     func detectorOnMoving(_ l: DLLocation)              { events.append("moving") }
     func detectorOnStopped(_ l: DLLocation)             { events.append("stopped") }
     func detectorOnTripStart(_ l: DLLocation)           { events.append("tripStart") }
-    func detectorOnTripEnd(_ l: DLLocation, distanceMeters: Double, durationMs: Int64) {
+    func detectorOnTripEnd(_ l: DLLocation, distanceMeters: Double, durationMs: Int64, score: TripScore) {
         events.append("tripEnd(dist=\(Int(distanceMeters))m,dur=\(durationMs)ms)")
     }
     func detectorOnSpeeding(_ l: DLLocation, speedKmh: Double, limitKmh: Double) {
@@ -22,6 +22,9 @@ private final class RecordingDelegate: DrivingEventsDetectorDelegate {
     func detectorOnRapidAcceleration(_ l: DLLocation, accelMps2: Double) { events.append("rapidAccel") }
     func detectorOnSharpTurn(_ l: DLLocation, degPerSec: Double) { events.append("sharpTurn") }
     func detectorOnPossibleCrash(_ l: DLLocation, dropKmh: Double) { events.append("crash") }
+    func detectorOnIdleStart(_ l: DLLocation, startedAt: Double) { events.append("idleStart") }
+    func detectorOnIdleEnd(_ l: DLLocation, durationMs: Int64, startedAt: Double) { events.append("idleEnd") }
+    func detectorOnPhoneUsageWhileDriving(_ l: DLLocation) { events.append("phoneUsage") }
 }
 
 // Checks that `sub` appears in `arr` in order (not necessarily contiguous).
@@ -166,6 +169,92 @@ final class DrivingEventsDetectorTests: XCTestCase {
         det.feed(loc(speedMps: 30))
 
         XCTAssertTrue(rec.events.isEmpty, "disabled detector should fire no events, got: \(rec.events)")
+    }
+
+    // MARK: - crashConfirmWindowSec
+
+    func testCrashConfirmWindowFiresAfterWindow() {
+        let (det, rec) = makeDetector()
+        det.crashImpactKmh = 10
+        det.crashWindowSec = 4.0
+        det.crashConfirmWindowSec = 0.1   // 100 ms for fast test
+
+        det.feed(loc(speedMps: 10))       // fast (36 km/h)
+        Thread.sleep(forTimeInterval: 0.005)
+        det.feed(loc(speedMps: 0))        // sudden stop — crash candidate
+
+        // Before confirm window: no crash yet
+        XCTAssertFalse(rec.events.contains("crash"), "crash should not fire before confirm window: \(rec.events)")
+
+        Thread.sleep(forTimeInterval: 0.15) // wait > confirmWindowSec
+        det.feed(loc(speedMps: 0))        // still stopped — fires confirmation
+
+        XCTAssertTrue(rec.events.contains("crash"), "crash should fire after confirm window: \(rec.events)")
+    }
+
+    func testCrashConfirmWindowCancelledOnRecovery() {
+        let (det, rec) = makeDetector()
+        det.crashImpactKmh = 10
+        det.crashWindowSec = 4.0
+        det.crashConfirmWindowSec = 0.5
+
+        det.feed(loc(speedMps: 10))       // fast
+        Thread.sleep(forTimeInterval: 0.005)
+        det.feed(loc(speedMps: 0))        // crash candidate
+
+        Thread.sleep(forTimeInterval: 0.02)
+        det.feed(loc(speedMps: 8))        // speed recovered — cancel
+
+        Thread.sleep(forTimeInterval: 0.6)
+        det.feed(loc(speedMps: 0))        // stopped again, but no pending crash
+
+        XCTAssertFalse(rec.events.contains("crash"), "crash should be cancelled on speed recovery: \(rec.events)")
+    }
+
+    // MARK: - phoneUsageWhileDriving GPS heuristic
+
+    func testPhoneUsageWhileDrivingFiresOnJitter() {
+        let (det, rec) = makeDetector()
+        det.sensorFusion = false
+        det.phoneUsageWindowSec = 0.4    // 400 ms for fast test
+        det.phoneUsageCooldownSec = 60.0
+
+        // Enter trip-active state at ~20 km/h
+        det.feed(loc(speedMps: 6))
+
+        // Send jitter fixes: bearing oscillates ±10° at ~5.5 m/s (20 km/h)
+        var bearing = 90.0
+        for _ in 0..<6 {
+            Thread.sleep(forTimeInterval: 0.07)
+            bearing = bearing == 90.0 ? 100.0 : 90.0
+            det.feed(loc(speedMps: 5.5, bearing: bearing))
+        }
+
+        Thread.sleep(forTimeInterval: 0.5)
+        det.feed(loc(speedMps: 5.5, bearing: bearing))
+
+        XCTAssertTrue(rec.events.contains("phoneUsage"), "phoneUsageWhileDriving should fire on jitter: \(rec.events)")
+    }
+
+    func testPhoneUsageWhileDrivingSuppressedWhenSensorFusion() {
+        let (det, rec) = makeDetector()
+        det.sensorFusion = true           // GPS path disabled
+        det.phoneUsageWindowSec = 0.3
+        det.phoneUsageCooldownSec = 60.0
+
+        det.feed(loc(speedMps: 6))
+
+        var bearing = 90.0
+        for _ in 0..<8 {
+            Thread.sleep(forTimeInterval: 0.05)
+            bearing = bearing == 90.0 ? 100.0 : 90.0
+            det.feed(loc(speedMps: 5.5, bearing: bearing))
+        }
+
+        Thread.sleep(forTimeInterval: 0.4)
+        det.feed(loc(speedMps: 5.5, bearing: bearing))
+
+        XCTAssertFalse(rec.events.contains("phoneUsage"), "phoneUsage GPS path should be suppressed when sensorFusion=true: \(rec.events)")
     }
 
     // MARK: - reset clears state

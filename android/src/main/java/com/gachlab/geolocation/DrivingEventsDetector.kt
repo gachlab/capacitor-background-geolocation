@@ -28,6 +28,7 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         fun onPossibleCrash(loc: BGLocation, velocityDropKmh: Double)
         fun onIdleStart(loc: BGLocation, startedAt: Long)
         fun onIdleEnd(loc: BGLocation, durationMs: Long, startedAt: Long)
+        fun onPhoneUsageWhileDriving(loc: BGLocation)
     }
 
     data class Config(
@@ -45,6 +46,10 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         val idleThresholdMs:     Long    = 300_000L,
         val idleEndThresholdMs:  Long    = 30_000L,
         val scoringWeights:      ScoringWeights? = null,
+        val crashConfirmWindowMs: Long   = 0L,
+        val sensorFusion:        Boolean = false,
+        val phoneUsageWindowMs:  Long    = 4_000L,
+        val phoneUsageCooldownMs: Long   = 60_000L,
     )
 
     private enum class MovingState { STATIONARY, MOVING, TRIP_ACTIVE }
@@ -78,6 +83,16 @@ internal class DrivingEventsDetector(private val listener: Listener) {
     private var idleThresholdFired:   Boolean = false
     private var postIdleMovingAt:     Long = 0L
 
+    // Crash confirmation state
+    private var pendingCrashLoc:          BGLocation? = null
+    private var pendingCrashDropKmh:      Double      = 0.0
+    private var pendingCrashDetectedAt:   Long        = 0L
+
+    // Phone usage jitter state
+    private var jitterWindowStart:    Long = 0L
+    private var jitterCount:          Int  = 0
+    private var lastPhoneUsageAt:     Long = 0L
+
     @Synchronized fun setConfig(c: Config) { cfg = c }
 
     @Synchronized fun reset() {
@@ -90,6 +105,8 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         lastHardBrakeAt = 0L; lastRapidAccelAt = 0L; lastSharpTurnAt = 0L; lastCrashAt = 0L
         scoreCalc = null; tripId = ""
         idleStartedAt = 0L; idleThresholdFired = false; postIdleMovingAt = 0L
+        pendingCrashLoc = null; pendingCrashDropKmh = 0.0; pendingCrashDetectedAt = 0L
+        jitterWindowStart = 0L; jitterCount = 0; lastPhoneUsageAt = 0L
     }
 
     @Synchronized fun onLocation(loc: BGLocation) {
@@ -209,8 +226,16 @@ internal class DrivingEventsDetector(private val listener: Listener) {
                     val dropKmh = (prevSpeedMps - speed) * 3.6
                     if (dropKmh >= cfg.crashImpactKmh && speed < 1.5
                             && prevSpeedMps * 3.6 >= cfg.crashImpactKmh
-                            && now - lastCrashAt >= COOLDOWN_MS) {
-                        lastCrashAt = now; listener.onPossibleCrash(loc, dropKmh)
+                            && now - lastCrashAt >= COOLDOWN_MS
+                            && pendingCrashLoc == null) {
+                        if (cfg.crashConfirmWindowMs <= 0L) {
+                            lastCrashAt = now
+                            listener.onPossibleCrash(loc, dropKmh)
+                        } else {
+                            pendingCrashLoc = loc
+                            pendingCrashDropKmh = dropKmh
+                            pendingCrashDetectedAt = now
+                        }
                     }
                 }
             }
@@ -230,8 +255,45 @@ internal class DrivingEventsDetector(private val listener: Listener) {
                 }
             }
         }
+        // ── Phone usage (GPS bearing jitter, disabled when sensorFusion=true) ──────
+        if (!cfg.sensorFusion && cfg.phoneUsageWindowMs > 0
+                && movingState == MovingState.TRIP_ACTIVE && loc.hasBearing && hasPrevBearing
+                && speed >= 1.39 && speed <= 22.2) {
+            val bearingDtMs = now - prevBearingAt
+            if (bearingDtMs in 1L..5_000L) {
+                var bearingDiff = abs(loc.bearing.toDouble() - prevBearingDeg)
+                if (bearingDiff > 180) bearingDiff = 360 - bearingDiff
+                if (bearingDiff in 5.0..25.0) {
+                    if (jitterWindowStart == 0L) jitterWindowStart = now
+                    jitterCount++
+                }
+            }
+            if (jitterWindowStart > 0L && (now - jitterWindowStart) >= cfg.phoneUsageWindowMs) {
+                if (jitterCount >= 3 && now - lastPhoneUsageAt >= cfg.phoneUsageCooldownMs) {
+                    lastPhoneUsageAt = now
+                    listener.onPhoneUsageWhileDriving(loc)
+                }
+                jitterWindowStart = 0L; jitterCount = 0
+            }
+        }
+
         if (loc.hasBearing) {
             prevBearingDeg = loc.bearing.toDouble(); prevBearingAt = now; hasPrevBearing = true
+        }
+
+        // ── Pending crash confirmation ─────────────────────────────────────────
+        pendingCrashLoc?.let { pendLoc ->
+            when {
+                speed > 2.0 -> {
+                    pendingCrashLoc = null; pendingCrashDropKmh = 0.0; pendingCrashDetectedAt = 0L
+                }
+                now - pendingCrashDetectedAt >= cfg.crashConfirmWindowMs -> {
+                    lastCrashAt = now
+                    pendingCrashLoc = null
+                    listener.onPossibleCrash(pendLoc, pendingCrashDropKmh)
+                    pendingCrashDropKmh = 0.0; pendingCrashDetectedAt = 0L
+                }
+            }
         }
 
         prevSpeedMps = speed; prevSpeedAt = now

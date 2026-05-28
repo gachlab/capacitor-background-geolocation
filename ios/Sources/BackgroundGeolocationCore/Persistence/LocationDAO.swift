@@ -105,7 +105,7 @@ final class LocationDAO {
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
             defer { sqlite3_finalize(stmt) }
             while sqlite3_step(stmt) == SQLITE_ROW {
-                result.append(rowToLocation(stmt))
+                result.append(rowToLocation(stmt!))
             }
         }
         return result
@@ -120,7 +120,7 @@ final class LocationDAO {
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
             defer { sqlite3_finalize(stmt) }
             while sqlite3_step(stmt) == SQLITE_ROW {
-                result.append(rowToLocation(stmt))
+                result.append(rowToLocation(stmt!))
             }
         }
         return result
@@ -143,7 +143,7 @@ final class LocationDAO {
 
             var ids: [Int64] = []
             while sqlite3_step(selectStmt) == SQLITE_ROW {
-                let loc = rowToLocation(selectStmt)
+                let loc = rowToLocation(selectStmt!)
                 if let lid = loc.locationId {
                     ids.append(lid)
                 }

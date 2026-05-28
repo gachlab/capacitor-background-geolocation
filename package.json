@@ -1,7 +1,7 @@
 {
   "name": "@gachlab/capacitor-background-geolocation",
   "version": "1.0.2",
-  "description": "Capacitor 8+ plugin for accurate background geolocation tracking, driving-event detection, sync queue and OEM diagnostics on iOS and Android. Fork of @josuelmm/capacitor-background-geolocation (derived from mauron85) with SPM-compatibility fixes for Capacitor 8.",
+  "description": "Capacitor 8+ plugin for accurate background geolocation tracking, driving-event detection, sync queue and OEM diagnostics on iOS and Android.",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
   "types": "dist/esm/index.d.ts",
@@ -32,7 +32,7 @@
     "verify": "npm run verify:web",
     "verify:ios": "xcodebuild -scheme GachlabCapacitorBackgroundGeolocation -destination generic/platform=iOS",
     "verify:android": "cd android && ./gradlew clean test && cd ..",
-    "verify:android:example": "cd example-app && npm install && cd android && ./gradlew :josuelmm-capacitor-background-geolocation:clean :josuelmm-capacitor-background-geolocation:build :josuelmm-capacitor-background-geolocation:test && cd ../..",
+    "verify:android:example": "cd example-app && npm install && cd android && ./gradlew :gachlab-capacitor-background-geolocation:clean :gachlab-capacitor-background-geolocation:build :gachlab-capacitor-background-geolocation:test && cd ../..",
     "test": "node --import tsx --test 'src/__tests__/**/*.test.ts'",
     "test:coverage": "c8 node --import tsx --test 'src/__tests__/**/*.test.ts'",
     "test:watch": "node --import tsx --test --watch 'src/__tests__/**/*.test.ts'",
