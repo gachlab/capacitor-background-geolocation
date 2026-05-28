@@ -40,6 +40,13 @@ adb shell settings put system screen_off_timeout 300000
 
 # ── launch + configure ────────────────────────────────────────────────────────
 
+# Pre-warm the GPS engine so the first fix arrives immediately when the service
+# starts. On arm64 emulators the GPS has a ~40s TTFF on first use; this eliminates
+# that delay so fixes land within ~1s of each `adb emu geo fix` injection.
+echo "→ Pre-warming GPS engine"
+adb emu geo fix -99.133200 19.432600
+sleep 5
+
 adb logcat -c  # clear buffer so the readiness check below only sees this session
 echo "→ Launching app"
 adb shell am start -n "${PACKAGE}/${ACTIVITY}"
@@ -60,14 +67,14 @@ adb shell wm dismiss-keyguard || true
 sleep 1
 
 # Nexus 6 emulator: 1440x2560 px at 3.5x density.
-# Button row renders at y≈500 physical px; Configure is at x≈200, Start at x≈450.
+# Button row center: y=567 physical px (UIAutomator bounds [511,623]). Configure x≈200, Start x≈450.
 echo "→ Tapping Configure"
-adb shell input tap 200 500
+adb shell input tap 200 567
 
 sleep 2
 
 echo "→ Tapping Start"
-adb shell input tap 450 500
+adb shell input tap 450 567
 sleep 3
 
 # ── inject GPS fixes (foreground) ─────────────────────────────────────────────

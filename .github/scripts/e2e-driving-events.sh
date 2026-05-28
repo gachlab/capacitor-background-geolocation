@@ -55,6 +55,13 @@ adb shell settings put system screen_off_timeout 300000
 
 # ── launch + configure ────────────────────────────────────────────────────────
 
+# Pre-warm the GPS engine so the first fix arrives immediately when the service
+# starts. On arm64 emulators the GPS has a ~40s TTFF on first use; this eliminates
+# that delay so fixes land within ~1s of each `adb emu geo fix` injection.
+echo "→ Pre-warming GPS engine"
+adb emu geo fix -99.133200 19.432600
+sleep 5
+
 adb logcat -c  # clear buffer so the readiness check below only sees this session
 echo "→ Launching app"
 adb shell am start -n "${PACKAGE}/${ACTIVITY}"
@@ -74,14 +81,14 @@ adb shell input keyevent KEYCODE_WAKEUP || true
 adb shell wm dismiss-keyguard || true
 sleep 1
 
-# Nexus 6 1440×2560 (560 dpi, ~3.5× scale): first button row sits at y≈500px.
+# Nexus 6 1440×2560 (560 dpi, ~3.5× scale): button row center y=567 (UIAutomator bounds [511,623]).
 # Configure center ≈ x200, Start center ≈ x450.
 echo "→ Tapping Configure (with driving events + crash/phone-usage thresholds)"
-adb shell input tap 200 500
+adb shell input tap 200 567
 sleep 3
 
 echo "→ Tapping Start"
-adb shell input tap 450 500
+adb shell input tap 450 567
 sleep 5
 
 # Clear logcat so we only see events from this run
