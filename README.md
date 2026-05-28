@@ -13,9 +13,10 @@ events.
 
 Full TypeScript-API parity with the Cordova source plugin:
 **40+ methods · 32 events**, the full `ConfigureOptions` surface, extended
-`Diagnostics`, OEM helpers, sync/session queue management, driver-insight
-events, idle detection, trip scoring (v1.4.0), and priority sync for
-safety-critical events (v1.5.0).
+`Diagnostics`, OEM helpers, sync/session queue management, geofencing (v1.3.0),
+driver-insight events with idle detection and trip scoring (v1.4.0), priority
+sync for safety-critical events (v1.5.0), and deferred crash confirmation with
+GPS-based phone-usage detection (v1.6.0).
 
 ## Install
 
@@ -267,9 +268,12 @@ GPS-derived driver-insight pipeline. The native core then emits:
   from speed / bearing deltas.
 - `possibleCrash` — sudden velocity drop or accelerometer impact. The
   payload carries `source: 'gps' | 'sensor'`. **Always confirm with the
-  user before notifying anyone** — false positives are possible.
-- `phoneUsageWhileDriving` — only when `drivingEvents.sensorFusion: true`,
-  via accelerometer + gyroscope jitter.
+  user before notifying anyone** — false positives are possible. Use
+  `crashConfirmWindowMs` to hold the event until the vehicle stays stopped,
+  cancelling it automatically if speed recovers within the window.
+- `phoneUsageWhileDriving` — bearing-jitter heuristic when
+  `drivingEvents.sensorFusion: false` (GPS path, @since 1.6.0); or
+  accelerometer + gyroscope jitter when `sensorFusion: true`.
 - `idleStart`, `idleEnd` — vehicle stationary for ≥ `idleThresholdMs` (default 5 min)
   during an active trip; `idleEnd` carries `durationMs`. @since 1.4.0
 
@@ -391,9 +395,13 @@ as soon as connectivity is restored.
   `includeBattery`.
 - **Driver insights**: `drivingEvents.{enabled, speedLimit, minTripSpeed,
   hardBrakeMps2, rapidAccelMps2, sharpTurnDegPerSec, crashImpactKmh,
-  sensorFusion, crashImpactG, phoneUsageWindowMs, idleThresholdMs,
-  idleEndThresholdMs, scoring.{speeding, hardBraking, rapidAccel, sharpTurn,
-  phoneUsage}, …}`.
+  crashConfirmWindowMs, sensorFusion, crashImpactG, phoneUsageWindowMs,
+  phoneUsageCooldownMs, idleThresholdMs, idleEndThresholdMs,
+  scoring.{speeding, hardBraking, rapidAccel, sharpTurn, phoneUsage}, …}`.
+  `crashConfirmWindowMs > 0` defers `possibleCrash` until the vehicle stays
+  stopped for the configured ms; speed recovery before the window cancels
+  the event. `phoneUsageWindowMs` / `phoneUsageCooldownMs` tune the GPS
+  bearing-jitter detector (v1.6.0).
 - **Priority sync** _(v1.5.0)_: `prioritySyncEvents`, `prioritySyncUrl`,
   `prioritySyncRetries`, `prioritySyncRetryDelays`.
 

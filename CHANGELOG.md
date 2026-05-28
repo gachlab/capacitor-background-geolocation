@@ -29,6 +29,106 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   headless tasks are an Android-only concept; keeping it caused confusion and stale test
   coverage. Android support is unchanged.
 
+## [1.5.0] - 2026-05-27
+
+### Added
+- **Priority sync** for safety-critical events. Configured events (`possibleCrash` and `sos`
+  by default) are POSTed immediately via a dedicated channel that bypasses the regular sync
+  queue. The channel deduplicates by event timestamp, retries with configurable backoff, and
+  queues events in memory when offline (flushed as soon as connectivity is restored).
+  - New config fields: `prioritySyncEvents`, `prioritySyncUrl`, `prioritySyncRetries`,
+    `prioritySyncRetryDelays`.
+  - New events: `prioritySyncSuccess` (`{ eventType, attemptNumber }`),
+    `prioritySyncFailed` (`{ eventType, httpStatus, attempts }`).
+  - Android: `PrioritySyncManager` using `NetworkCallback` for connectivity detection.
+  - iOS: `PrioritySyncManager.swift` using `NWPathMonitor` + `URLSession`.
+
+---
+
+## [1.4.0] - 2026-05-27
+
+### Added
+- **Idle detection** during active trips. Fires `idleStart` when the vehicle has been
+  stationary for ≥ `drivingEvents.idleThresholdMs` (default 5 min); fires `idleEnd` when
+  movement resumes. `idleEnd` payload includes `durationMs`.
+  New config fields: `drivingEvents.idleThresholdMs`, `drivingEvents.idleEndThresholdMs`.
+- **Per-trip driver behavior score** (`getTripScore()` + `tripEnd.score`). Penalty-based score
+  0–100 across speeding, hard-braking, rapid-acceleration, sharp-turn, and phone-usage events.
+  Category weights are configurable via `drivingEvents.scoring`; weights must sum to 100.
+  `tripEnd` now includes `score?: TripScore`. New method: `getTripScore()`.
+  - Android: `TripScore.kt` + `ScoreCalculator.kt` (stateless, JVM-testable).
+  - iOS: `TripScore.swift` + `ScoreCalculator.swift` equivalents.
+  - New unit tests: `ScoreCalculatorTest` (6 cases) + updated `DrivingEventsDetectorTest`.
+
+---
+
+## [1.3.0] - 2026-05-27
+
+### Added
+- **Geofencing API**: `addGeofences`, `addGeofence`, `removeGeofence`, `removeGeofences`,
+  `removeAllGeofences`, `getGeofences`. Zones persist across service restarts.
+  - Android: `GeofencingClient` (Google Play Services); `GeofenceBroadcastReceiver`;
+    geofences stored in SQLite and re-registered on startup.
+  - iOS: `CLCircularRegion` via `CLLocationManager.startMonitoring(for:)`; dwell detection
+    via per-region `Timer`; zones stored in `UserDefaults`. **Limit: 19 user geofences**
+    (one slot reserved for the significant-change monitor).
+  - New events: `geofenceEnter`, `geofenceExit`, `geofenceDwell` — each carries
+    `{ geofenceId, label, location, metadata, dwellMs? }`.
+  - New `GeofenceConfig` type: `{ id, latitude, longitude, radius, label?, notifyOnEnter?,
+    notifyOnExit?, notifyOnDwell?, dwellMilliseconds?, metadata? }`.
+- **Trip–geofence integration**: `drivingEvents.tripStartGeofenceIds` / `tripEndGeofenceIds` —
+  auto-start or auto-end a trip when the device crosses a nominated geofence boundary.
+
+---
+
+## [1.2.0] - 2026-05-27
+
+### Added
+- **WorkManager headless task** (Android): `registerHeadlessTask()` now schedules a
+  `PeriodicWorkRequest` via `WorkManager` instead of the previous `JsEvaluator` WebView.
+  This survives Android 12+ background-activity restrictions that would prevent launching
+  a WebView from a killed process. New config field: `headlessTaskTimeoutMs`.
+- **iOS background fallback config**: `iosBackgroundFallback: 'significantChanges' |
+  'regionMonitoring' | 'none'` lets apps pick the strategy used when iOS suspends regular
+  location updates. New event: `iosFallbackActivated → { reason: string }`.
+- **`getBackgroundKillReason()`** available on both platforms. Android returns the last
+  watchdog / OOM / system-kill cause persisted in SQLite; iOS returns `{ reason: null,
+  timestamp: null }` (iOS does not expose a kill reason).
+
+---
+
+## [1.1.0] - 2026-05-27
+
+### Added
+- **Android core rewritten in Kotlin** under `com.gachlab.*`. No Java remains in the main
+  source tree. Eliminated runtime dependencies: `gson`, `slf4j`, `logback-android`,
+  `jparkie-promise`, `android-permissions`. SyncAdapter / AuthenticatorService /
+  ContentProvider replaced by WorkManager + `LocationDAO` / `SessionDAO` / `ConfigDAO`.
+- **iOS core rewritten in Swift**. All `MAURBackgroundSync`, `BGFacade`, and provider
+  classes ported to Swift 5. No Objective-C in `Sources/`.
+- **`DrivingEventsDetector`** — pure Kotlin state machine, zero Android imports, fully
+  testable on the JVM without an emulator. Covers trip lifecycle, speeding, hard-brake,
+  rapid-acceleration, sharp-turn, and crash detection.
+- **`OemHelper`** — auto-start / background-activity intents for Xiaomi, Huawei, Oppo,
+  Vivo, Samsung, OnePlus, and Asus.
+- **`serviceRestarted`** event: fires when the Android foreground service is restarted by
+  the watchdog, an OS kill, or the boot receiver.
+  Payload: `{ reason: 'watchdog' | 'system_kill' | 'boot' }`.
+- **Kill diagnostics**: `getBackgroundKillReason()` on Android persists the most recent
+  watchdog / OOM / system-kill cause in SQLite for post-mortem debugging.
+- **E2E test infrastructure**: `e2e-background-survival.sh` + `android-e2e` CI job.
+  Installs the example-app APK, grants permissions, injects GPS fixes via `adb emu geo fix`,
+  and asserts ≥ 5 locations stored in the plugin's SQLite DB.
+- **Unit tests**: `DrivingEventsDetectorTest` (JUnit 5), `ConfigMapperTest` (Android);
+  `DrivingEventsDetectorTests`, `BackgroundGeolocationPluginTests` (iOS XCTest).
+
+### Removed
+- All Objective-C source files from iOS (`MAUR*` prefix classes superseded by Swift).
+- `com.marianhello.*`, `com.evgenii.*`, `ru.andremoniy.*`, `org.apache.*`, `org.chromium.*`
+  Java packages from Android.
+
+---
+
 ## [1.0.2] - 2026-05-25
 
 ### Fixed

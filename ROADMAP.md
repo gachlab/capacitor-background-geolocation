@@ -4,314 +4,118 @@
 Verticals: flotilla corporativa + rideshare/taxi. Pain point #1: el tracking se cae en background.
 Prioridad de plataforma: Android primero.
 
-> **Orden de ejecución (fijado 2026-05-26):** P1 Testing → **P2 Confiabilidad en Background** → Geofencing → resto.
-> Las dos secciones marcadas "Prioridad 2" **no** son simultáneas: Confiabilidad en Background va **primero**,
-> porque cualquier feature nuevo (Geofencing incluido) hereda el bug de "se cae en background" si no está blindado.
-> Background confiable es prerequisito de todo lo demás.
+> **Estado (v1.6.0):** Kotlin/Swift rewrites, E2E infra, background reliability, geofencing, idle detection, trip scoring, priority sync, y driving-events heuristics están completos. La deuda activa es: integration tests (P1) y Clean Architecture v2.0 (P2).
 >
-> **Rol en el ecosistema:** este plugin además aporta su capa de cola SQLite + sync HTTP como base del futuro
-> plugin genérico `capacitor-event-sink`; idealmente su foreground service se comparte (un servicio, una cola, un sync).
+> **Rol en el ecosistema:** este plugin aporta su capa de cola SQLite + sync HTTP como base del futuro plugin genérico `capacitor-event-sink`; idealmente su foreground service se comparte (un servicio, una cola, un sync).
 
 ---
 
 ## Completado
 
-### v1.6.0 — Driver Intelligence: Crash Confirm + Phone-Usage GPS Heuristic
-
-Mejoras a `DrivingEventsDetector` en Android y iOS:
+### v1.6.0 — Crash Confirm + Phone-Usage GPS Heuristic + Web Implementation
 
 - **`crashConfirmWindowMs`**: ventana de confirmación diferida para `possibleCrash`. Elimina falsos positivos por glitch de GPS. Si el vehículo recupera velocidad antes de que expire la ventana, el crash se cancela.
-- **`phoneUsageWhileDriving` vía GPS**: heurística de jitter de bearing cuando `sensorFusion: false`. Detecta el patrón de bearing oscilante típico de un conductor mirando el teléfono sin requerir giroscopio.
-- E2E script (`e2e-driving-events.sh`) con 3 escenarios + job CI `android-e2e-driving`.
-- Web: implementación real de location store, sessions y sync queue en `src/web.ts`.
+- **`phoneUsageWhileDriving` vía GPS**: heurística de jitter de bearing cuando `sensorFusion: false`. Detecta el patrón de bearing oscilante típico de un conductor mirando el teléfono sin requerir giroscopio. Nuevos campos: `phoneUsageWindowMs`, `phoneUsageCooldownMs`.
+- E2E: `e2e-driving-events.sh` con 3 escenarios (crash detection, phone-usage jitter, crash-confirm cancellation) + job CI `android-e2e-driving`.
+- Web: `src/web.ts` con location store (in-memory), sessions y sync queue.
 - Eliminado: `registerHeadlessTask` de iOS (era no-op; Android sin cambios).
 
----
+### v1.5.0 — Priority Sync
 
-### v1.1 — Kotlin Rewrite (Android)
+- POST inmediato para eventos de seguridad (`possibleCrash`, `sos` por defecto).
+- Dedup por timestamp, retry con backoff configurable, queue offline.
+- Campos: `prioritySyncEvents`, `prioritySyncUrl`, `prioritySyncRetries`, `prioritySyncRetryDelays`.
+- Eventos: `prioritySyncSuccess`, `prioritySyncFailed`.
 
-Reescritura completa del core Android en Kotlin puro bajo `com.gachlab.*`. Sin Java en el árbol principal.
+### v1.4.0 — Idle Detection + Trip Scoring
 
-**Eliminado:**
-- `com.marianhello.*`, `com.evgenii.*`, `ru.andremoniy.*`, `org.apache.*`, `org.chromium.*`
-- Dependencias runtime: `gson`, `slf4j`, `logback-android`, `jparkie-promise`, `android-permissions`
-- SyncAdapter / AuthenticatorService / ContentProvider (reemplazados por WorkManager)
+- `idleStart` / `idleEnd` durante viajes activos. Campos: `idleThresholdMs`, `idleEndThresholdMs`.
+- Score 0–100 por viaje (`getTripScore()`, `tripEnd.score`). Pesos configurables por categoría.
+- Android: `TripScore.kt` + `ScoreCalculator.kt`; iOS: equivalentes Swift.
 
-**Nuevo:**
-- `DrivingEventsDetector` — state machine pura Kotlin, sin imports Android, totalmente testeable en JVM
-- `BackgroundSync` — WorkManager worker, reemplaza el SyncAdapter/AuthenticatorService complejo
-- `LocationDAO`, `SessionDAO`, `ConfigDAO` — SQL inline, sin ORM de terceros
-- `OemHelper` — intents de autostart para Xiaomi, Huawei, Oppo, Vivo, Samsung, OnePlus, Asus
-- `NotificationHelper`, `BootReceiver`, `BGFacade`, `BackgroundGeolocationPlugin`
-- Suite de tests JUnit 5: `DrivingEventsDetectorTest`, `ConfigMapperTest`, `MockTripBuilder`
+### v1.3.0 — Geofencing
 
-**Licencia:** todo código nuevo bajo MIT (`SPDX-License-Identifier: MIT / Copyright (c) 2026 gachlab`).
+- `addGeofences`, `removeGeofences`, `getGeofences`, `removeAllGeofences`.
+- Eventos: `geofenceEnter`, `geofenceExit`, `geofenceDwell`.
+- Android: `GeofencingClient`; iOS: `CLCircularRegion` (límite: 19 zonas de usuario).
+- Integración de viaje: `tripStartGeofenceIds` / `tripEndGeofenceIds`.
 
----
+### v1.2.0 — Background Reliability
 
-## Prioridad 1 — Testing (Línea Base)
+- WorkManager headless task en Android (reemplaza JsEvaluator WebView; sobrevive Android 12+ restrictions).
+- iOS: `iosBackgroundFallback` config + `iosFallbackActivated` event.
+- `getBackgroundKillReason()` en ambas plataformas.
 
-Antes de tocar cualquier feature, necesitamos saber qué funciona y qué no. El repo actualmente solo tiene un smoke test en iOS — no hay forma de saber el impacto de un cambio sin tests.
+### v1.1.0 — Kotlin + Swift Rewrites, E2E Infrastructure
 
-### 1.1 Unit Tests — TypeScript
-
-**Herramienta:** Vitest (ya está en el ecosistema Capacitor, compatible con el build actual)
-
-| Archivo | Qué probar |
-|---------|-----------|
-| `src/web.ts` | Cada método: los que usan `navigator.geolocation` funcionan; los native-only lanzan `unimplemented` con mensaje claro |
-| `src/definitions.ts` | Validar que las interfaces TypeScript matcheen los payloads reales de los eventos (usar `zod` o type assertions) |
-| Serialización | Que `null` / `undefined` en campos opcionales no rompa el payload antes del POST (bug ya visto con Traccar) |
-
-```
-npm install -D vitest
-```
-
-### 1.2 Unit Tests — Android (JUnit 5)
-
-**Herramienta:** JUnit 5 + Robolectric para correr sin emulador
-
-| Clase | Qué probar |
-|-------|-----------|
-| `LocationMapper` | Conversión `Location` → `PluginCall` → JSON; campos nulos; mock provider flag |
-| `BackgroundGeolocationFacade` | Estados: `start()` → `isRunning=true`; `stop()` → `isRunning=false`; doble `start()` no duplica service |
-| `BackgroundGeolocationPlugin` | Que cada método del bridge llama la facade correcta y formatea el resultado |
-
-```
-# android/build.gradle — ya tiene testImplementation slot, solo agregar JUnit 5
-```
-
-### 1.3 Unit Tests — iOS (XCTest)
-
-**Herramienta:** XCTest (ya configurado, solo falta contenido real)
-
-| Clase | Qué probar |
-|-------|-----------|
-| `BackgroundGeolocationPlugin.swift` | Que `configure()` persiste la config; `start()` con config válida vs. sin config |
-| Event bridge | Que `notifyListeners()` se llama con el nombre y payload correcto en cada notificación nativa |
-| Authorization flow | Simular `CLAuthorizationStatus` cambiando → verificar que el evento `authorization` llega |
-
-### 1.4 Integration Tests — Android
-
-**Herramienta:** Android Instrumented Tests + `adb emu geo fix` para simular movimiento
-
-**Escenario base (simular un viaje completo):**
-1. `configure({ drivingEvents: { enabled: true }, distanceFilter: 10, interval: 1000 })`
-2. `start()` → verificar `serviceRestarted` o `start` event
-3. Inyectar 10 fixes GPS con velocidad > `minTripSpeed` → verificar `tripStart`
-4. Inyectar fix con velocidad > `speedLimit` → verificar `speeding`
-5. Inyectar deceleration > `hardBrakeMps2` → verificar `hardBrake`
-6. Inyectar fixes con velocidad 0 por > `stoppedDuration` → verificar `stopped` y luego `tripEnd`
-7. Verificar que `tripEnd` incluye `{ distance, durationMs }`
-8. `stop()` → verificar `stop` event
-
-**Fixture: `MockTripBuilder`**
-```kotlin
-// Genera una lista de Location que simula distintos patrones
-MockTripBuilder()
-  .startAt(19.4326, -99.1332)  // CDMX
-  .driveFor(distanceKm = 5, speedKmh = 60, fixIntervalMs = 1000)
-  .speedUp(to = 120)           // dispara speeding si limit < 120
-  .hardBrake()                  // dispara hardBrake
-  .idleFor(minutes = 6)         // dispara idleStart/idleEnd
-  .build()
-```
-
-### 1.5 Integration Tests — iOS
-
-**Herramienta:** XCTest + `CLLocationSimulator` (Xcode 15+) o GPX route files
-
-Mismo escenario que Android pero en Swift. Los GPX files del repositorio de Apple (`Freeway.gpx`, `City.gpx`) sirven como fixture base.
-
-### 1.6 E2E — Background Survival
-
-**Herramienta:** Detox (React Native) o Appium — verificar que el tracking sobrevive a:
-- App enviada a background (home button)
-- App removida del task switcher
-- Dispositivo bloqueado por 5 minutos
-- Vuelta al foreground — verificar que los fixes se guardaron en DB
-
-Este es el test más importante dado el pain point #1.
-
-### 1.7 Coverage Gate
-
-Una vez que la suite base esté, agregar en CI:
-- TS: 80% coverage mínimo en `src/`
-- Android: 70% en `com.gachlab.geolocation`
-- iOS: 70% en `BackgroundGeolocationPlugin.swift`
+- Android core reescrito en Kotlin puro bajo `com.gachlab.*`; ObjC removido de iOS → Swift 5.
+- `DrivingEventsDetector`: state machine pura Kotlin, sin imports Android, testeable en JVM.
+- `OemHelper`: intents de autostart para 7 fabricantes.
+- `serviceRestarted` event.
+- E2E: `e2e-background-survival.sh` + `android-e2e` CI job.
+- Unit tests: JUnit 5 (Android) + XCTest (iOS).
 
 ---
 
-## Prioridad 2 — Confiabilidad en Background
+## Prioridad 1 — Integration Tests (deuda activa)
 
-El problema más reportado por los conductores. Antes de cualquier feature nuevo, el plugin debe sobrevivir a los matadores de procesos de Android y al ciclo de vida de iOS.
+Los E2E de fondo (`e2e-background-survival.sh`) y de driving events (`e2e-driving-events.sh`) cubren el happy path end-to-end. Lo que falta es la capa intermedia: tests instrumentados que ejerciten configuraciones y edge cases sin desplegar la app completa.
 
-### 2.1 Android — Foreground Service Hardening
+### Android — Instrumented Tests
 
-El plugin ya tiene `startForeground` y `enableWatchdog`, pero los OEMs agresivos (Xiaomi, Samsung, Huawei) matan procesos incluso con foreground service activo.
+**Herramienta:** JUnit 5 + Robolectric / Android Instrumented
 
-**Tareas:**
-- Auditar el `BackgroundGeolocationService` contra la lista de comportamientos OEM documentados en `dontkillmyapp.com`
-- Mejorar el `enableWatchdog`: actualmente reinicia si no hay update en ~60s; hacerlo configurable (`watchdogIntervalMs`) y que verifique también si el foreground service sigue vivo
-- Agregar `foregroundServiceType=location|dataSync` en el manifest para Android 14+ (API 34 ya lo requiere, verificar que esté correcto)
-- Config nueva: `restartOnKill: boolean` — reinicia el servicio si el sistema lo termina, independientemente de `stopOnTerminate`
+| Escenario | Clase |
+|-----------|-------|
+| Viaje completo: tripStart → speeding → hardBrake → idleStart → idleEnd → tripEnd con score | `DrivingEventsIntegrationTest` |
+| `crashConfirmWindowMs`: crash fires, crash cancelled on recovery | `CrashConfirmTest` |
+| Geofence enter/exit/dwell | `GeofenceIntegrationTest` |
+| Priority sync: POST enviado, dedup, retry | `PrioritySyncIntegrationTest` |
+| DB backward compat: abrir DB de v1.0 con schema v1.6 | `DbMigrationTest` |
 
-**Evento nuevo:**
-```typescript
-'serviceRestarted' → { reason: 'watchdog' | 'system_kill' | 'boot' }
-```
+**Fixture reusable existente:** `MockTripBuilder` (genera `Location` sequences para cualquier patrón).
 
-### 2.2 Android — Headless Task Robusto
+### iOS — XCUITest Integration
 
-El `headlessTask` actual usa un WebView oculto (`JsEvaluator`). En Android 12+ hay restricciones en cómo se puede lanzar una Activity/WebView desde background.
+| Escenario | Archivo |
+|-----------|---------|
+| Viaje completo via GPX route | `TripLifecycleTests.swift` |
+| Score calculation end-to-end | `TripScoringTests.swift` |
+| iOS geofence enter/exit | `GeofenceTests.swift` |
 
-**Tareas:**
-- Migrar la ejecución del headless task a un `WorkManager` worker (más confiable que WebView en background)
-- Agregar timeout configurable: `headlessTaskTimeoutMs` (default: 30000)
-- Si el headless task falla o timeout, reintentar con backoff exponencial
-- Exponer resultado del headless task al plugin: `headlessTaskResult(success | error)`
+### Coverage Gate
 
-### 2.3 iOS — Background Survival
-
-iOS no tiene headless task equivalente al de Android. Cuando el sistema cierra la app, no hay ejecución JS hasta el próximo launch.
-
-**Tareas:**
-- Implementar `BGProcessingTask` (iOS 13+) para replay de locations almacenadas cuando el sistema otorga tiempo de background
-- Mejorar el fallback de `saveBatteryOnBackground`: cuando iOS pausa las actualizaciones, usar `startMonitoringSignificantLocationChanges()` como red de seguridad para no perder el hilo del viaje
-- Nuevo config: `iosBackgroundFallback: 'significantChanges' | 'regionMonitoring' | 'none'` (default: `'significantChanges'`)
-- Evento: `iosFallbackActivated` → `{ reason: string }` — para que la app notifique al conductor que el tracking está en modo de bajo consumo
-
-### 2.4 Diagnóstico de Background Kill
-
-Los conductores no saben por qué se cayó el tracking. El equipo tampoco.
-
-**Nuevo método:**
-```typescript
-getBackgroundKillReason(): Promise<{ reason: string | null, timestamp: number | null }>
-```
-
-Persiste en SQLite el motivo del último kill (OOM, sistema, usuario) para debugging post-mortem.
+Una vez que la suite esté completa:
+- Android: 70% en `com.gachlab.geolocation` (excluyendo UI y manifest-only classes)
+- iOS: 70% en `BackgroundGeolocationCore`
+- TypeScript: 80% en `src/`
 
 ---
 
-## Prioridad 2 — Geofencing
+## Prioridad 2 — Clean Architecture v2.0
 
-Crítico para ambos verticals: flotilla necesita saber cuando el conductor sale del depósito o llega a un cliente; rideshare necesita detectar llegada a zona de recogida.
+El código actual tiene `BGFacade`, `ServiceEvent`, `BGConfig` como objetos de dominio implícitos mezclados con infraestructura. Con cada feature nuevo la separación se erosiona. El plan completo está documentado en el repo; aquí el resumen ejecutivo:
 
-**API nueva:**
+**Modelo de dominio target:** `Position`, `Journey`, `Trip`, `TrackingConfig`, `TripConfig`, `GeoEvent`.
 
-```typescript
-// Gestión de zonas
-addGeofence(zone: GeofenceConfig): Promise<void>
-addGeofences(zones: GeofenceConfig[]): Promise<void>
-removeGeofence(id: string): Promise<void>
-removeAllGeofences(): Promise<void>
-getGeofences(): Promise<GeofenceConfig[]>
+**Regla de boundary:** si el comportamiento solo necesita datos que el objeto ya tiene → pertenece al dominio (puro, sin side effects). Si necesita repositorio, publisher o sistema externo → pertenece al use case.
 
-interface GeofenceConfig {
-  id: string;
-  latitude: number;
-  longitude: number;
-  radius: number;            // metros
-  label?: string;
-  notifyOnEnter?: boolean;   // default true
-  notifyOnExit?: boolean;    // default true
-  notifyOnDwell?: boolean;   // default false
-  dwellMilliseconds?: number; // tiempo mínimo para disparar dwell
-  metadata?: Record<string, unknown>; // payload arbitrario para el backend
-}
+**Estructura target (ambas plataformas):**
+```
+domain/          ← Position, Journey, Trip, TrackingConfig, TripConfig, GeoEvent
+journey/         ← StartJourneyUseCase, EndJourneyUseCase, RecordPositionUseCase, GetCurrentPositionUseCase
+config/          ← ConfigureUseCase, ConfigRepository (port)
+sync/            ← SyncUseCase, LocationPublisher (port), SyncPublisher (port)
+adapters/        ← SqlPositionRepository, SqlJourneyRepository, WorkManagerSyncPublisher, HttpLocationPublisher
 ```
 
-**Eventos nuevos:**
-```typescript
-'geofenceEnter' → { geofenceId, label, location, metadata }
-'geofenceExit'  → { geofenceId, label, location, dwellMs, metadata }
-'geofenceDwell' → { geofenceId, label, location, dwellMs, metadata }
-```
+**Rename npm:** `@gachlab/capacitor-background-geolocation` → `@gachlab/geolocation` (v2.0.0).
 
-**Implementación:**
-- Android: `GeofencingClient` de Google Play Services (bajo consumo, el OS maneja el monitoreo)
-- iOS: `CLCircularRegion` vía Core Location (límite: 20 regiones simultáneas en iOS — documentarlo)
-- Persistir las zonas en SQLite para que sobrevivan reinicios del servicio
-
-**Integración con trip detection:**
-- Config: `drivingEvents.tripStartGeofenceIds: string[]` — iniciar viaje automáticamente al salir de estas zonas
-- Config: `drivingEvents.tripEndGeofenceIds: string[]` — terminar viaje al entrar a estas zonas
+**Prerequisito:** integration tests completos (P1) deben estar verdes antes de empezar el refactor para que sirvan como red de seguridad.
 
 ---
 
-## Prioridad 3 — Driver Behavior Score
-
-Los eventos de conducción ya existen. Falta agregarlos en algo accionable para el fleet manager.
-
-**API nueva:**
-```typescript
-getTripScore(options?: { sessionId?: string }): Promise<TripScore>
-
-interface TripScore {
-  overall: number;           // 0-100
-  breakdown: {
-    speeding: number;        // 0-100
-    hardBraking: number;     // 0-100
-    rapidAcceleration: number;
-    sharpTurns: number;
-    phoneUsage: number;
-  };
-  events: ScoredEvent[];     // lista de eventos que penalizaron el score
-  tripId: string;
-  startedAt: number;
-  endedAt: number | null;
-}
-```
-
-**`tripEnd` enriquecido** (sin breaking change — se agrega campo opcional):
-```typescript
-'tripEnd' → {
-  location: Location,
-  distance: number,
-  durationMs: number,
-  score?: TripScore    // incluido si drivingEvents.enabled: true
-}
-```
-
-**Algoritmo de scoring:** configurable vía pesos:
-```typescript
-drivingEvents: {
-  scoring: {
-    speedingWeight: number,      // default: 30
-    hardBrakingWeight: number,   // default: 25
-    rapidAccelWeight: number,    // default: 20
-    sharpTurnWeight: number,     // default: 15
-    phoneUsageWeight: number,    // default: 10
-  }
-}
-```
-
----
-
-## Prioridad 4 — Idle Detection
-
-Conductor parado con motor encendido: KPI crítico en flotilla para control de combustible.
-
-**Config:**
-```typescript
-drivingEvents: {
-  idleThresholdMs?: number;  // tiempo parado para disparar idleStart, default: 300000 (5 min)
-  idleEndThresholdMs?: number; // tiempo en movimiento para cerrar el idle, default: 30000
-}
-```
-
-**Eventos nuevos:**
-```typescript
-'idleStart' → { location: Location, startedAt: number }
-'idleEnd'   → { location: Location, durationMs: number, startedAt: number }
-```
-
-Diferencia con `stopped`: `stopped` es instantáneo (velocidad cero); `idleStart` requiere que el conductor lleve X minutos sin moverse durante un viaje activo.
-
----
-
-## Prioridad 5 — Shift / Work Hours Management
+## Prioridad 3 — Shift / Work Hours Management
 
 Para flotilla corporativa: privacidad del conductor fuera de horario y ahorro de batería.
 
@@ -345,25 +149,6 @@ isInShift(): Promise<{ inShift: boolean, nextShiftAt: number | null }>
 
 ---
 
-## Prioridad 6 — Priority Sync
-
-Los eventos críticos de seguridad no deben esperar a que la cola de sync alcance el `syncThreshold`.
-
-**Config:**
-```typescript
-prioritySyncEvents?: Array<
-  'possibleCrash' | 'sos' | 'hardBrake' | 'speeding' | 'phoneUsageWhileDriving'
->;
-// default: ['possibleCrash', 'sos']
-```
-
-**Comportamiento:**
-- Cuando ocurre un evento en `prioritySyncEvents`, se hace POST inmediato a `url` con el payload del evento + la última location conocida
-- No afecta la cola normal de locations
-- Retry con backoff: 3 intentos en 10s, 30s, 60s si falla
-
----
-
 ## Mejoras Técnicas
 
 ### Path Compression antes de Sync
@@ -388,25 +173,6 @@ getServiceHealthReport(): Promise<{
   uptimePercent: number,   // % del tiempo activo en las últimas 24h
 }>
 ```
-
----
-
-## Testing — Deuda Técnica
-
-El repo solo tiene un smoke test en iOS. Propuesta por capa:
-
-| Capa | Herramienta | Qué cubrir |
-|------|-------------|------------|
-| Unit TS | Vitest | `web.ts`, serialización de payloads, score algorithm, shift scheduler |
-| Unit Android | JUnit 5 | `LocationMapper`, score calculation, geofence evaluator |
-| Unit iOS | XCTest | Swift bridge methods, score calculation |
-| Integration Android | Instrumented test + `adb emu geo fix` | Simular viaje completo, verificar eventos tripStart/tripEnd/speeding |
-| Integration iOS | XCTest + `CLLocationSimulator` | Mismo flujo en iOS |
-| E2E | Capacitor test app + Detox | Permiso flow, start/stop tracking, verificar que background survive |
-
-**Fixtures reusables:**
-- `MockTripBuilder` — genera arrays de `Location` que simulan distintos patrones de manejo (autopista, ciudad, idle, frenadas)
-- `AssertEventSequence` — helper para verificar que los eventos llegan en el orden correcto
 
 ---
 
