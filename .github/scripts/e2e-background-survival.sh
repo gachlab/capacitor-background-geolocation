@@ -34,6 +34,10 @@ adb shell pm grant "$PACKAGE" android.permission.ACCESS_FINE_LOCATION
 adb shell pm grant "$PACKAGE" android.permission.ACCESS_COARSE_LOCATION
 adb shell pm grant "$PACKAGE" android.permission.ACCESS_BACKGROUND_LOCATION
 
+# Enable high-accuracy location mode and prevent screen auto-lock during test.
+adb shell settings put secure location_mode 3
+adb shell settings put system screen_off_timeout 300000
+
 # ── launch + configure ────────────────────────────────────────────────────────
 
 adb logcat -c  # clear buffer so the readiness check below only sees this session

@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
           speedLimit: 90,
           // Lowered thresholds for E2E emulator testing
           crashImpactKmh: 10,
-          crashWindowMs: 4000,
+          crashWindowMs: 6000,
           crashConfirmWindowMs: 2000,
           sensorFusion: false,
           phoneUsageWindowMs: 3000,
