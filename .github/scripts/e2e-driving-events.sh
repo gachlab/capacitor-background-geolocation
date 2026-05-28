@@ -65,6 +65,11 @@ for i in $(seq 1 90); do
 done
 sleep 2  # brief settle after last listener registers
 
+# Wake the screen and dismiss keyguard so taps land on the app, not the lock screen.
+adb shell input keyevent KEYCODE_WAKEUP || true
+adb shell wm dismiss-keyguard || true
+sleep 1
+
 # Nexus 6 1440×2560 (560 dpi, ~3.5× scale): first button row sits at y≈500px.
 # Configure center ≈ x200, Start center ≈ x450.
 echo "→ Tapping Configure (with driving events + crash/phone-usage thresholds)"
