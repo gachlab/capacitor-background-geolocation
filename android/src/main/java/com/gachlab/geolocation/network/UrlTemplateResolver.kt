@@ -15,8 +15,9 @@ internal object UrlTemplateResolver {
     private val PLACEHOLDER = Pattern.compile("\\{([a-zA-Z0-9_]+)}")
 
     // SimpleDateFormat is not thread-safe; one instance per thread avoids contention.
-    private val ISO_FORMAT = ThreadLocal.withInitial {
-        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).also {
+    // ThreadLocal.withInitial(Supplier) requires API 26; use object subclass for API 23+ compat.
+    private val ISO_FORMAT = object : ThreadLocal<SimpleDateFormat>() {
+        override fun initialValue() = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).also {
             it.timeZone = TimeZone.getTimeZone("UTC")
         }
     }
