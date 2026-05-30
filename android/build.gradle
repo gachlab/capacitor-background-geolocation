@@ -5,6 +5,9 @@ buildscript {
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:9.2.1'
+        // Kotlin compiler en classpath para que AGP 9.x compile archivos .kt
+        // NO aplicamos kotlin-android explicitamente — AGP 9.x tiene Kotlin integrado
+        // y aplicarlo causaria "Cannot add extension 'kotlin' already registered"
         classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.23'
     }
 }
@@ -23,7 +26,6 @@ ext {
 }
 
 apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
 
 android {
     namespace = "com.gachlab.capacitor.backgroundgeolocation"
@@ -56,9 +58,6 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
-    }
-    kotlinOptions {
-        jvmTarget = '17'
     }
 }
 
