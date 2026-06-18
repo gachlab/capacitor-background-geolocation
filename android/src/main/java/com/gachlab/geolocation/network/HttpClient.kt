@@ -45,10 +45,14 @@ internal class HttpClient(
                 connectTimeout = 30_000
                 readTimeout    = 120_000
                 doOutput = true
-                setFixedLengthStreamingMode(bytes.size)
                 setRequestProperty("Content-Type", contentType)
-                setRequestProperty("Content-Length", bytes.size.toString())
                 headers?.forEach { (k, v) -> setRequestProperty(k, v) }
+                // Streaming mode MUST come after all setRequestProperty calls: on
+                // Android/ART HttpURLConnection impls it commits the connection, so
+                // any later header set throws "Cannot set request property after
+                // connection is made" (which made every POST fail with HTTP -1).
+                // It also sets Content-Length itself, so we don't set that header.
+                setFixedLengthStreamingMode(bytes.size)
             }
             conn.outputStream.use { it.write(bytes) }
             conn.responseCode
