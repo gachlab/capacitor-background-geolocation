@@ -12,7 +12,11 @@ import java.util.regex.Pattern
 
 internal object UrlTemplateResolver {
 
-    private val PLACEHOLDER = Pattern.compile("\\{([a-zA-Z0-9_]+)}")
+    // The closing brace MUST be escaped (\\}). On stricter Android/ART regex
+    // engines a dangling '}' makes Pattern.compile throw at class-init time
+    // (ExceptionInInitializerError), which silently kills every location POST.
+    // Keep this in sync with the iOS resolver: #"\{([a-zA-Z0-9_]+)\}"#.
+    private val PLACEHOLDER = Pattern.compile("\\{([a-zA-Z0-9_]+)\\}")
 
     // SimpleDateFormat is not thread-safe; one instance per thread avoids contention.
     // ThreadLocal.withInitial(Supplier) requires API 26; use object subclass for API 23+ compat.
