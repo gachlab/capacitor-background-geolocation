@@ -16,6 +16,44 @@ interface LocationTemplate : java.io.Serializable {
 }
 
 /**
+ * Resolves `@`-prefixed placeholders inside an ARBITRARY template shape against a
+ * location, recursively. Walks nested objects and arrays to any depth, replaces
+ * each `"@key"` string with the location's value for that key, and preserves
+ * every other value (literal strings, numbers, booleans, null) untouched.
+ *
+ * This is plugin-public behaviour — consumers may pass any JSON template (flat,
+ * nested, arrays of objects, …), so resolution must be structure-agnostic. The
+ * full `"@key"` (with the `@`) is passed to [BGLocation.getValueForKey], which
+ * matches on the `@` prefix.
+ */
+internal object TemplateValueResolver {
+    fun resolve(value: Any?, location: BGLocation): Any? = when (value) {
+        is JSONObject -> resolveObject(value, location)
+        is JSONArray  -> resolveArray(value, location)
+        is String     -> if (value.startsWith("@")) (location.getValueForKey(value) ?: value) else value
+        else          -> value
+    }
+
+    fun resolveObject(obj: JSONObject, location: BGLocation): JSONObject {
+        val result = JSONObject()
+        val keys = obj.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            result.put(key, resolve(obj.get(key), location))
+        }
+        return result
+    }
+
+    fun resolveArray(arr: JSONArray, location: BGLocation): JSONArray {
+        val result = JSONArray()
+        for (i in 0 until arr.length()) {
+            result.put(resolve(arr.get(i), location))
+        }
+        return result
+    }
+}
+
+/**
  * Default template: serializes to a JSONObject using all location fields.
  * Keys may include `@`-prefixed placeholders resolved by UrlTemplateResolver.
  * The template definition is stored as a JSON string for Serializable compat.
@@ -32,19 +70,7 @@ class HashMapLocationTemplate(templateJson: JSONObject? = null) : LocationTempla
         if (template == null || template.length() == 0) {
             return location.toJSONObject()
         }
-        val result = JSONObject()
-        val keys = template.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            val value = template.getString(key)
-            if (value.startsWith("@")) {
-                val resolved = location.getValueForKey(value.substring(1))
-                if (resolved != null) result.put(key, resolved) else result.put(key, value)
-            } else {
-                result.put(key, value)
-            }
-        }
-        return result
+        return TemplateValueResolver.resolveObject(template, location)
     }
 
     override fun isEmpty(): Boolean = templateStr == null || parsedTemplate()?.length() == 0
@@ -71,17 +97,7 @@ class ArrayListLocationTemplate(templateJson: JSONArray? = null) : LocationTempl
         if (template == null || template.length() == 0) {
             return JSONArray().put(location.toJSONObject())
         }
-        val result = JSONArray()
-        for (i in 0 until template.length()) {
-            val value = template.getString(i)
-            if (value.startsWith("@")) {
-                val resolved = location.getValueForKey(value.substring(1))
-                result.put(resolved ?: value)
-            } else {
-                result.put(value)
-            }
-        }
-        return result
+        return TemplateValueResolver.resolveArray(template, location)
     }
 
     override fun isEmpty(): Boolean = templateStr == null || parsedTemplate()?.length() == 0
