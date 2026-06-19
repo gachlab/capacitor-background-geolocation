@@ -1,6 +1,6 @@
 {
   "name": "@gachlab/capacitor-background-geolocation",
-  "version": "1.6.4",
+  "version": "1.6.5",
   "description": "Capacitor 8+ plugin for accurate background geolocation tracking, driving-event detection, sync queue and OEM diagnostics on iOS and Android.",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",

@@ -40,22 +40,26 @@ internal class HttpClient(
         val bytes = bodyStr.toByteArray(StandardCharsets.UTF_8)
         var conn: HttpURLConnection? = null
         return try {
-            conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
-                requestMethod = method.uppercase()
-                connectTimeout = 30_000
-                readTimeout    = 120_000
-                doOutput = true
-                setRequestProperty("Content-Type", contentType)
-                headers?.forEach { (k, v) -> setRequestProperty(k, v) }
-                // Streaming mode MUST come after all setRequestProperty calls: on
-                // Android/ART HttpURLConnection impls it commits the connection, so
-                // any later header set throws "Cannot set request property after
-                // connection is made" (which made every POST fail with HTTP -1).
-                // It also sets Content-Length itself, so we don't set that header.
-                setFixedLengthStreamingMode(bytes.size)
-            }
-            conn.outputStream.use { it.write(bytes) }
-            conn.responseCode
+            val c = URL(urlString).openConnection() as HttpURLConnection
+            conn = c
+            // Set request headers FIRST — before requestMethod / doOutput. On the
+            // Android okhttp HttpURLConnection impl (observed on Samsung One UI /
+            // SM-X810, API 34) the first call on a fresh connection must be a
+            // setRequestProperty; if requestMethod or doOutput is touched first the
+            // connection is treated as already "made", so every later
+            // setRequestProperty throws "Cannot set request property after
+            // connection is made" — which made every location POST fail with
+            // HTTP -1 and the sync queue grow without bound.
+            c.setRequestProperty("Content-Type", contentType)
+            headers?.forEach { (k, v) -> c.setRequestProperty(k, v) }
+            c.requestMethod = method.uppercase()
+            c.connectTimeout = 30_000
+            c.readTimeout    = 120_000
+            c.doOutput = true
+            // setFixedLengthStreamingMode also sets Content-Length itself.
+            c.setFixedLengthStreamingMode(bytes.size)
+            c.outputStream.use { it.write(bytes) }
+            c.responseCode
         } catch (e: Exception) {
             Log.e(TAG, "HTTP $method $urlString failed: ${e.message}")
             -1
