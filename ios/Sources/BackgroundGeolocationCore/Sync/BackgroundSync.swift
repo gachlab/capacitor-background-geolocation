@@ -41,6 +41,11 @@ final class BackgroundSync: NSObject, URLSessionDelegate, URLSessionTaskDelegate
         guard let syncUrl = config.syncUrl, !syncUrl.isEmpty else { return }
 
         let method = (config.syncHttpMethod ?? "POST").uppercased()
+        // Parse the configured URL ONCE (it's invariant across the loop). A
+        // malformed syncUrl previously force-unwrapped (`URL(string:)!`) inside
+        // the loop and crashed the whole sync path on every flush. Matches the
+        // per-location path (PostLocationTask uses `guard let`).
+        guard let syncURL = URL(string: syncUrl) else { return }
         let cutoffDate = Date()
 
         for location in locations {
@@ -49,9 +54,9 @@ final class BackgroundSync: NSObject, URLSessionDelegate, URLSessionTaskDelegate
                 options: []
             ) else { continue }
 
-            let docsDir = FileManager.default.urls(
+            guard let docsDir = FileManager.default.urls(
                 for: .documentDirectory, in: .userDomainMask
-            ).first!
+            ).first else { continue }
             let fileURL = docsDir.appendingPathComponent("locations_\(UUID().uuidString).json")
 
             do {
@@ -60,7 +65,7 @@ final class BackgroundSync: NSObject, URLSessionDelegate, URLSessionTaskDelegate
                 continue
             }
 
-            var request = URLRequest(url: URL(string: syncUrl)!)
+            var request = URLRequest(url: syncURL)
             request.httpMethod = method
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             if let headers = config.httpHeaders {
