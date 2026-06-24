@@ -6,6 +6,38 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-06-24
+
+### Fixed
+- **Android** (geofencing, critical): `GeofenceManager` built its transition
+  `PendingIntent` with `FLAG_IMMUTABLE`, which GMS `GeofencingClient.addGeofences`
+  rejects with "PendingIntent must be mutable" (opStatusCode 10) on **API 31+**. This
+  silently broke **all** geofence transitions on Android 12+ (no ENTER/EXIT/DWELL ever
+  fired). Now uses `FLAG_MUTABLE` on API ≥ 31.
+
+### Added
+- **`geofenceError` event** (all platforms): a geofence that fails to register or
+  monitor now surfaces a dedicated `geofenceError` (`{ id?, message }`) instead of
+  failing silently — iOS (region cap / monitoring failure), Android (GMS registration
+  failure or invalid geofence), web (invalid geofence).
+- **Phone-usage detection by sensor on Android**: mirror of the iOS
+  `SensorFusionDetector` phone-usage path (accel/gyro jitter), gated by `sensorFusion`
+  so it does not double-count with the GPS bearing-jitter path.
+- **Sensor phone-usage feeds the trip score** on both native platforms.
+- **Web geofencing**: real JS geofence engine over `navigator.geolocation`
+  (initial ENTER when already inside, EXIT, DWELL, `geofenceError`) — previously a no-op.
+
+### Changed
+- **iOS**: `SensorFusionDetector` phone-usage is now gated by `sensorFusion`, fixing a
+  double-count with the GPS phone-usage path when `sensorFusion` was off.
+- **Tooling**: migrated to the native **TypeScript 7** compiler. Type-aware ESLint
+  (`@typescript-eslint`) is temporarily paused (incompatible with the native compiler);
+  `lint` runs Prettier and `typecheck` (`tsc --noEmit`) is the type gate.
+
+### Tests
+- Geofencing E2E across all three platforms: iOS (simulator), Android (GMS emulator),
+  and web (Playwright + Chromium with mocked geolocation).
+
 ## [1.6.7] - 2026-06-18
 
 ### Fixed

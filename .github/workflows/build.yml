@@ -18,7 +18,7 @@ env:
 
 jobs:
   web:
-    name: Web — lint + build + test
+    name: Web — typecheck + build + test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -28,9 +28,17 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Type-aware ESLint is paused: TypeScript 7 (native) drops the JS compiler API
+      # that @typescript-eslint needs. `typecheck` (native tsc --noEmit) is the type
+      # gate; `lint` is Prettier formatting only. Restore eslint once it supports TS 7.
+      - run: npm run typecheck
       - run: npm run build
       - run: npm run lint
       - run: npm run test:coverage
+      # Real-browser E2E for the web implementation (geofencing) — parity with the
+      # native simulator/emulator geofencing E2E. Uses Chromium + mocked geolocation.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e:web
 
   android:
     name: Android — unit tests + E2E
@@ -78,6 +86,17 @@ jobs:
           script: >-
             .github/scripts/e2e-background-survival.sh &&
             .github/scripts/e2e-driving-events.sh
+      - name: E2E geofencing (GMS)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis_playstore
+          arch: arm64-v8a
+          avd-name: pickup-e2e
+          force-avd-creation: false
+          emulator-options: -no-window -no-audio -no-boot-anim
+          enable-hw-acceleration: true
+          script: .github/scripts/e2e-android-geofencing.sh
       - name: Upload logcat on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -86,6 +105,7 @@ jobs:
           path: |
             /tmp/e2e-logcat.txt
             /tmp/e2e-driving-logcat.txt
+            /tmp/e2e-android-geofencing-logcat.txt
 
   ios:
     name: iOS — unit tests + E2E
@@ -123,9 +143,13 @@ jobs:
         run: npx cap sync ios
       - name: E2E driving events
         run: .github/scripts/e2e-ios-driving-events.sh
+      - name: E2E geofencing
+        run: .github/scripts/e2e-ios-geofencing.sh
       - name: Upload xcresult on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: ios-e2e-xcresult
-          path: /tmp/e2e-ios-results.xcresult
+          path: |
+            /tmp/e2e-ios-results.xcresult
+            /tmp/e2e-ios-geofencing.xcresult
