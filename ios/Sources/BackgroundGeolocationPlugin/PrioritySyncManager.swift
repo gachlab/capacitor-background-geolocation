@@ -26,8 +26,11 @@ final class PrioritySyncManager {
 
     private let queue = DispatchQueue(label: "gachlab.priority-sync", qos: .utility)
     private var sentTimestamps = Set<Int64>()
+    private var sentOrder = [Int64]()          // insertion order so overflow drops the OLDEST
     private var offlineQueue: [(String, [String: Any])] = []
     private var monitor: NWPathMonitor?
+    // Cached connectivity from the persistent monitor — avoids a per-submit probe race.
+    private var isNetworkAvailable = true
 
     // MARK: – Init
 
@@ -51,13 +54,19 @@ final class PrioritySyncManager {
     /// or when the event timestamp was already submitted (dedup).
     func submit(eventType: String, payload: [String: Any]) {
         guard url != nil else { return }
-        let ts = payload["timestamp"] as? Int64
+        // Accept any numeric timestamp (Int, Double, NSNumber bridged from JS), matching
+        // Android's optLong — a strict `as? Int64` would miss most bridged numbers and break dedup.
+        let ts = (payload["timestamp"] as? NSNumber)?.int64Value
             ?? Int64(Date().timeIntervalSince1970 * 1000)
         queue.async { [weak self] in
             guard let self else { return }
             guard self.sentTimestamps.insert(ts).inserted else { return }
+            self.sentOrder.append(ts)
             if self.sentTimestamps.count > 200 {
-                self.sentTimestamps = Set(self.sentTimestamps.suffix(100))
+                // Drop the oldest 100 deterministically (mirrors Android's LinkedHashSet trim).
+                let drop = self.sentOrder.prefix(100)
+                self.sentOrder.removeFirst(min(100, self.sentOrder.count))
+                for old in drop { self.sentTimestamps.remove(old) }
             }
             if !self.isConnected() {
                 self.offlineQueue.append((eventType, payload))
@@ -94,25 +103,19 @@ final class PrioritySyncManager {
         }
     }
 
-    private func isConnected() -> Bool {
-        let monitor = NWPathMonitor()
-        let semaphore = DispatchSemaphore(value: 0)
-        var satisfied = false
-        monitor.pathUpdateHandler = { path in
-            satisfied = path.status == .satisfied
-            semaphore.signal()
-        }
-        monitor.start(queue: DispatchQueue(label: "gachlab.psm.connectivity-check"))
-        _ = semaphore.wait(timeout: .now() + 0.5)
-        monitor.cancel()
-        return satisfied
-    }
+    // Reads the cached state kept current by the persistent monitor. Called on `queue`,
+    // where the flag is also written, so no probe and no race.
+    private func isConnected() -> Bool { isNetworkAvailable }
 
     private func startMonitoring() {
         let m = NWPathMonitor()
         m.pathUpdateHandler = { [weak self] path in
-            guard let self, path.status == .satisfied else { return }
-            self.queue.async { self.flushOfflineQueue() }
+            guard let self else { return }
+            let available = path.status == .satisfied
+            self.queue.async {
+                self.isNetworkAvailable = available
+                if available { self.flushOfflineQueue() }
+            }
         }
         m.start(queue: DispatchQueue(label: "gachlab.psm.monitor"))
         monitor = m
