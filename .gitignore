@@ -46,3 +46,6 @@ yarn-error.log*
 .env
 .env.local
 *.log
+
+# Swift Package Manager build output (root)
+/.build/

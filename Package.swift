@@ -32,11 +32,7 @@ let package = Package(
                 .product(name: "Cordova", package: "capacitor-swift-pm"),
                 "BackgroundGeolocationCore"
             ],
-            path: "ios/Sources/BackgroundGeolocationPlugin",
-            exclude: [
-                "BackgroundGeolocationPlugin.m",
-                "BackgroundGeolocationPlugin-Bridging-Header.h"
-            ]),
+            path: "ios/Sources/BackgroundGeolocationPlugin"),
         .testTarget(
             name: "BackgroundGeolocationPluginTests",
             dependencies: ["BackgroundGeolocationPlugin"],
