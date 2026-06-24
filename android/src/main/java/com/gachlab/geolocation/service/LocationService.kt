@@ -19,8 +19,10 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.gachlab.geolocation.BGConfig
 import com.gachlab.geolocation.BGLocation
+import com.gachlab.geolocation.BGLog
 import com.gachlab.geolocation.DrivingEventsDetector
 import com.gachlab.geolocation.NotificationHelper
+import com.gachlab.geolocation.SensorFusionDetector
 import com.gachlab.geolocation.ServiceEvent
 import com.gachlab.geolocation.persistence.ConfigDAO
 import com.gachlab.geolocation.persistence.LocationDAO
@@ -89,6 +91,7 @@ class LocationService : Service() {
     private var postTask: PostLocationTask? = null
     private var prioritySyncManager: PrioritySyncManager? = null
     private var drivingDetector: DrivingEventsDetector? = null
+    private var sensorDetector: SensorFusionDetector? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
     @Volatile var isRunning = false
@@ -109,6 +112,7 @@ class LocationService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance    = this
+        BGLog.init(applicationContext)
         locationDAO = LocationDAO(applicationContext)
         sessionDAO  = SessionDAO(applicationContext)
         configDAO   = ConfigDAO(applicationContext)
@@ -189,6 +193,7 @@ class LocationService : Service() {
         postTask?.shutdown(); postTask = null
         prioritySyncManager?.destroy(); prioritySyncManager = null
         drivingDetector?.reset(); drivingDetector = null
+        sensorDetector?.stop(); sensorDetector = null
 
         releaseWakeLock()
         @Suppress("DEPRECATION") stopForeground(true)
@@ -258,6 +263,7 @@ class LocationService : Service() {
         }
 
         drivingDetector?.onLocation(loc)
+        sensorDetector?.lastLocation = loc
         attachBattery(loc)
 
         if (config?.wakeLockMode == "posting") acquirePostingWakeLock()
@@ -275,7 +281,22 @@ class LocationService : Service() {
 
     private fun configureDrivingDetector(cfg: BGConfig) {
         val opts = cfg.drivingEvents ?: run {
-            drivingDetector?.reset(); drivingDetector = null; return
+            drivingDetector?.reset(); drivingDetector = null
+            sensorDetector?.stop(); sensorDetector = null
+            return
+        }
+        // Sensor-based crash detection (TYPE_LINEAR_ACCELERATION), fused with the GPS
+        // crash path below — both can fire, distinguished by PossibleCrash.source.
+        if (opts.enabled) {
+            val sd = sensorDetector ?: SensorFusionDetector(applicationContext).also {
+                it.listener = sensorCrashListener; sensorDetector = it
+            }
+            sd.crashImpactG    = opts.crashImpactG
+            sd.crashCooldownMs = opts.sensorCrashCooldownMs
+            sd.lastLocation    = latestLocation
+            sd.start()
+        } else {
+            sensorDetector?.stop(); sensorDetector = null
         }
         val detectorCfg = DrivingEventsDetector.Config(
             enabled              = opts.enabled,
@@ -304,9 +325,13 @@ class LocationService : Service() {
     private val drivingListener = object : DrivingEventsDetector.Listener {
         override fun onMoving(loc: BGLocation)        { Log.i(TAG, "driving-event: moving");   fire(ServiceEvent.Moving(loc)) }
         override fun onStopped(loc: BGLocation)       { Log.i(TAG, "driving-event: stopped");  fire(ServiceEvent.Stopped(loc)) }
-        override fun onTripStart(loc: BGLocation)     { Log.i(TAG, "driving-event: tripStart"); fire(ServiceEvent.TripStart(loc)) }
+        override fun onTripStart(loc: BGLocation)     {
+            Log.i(TAG, "driving-event: tripStart"); sensorDetector?.tripActive = true
+            fire(ServiceEvent.TripStart(loc))
+        }
         override fun onTripEnd(loc: BGLocation, distanceMeters: Double, durationMs: Long, score: com.gachlab.geolocation.TripScore) {
             Log.i(TAG, "driving-event: tripEnd dist=${distanceMeters.toInt()}m dur=${durationMs}ms")
+            sensorDetector?.tripActive = false
             fire(ServiceEvent.TripEnd(loc, distanceMeters, durationMs, score))
         }
         override fun onIdleStart(loc: BGLocation, startedAt: Long) =
@@ -332,6 +357,16 @@ class LocationService : Service() {
         override fun onPhoneUsageWhileDriving(loc: BGLocation) {
             Log.i(TAG, "driving-event: phoneUsageWhileDriving")
             loc.addDrivingEvent("phoneUsageWhileDriving"); fire(ServiceEvent.PhoneUsageWhileDriving(loc))
+        }
+    }
+
+    /** Sensor-based crash (TYPE_LINEAR_ACCELERATION). Fused with the GPS path via source. */
+    private val sensorCrashListener = object : SensorFusionDetector.Listener {
+        override fun onCrash(impactG: Double, location: BGLocation?) {
+            val loc = location ?: latestLocation ?: return
+            Log.i(TAG, "sensor-event: possibleCrash impactG=${"%.1f".format(impactG)}")
+            loc.addDrivingEvent("possibleCrash")
+            fire(ServiceEvent.PossibleCrash(loc, impactG, "sensor"))
         }
     }
 
@@ -450,7 +485,7 @@ class LocationService : Service() {
                     put("type", "possibleCrash")
                     put("timestamp", event.loc.time)
                     put("location", locationToCoords(event.loc))
-                    put("source", "gps")
+                    put("source", event.source)
                 })
             event is ServiceEvent.Sos && "sos" in allowed ->
                 Pair("sos", org.json.JSONObject().apply {
@@ -488,8 +523,23 @@ class LocationService : Service() {
     // ── Event dispatch ────────────────────────────────────────────────────────
 
     private fun fire(event: ServiceEvent) {
+        logEvent(event)
         maybePrioritySync(event)
         eventListener?.invoke(event)
+    }
+
+    /** Persist a diagnostic line for notable (low-volume) lifecycle/error events. */
+    private fun logEvent(event: ServiceEvent) {
+        when (event) {
+            is ServiceEvent.ServiceStarted   -> BGLog.i("Service started")
+            is ServiceEvent.ServiceStopped   -> BGLog.i("Service stopped")
+            is ServiceEvent.ServiceRestarted -> BGLog.w("Service restarted: ${event.reason}")
+            is ServiceEvent.Error            -> BGLog.e(event.message)
+            is ServiceEvent.AbortRequested   -> BGLog.w("Server requested abort (285)")
+            is ServiceEvent.HttpAuthorization -> BGLog.w("HTTP authorization failed (401)")
+            is ServiceEvent.Sos              -> BGLog.w("SOS triggered")
+            else -> Unit
+        }
     }
 
     // ── Kill diagnostics ──────────────────────────────────────────────────────
