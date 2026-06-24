@@ -124,7 +124,7 @@ class BGFacade(private val context: Context) {
     // ── Misc ──────────────────────────────────────────────────────────────────
 
     fun switchMode(mode: Int)          = startedService()?.switchMode(mode)
-    fun triggerSOS(locationId: Long?)  = startedService()?.triggerSOS(locationId)
+    fun triggerSOS(payload: org.json.JSONObject? = null) = startedService()?.triggerSOS(null, payload)
 
     // ── Driver intelligence ───────────────────────────────────────────────────
 

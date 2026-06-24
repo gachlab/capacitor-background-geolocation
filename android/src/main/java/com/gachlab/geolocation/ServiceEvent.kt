@@ -30,10 +30,12 @@ sealed class ServiceEvent {
 
     // ── Driving events ────────────────────────────────────────────────────────
     data class Speeding(val loc: BGLocation, val speedKmh: Double, val limitKmh: Double) : ServiceEvent()
-    data class HardBrake(val loc: BGLocation) : ServiceEvent()
-    data class RapidAcceleration(val loc: BGLocation) : ServiceEvent()
-    data class SharpTurn(val loc: BGLocation) : ServiceEvent()
-    data class PossibleCrash(val loc: BGLocation) : ServiceEvent()
+    // value carries the measured magnitude (decel m/s², accel m/s², deg/s) per the TS contract.
+    data class HardBrake(val loc: BGLocation, val value: Double) : ServiceEvent()
+    data class RapidAcceleration(val loc: BGLocation, val value: Double) : ServiceEvent()
+    data class SharpTurn(val loc: BGLocation, val value: Double) : ServiceEvent()
+    // possibleCrash also carries its detection source ('gps' | 'sensor').
+    data class PossibleCrash(val loc: BGLocation, val value: Double, val source: String) : ServiceEvent()
     data class PhoneUsageWhileDriving(val loc: BGLocation) : ServiceEvent()
 
     // ── Geofence events ───────────────────────────────────────────────────────
@@ -46,7 +48,7 @@ sealed class ServiceEvent {
     data class Error(val message: String) : ServiceEvent()
     data class ProviderChange(val provider: String) : ServiceEvent()
     data class Activity(val data: JSONObject?) : ServiceEvent()
-    data class Sos(val locationId: Long?) : ServiceEvent()
+    data class Sos(val locationId: Long?, val payload: JSONObject? = null) : ServiceEvent()
     object ServiceStarted : ServiceEvent()
     object ServiceStopped : ServiceEvent()
     data class ServiceRestarted(val reason: String) : ServiceEvent()

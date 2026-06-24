@@ -75,10 +75,18 @@ class BackgroundGeolocationPlugin : Plugin() {
             is ServiceEvent.Moving            -> notify("moving",             event.loc.toJS())
             is ServiceEvent.Stopped           -> notify("stopped",            event.loc.toJS())
             is ServiceEvent.TripStart         -> notify("tripStart",          event.loc.toJS())
-            is ServiceEvent.HardBrake         -> notify("hardBrake",          event.loc.toJS())
-            is ServiceEvent.RapidAcceleration -> notify("rapidAcceleration",  event.loc.toJS())
-            is ServiceEvent.SharpTurn         -> notify("sharpTurn",          event.loc.toJS())
-            is ServiceEvent.PossibleCrash          -> notify("possibleCrash",         event.loc.toJS())
+            is ServiceEvent.HardBrake         -> notifyListeners("hardBrake", JSObject().apply {
+                put("location", event.loc.toJSONObjectWithId()); put("value", event.value)
+            })
+            is ServiceEvent.RapidAcceleration -> notifyListeners("rapidAcceleration", JSObject().apply {
+                put("location", event.loc.toJSONObjectWithId()); put("value", event.value)
+            })
+            is ServiceEvent.SharpTurn         -> notifyListeners("sharpTurn", JSObject().apply {
+                put("location", event.loc.toJSONObjectWithId()); put("value", event.value)
+            })
+            is ServiceEvent.PossibleCrash     -> notifyListeners("possibleCrash", JSObject().apply {
+                put("location", event.loc.toJSONObjectWithId()); put("value", event.value); put("source", event.source)
+            })
             is ServiceEvent.PhoneUsageWhileDriving -> notify("phoneUsageWhileDriving", event.loc.toJS())
             is ServiceEvent.TripEnd           -> notifyListeners("tripEnd", JSObject().apply {
                 put("location",   event.loc.toJSONObjectWithId())
@@ -108,7 +116,10 @@ class BackgroundGeolocationPlugin : Plugin() {
             is ServiceEvent.ProviderChange    -> notifyListeners("providerChange",
                 JSObject().apply { put("provider", event.provider) })
             is ServiceEvent.Sos               -> notifyListeners("sos",
-                JSObject().apply { event.locationId?.let { put("locationId", it) } })
+                JSObject().apply {
+                    event.locationId?.let { put("locationId", it) }
+                    event.payload?.let { p -> p.keys().forEach { k -> put(k, p.get(k)) } }
+                })
             ServiceEvent.ServiceStarted       -> notifyListeners("start",              JSObject())
             ServiceEvent.ServiceStopped       -> notifyListeners("stop",               JSObject())
             is ServiceEvent.ServiceRestarted  -> notifyListeners("serviceRestarted",
@@ -359,7 +370,7 @@ class BackgroundGeolocationPlugin : Plugin() {
     }
 
     @PluginMethod
-    fun triggerSOS(call: PluginCall) { facade.triggerSOS(null); call.resolve() }
+    fun triggerSOS(call: PluginCall) { facade.triggerSOS(call.getObject("payload")); call.resolve() }
 
     @PluginMethod
     fun requestBackgroundLocationPermission(call: PluginCall) {

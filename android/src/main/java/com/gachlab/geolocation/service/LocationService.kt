@@ -226,7 +226,7 @@ class LocationService : Service() {
         WorkManager.getInstance(applicationContext).enqueue(work)
     }
 
-    fun triggerSOS(locationId: Long?) { fire(ServiceEvent.Sos(locationId)) }
+    fun triggerSOS(locationId: Long?, payload: org.json.JSONObject? = null) { fire(ServiceEvent.Sos(locationId, payload)) }
 
     // ── Provider delegate ─────────────────────────────────────────────────────
 
@@ -317,17 +317,17 @@ class LocationService : Service() {
             fire(ServiceEvent.Speeding(loc, speedKmh, limitKmh))
         override fun onProviderChange(provider: String) = fire(ServiceEvent.ProviderChange(provider))
         override fun onHardBrake(loc: BGLocation, decelMps2: Double) {
-            loc.addDrivingEvent("hardBrake"); fire(ServiceEvent.HardBrake(loc))
+            loc.addDrivingEvent("hardBrake"); fire(ServiceEvent.HardBrake(loc, decelMps2))
         }
         override fun onRapidAcceleration(loc: BGLocation, accelMps2: Double) {
-            loc.addDrivingEvent("rapidAcceleration"); fire(ServiceEvent.RapidAcceleration(loc))
+            loc.addDrivingEvent("rapidAcceleration"); fire(ServiceEvent.RapidAcceleration(loc, accelMps2))
         }
         override fun onSharpTurn(loc: BGLocation, degPerSec: Double) {
-            loc.addDrivingEvent("sharpTurn"); fire(ServiceEvent.SharpTurn(loc))
+            loc.addDrivingEvent("sharpTurn"); fire(ServiceEvent.SharpTurn(loc, degPerSec))
         }
         override fun onPossibleCrash(loc: BGLocation, velocityDropKmh: Double) {
             Log.i(TAG, "driving-event: possibleCrash drop=${velocityDropKmh.toInt()}kmh")
-            loc.addDrivingEvent("possibleCrash"); fire(ServiceEvent.PossibleCrash(loc))
+            loc.addDrivingEvent("possibleCrash"); fire(ServiceEvent.PossibleCrash(loc, velocityDropKmh, "gps"))
         }
         override fun onPhoneUsageWhileDriving(loc: BGLocation) {
             Log.i(TAG, "driving-event: phoneUsageWhileDriving")
@@ -457,6 +457,7 @@ class LocationService : Service() {
                     put("type", "sos")
                     put("timestamp", System.currentTimeMillis())
                     latestLocation?.let { put("location", locationToCoords(it)) }
+                    event.payload?.let { p -> p.keys().forEach { k -> put(k, p.get(k)) } }
                 })
             event is ServiceEvent.HardBrake && "hardBrake" in allowed ->
                 Pair("hardBrake", org.json.JSONObject().apply {
