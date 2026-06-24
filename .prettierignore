@@ -3,3 +3,7 @@ node_modules
 example-app/www
 android
 ios
+e2e-web/harness.bundle.js
+test-results
+playwright-report
+coverage

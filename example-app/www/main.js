@@ -93,6 +93,53 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sos').onclick = () =>
     safe('triggerSOS', () => BackgroundGeolocation.triggerSOS({ reason: 'manual' }));
 
+  // Geofencing — GF_CENTER must match the coordinate injected by the E2E script
+  // (.github/scripts/e2e-ios-geofencing.sh) so the device starts already-inside.
+  const GF_CENTER = { latitude: 37.3349, longitude: -122.009 };
+  document.getElementById('gf-enter').onclick = () =>
+    safe('addGeofences[enter-here]', () =>
+      BackgroundGeolocation.addGeofences({
+        geofences: [{
+          id: 'gf-here',
+          latitude: GF_CENTER.latitude,
+          longitude: GF_CENTER.longitude,
+          radius: 200,
+          notifyOnEntry: true,
+          notifyOnExit: true,
+          notifyOnDwell: true,
+          loiteringDelay: 4000,
+        }],
+      }),
+    );
+  // Register 21 geofences in one call. iOS caps user geofences at 19, so the last
+  // two overflow and must surface a geofence `error` (code 1005).
+  document.getElementById('gf-limit').onclick = () =>
+    safe('addGeofences[21]', () => {
+      const geofences = [];
+      for (let i = 0; i < 21; i++) {
+        geofences.push({
+          id: `gf-${i}`,
+          latitude: 37.3349 + i * 0.01,
+          longitude: -122.009 + i * 0.01,
+          radius: 150,
+          notifyOnEntry: true,
+        });
+      }
+      return BackgroundGeolocation.addGeofences({ geofences });
+    });
+  // Invalid geofence (radius 0) → registration failure → `geofenceError`. On Android
+  // GMS rejects it (the >19 cap is iOS-only, so this is the Android error trigger).
+  document.getElementById('gf-invalid').onclick = () =>
+    safe('addGeofences[invalid]', () =>
+      BackgroundGeolocation.addGeofences({
+        geofences: [{ id: 'gf-bad', latitude: 37.3349, longitude: -122.009, radius: 0, notifyOnEntry: true }],
+      }),
+    );
+  document.getElementById('gf-list').onclick = () =>
+    safe('getGeofences', () => BackgroundGeolocation.getGeofences());
+  document.getElementById('gf-clear').onclick = () =>
+    safe('removeGeofences', () => BackgroundGeolocation.removeGeofences());
+
   // Permissions
   document.getElementById('perm').onclick = () =>
     safe('requestPermissions', () => BackgroundGeolocation.requestPermissions());
@@ -136,6 +183,22 @@ document.addEventListener('DOMContentLoaded', () => {
   BackgroundGeolocation.addListener('phoneUsageWhileDriving', (loc) => {
     console.log('[BGGL-E2E] driving-event:phoneUsageWhileDriving');
     log('event:phoneUsageWhileDriving', loc);
+  });
+  BackgroundGeolocation.addListener('geofenceEnter', (e) => {
+    console.log('[BGGL-E2E] geofence:enter ' + e.id);
+    log('event:geofenceEnter', e);
+  });
+  BackgroundGeolocation.addListener('geofenceExit', (e) => {
+    console.log('[BGGL-E2E] geofence:exit ' + e.id);
+    log('event:geofenceExit', e);
+  });
+  BackgroundGeolocation.addListener('geofenceDwell', (e) => {
+    console.log('[BGGL-E2E] geofence:dwell ' + e.id);
+    log('event:geofenceDwell', e);
+  });
+  BackgroundGeolocation.addListener('geofenceError', (e) => {
+    console.log('[BGGL-E2E] geofence:error ' + (e.id ?? ''));
+    log('event:geofenceError', e);
   });
 
   log('ready');

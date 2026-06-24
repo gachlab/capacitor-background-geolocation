@@ -8,6 +8,14 @@ yarn.lock
 dist/
 *.tgz
 
+# Web E2E (Playwright) — generated bundle + reports
+e2e-web/harness.bundle.js
+test-results/
+playwright-report/
+
+# Coverage (c8)
+coverage/
+
 # IDE
 .idea/
 .vscode/
