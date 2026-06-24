@@ -20,6 +20,7 @@ final class ScoreCalculator {
     func recordHardBrake(_ loc: DLLocation, ts: Double)  { brakingPenalty  += 12; record("hardBrake",  ts, 12, loc) }
     func recordRapidAccel(_ loc: DLLocation, ts: Double) { accelPenalty    += 10; record("rapidAccel", ts, 10, loc) }
     func recordSharpTurn(_ loc: DLLocation, ts: Double)  { turnPenalty     +=  8; record("sharpTurn",  ts,  8, loc) }
+    func recordPhoneUsage(_ loc: DLLocation, ts: Double) { phonePenalty    += 20; record("phoneUsage", ts, 20, loc) }
     func recordIdleStart()                               { idleCount += 1 }
     func recordIdleEnd(_ durationMs: Int64)              { totalIdleMs += durationMs }
 

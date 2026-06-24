@@ -31,6 +31,16 @@ class ScoreCalculatorTest {
         assertEquals(12, score.events[0].penalty)
     }
 
+    @Test fun `phone usage deducts from phoneUsage category`() {
+        val calc = ScoreCalculator()
+        calc.recordPhoneUsage(loc(), 1500L)
+        val score = calc.compute("t1", 1000L, 2000L, 1000.0)
+        assertEquals(80, score.breakdown.phoneUsage)   // 100 - 20
+        assertEquals(1, score.events.size)
+        assertEquals("phoneUsage", score.events[0].type)
+        assertEquals(20, score.events[0].penalty)
+    }
+
     @Test fun `overall is 100 for clean trip with default weights`() {
         val calc = ScoreCalculator(ScoringWeights(30, 25, 20, 15, 10))
         val score = calc.compute("t1", 0L, 1000L, 2000.0)

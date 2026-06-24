@@ -289,6 +289,7 @@ final class DrivingEventsDetector {
                 if jitterWindowStart > 0 && (now - jitterWindowStart) >= phoneUsageWindowSec {
                     if jitterCount >= 3 && (now - lastPhoneUsageAt) >= phoneUsageCooldownSec {
                         lastPhoneUsageAt = now
+                        scoreCalc?.recordPhoneUsage(location, ts: now)
                         delegate?.detectorOnPhoneUsageWhileDriving(location)
                     }
                     jitterWindowStart = 0; jitterCount = 0

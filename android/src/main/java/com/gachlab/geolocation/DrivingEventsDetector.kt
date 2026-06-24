@@ -271,6 +271,7 @@ internal class DrivingEventsDetector(private val listener: Listener) {
             if (jitterWindowStart > 0L && (now - jitterWindowStart) >= cfg.phoneUsageWindowMs) {
                 if (jitterCount >= 3 && now - lastPhoneUsageAt >= cfg.phoneUsageCooldownMs) {
                     lastPhoneUsageAt = now
+                    scoreCalc?.recordPhoneUsage(loc, now)
                     listener.onPhoneUsageWhileDriving(loc)
                 }
                 jitterWindowStart = 0L; jitterCount = 0
