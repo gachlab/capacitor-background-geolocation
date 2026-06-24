@@ -640,6 +640,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     // MARK: - LocationProviderDelegate
 
     public func onAuthorizationChanged(_ status: BGAuthorizationStatus) {
+        BGLog.shared.i("Authorization changed: \(status.rawValue)")
         notifyListeners("authorization", data: ["status": status.rawValue])
     }
 
@@ -704,6 +705,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
     public func onError(_ error: Error) {
         let nsErr = error as NSError
+        BGLog.shared.e("Error \(nsErr.code): \(nsErr.localizedDescription)")
         notifyListeners("error", data: [
             "code": nsErr.code,
             "message": nsErr.localizedDescription

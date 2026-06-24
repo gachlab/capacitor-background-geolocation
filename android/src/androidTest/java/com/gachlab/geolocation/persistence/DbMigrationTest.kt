@@ -97,5 +97,21 @@ class DbMigrationTest {
         // `configuration` gained config_json; the session table was created.
         assertTrue("config_json missing", "config_json" in columnsOf("configuration"))
         assertTrue("location_session not created", columnsOf("location_session").isNotEmpty())
+
+        // v23: the `logs` table is created on every upgrade path.
+        val logCols = columnsOf("logs")
+        assertTrue("logs table not created: $logCols", "msg" in logCols)
+        assertTrue("logs.created_at missing: $logCols", "created_at" in logCols)
+    }
+
+    @Test fun freshInstallCreatesLogsTable() {
+        // No seed → onCreate path.
+        val db = LocationDbHelper.getInstance(ctx).readableDatabase
+        assertTrue("logs table missing on fresh install", "msg" in columnsOf("logs"))
+        // Queryable and empty.
+        db.rawQuery("SELECT COUNT(*) FROM logs", null).use { c ->
+            c.moveToFirst()
+            assertEquals(0, c.getInt(0))
+        }
     }
 }

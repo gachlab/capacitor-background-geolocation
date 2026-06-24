@@ -18,8 +18,10 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
+import com.gachlab.geolocation.AuthorizationStatusMapper
 import com.gachlab.geolocation.BGFacade
 import com.gachlab.geolocation.BGGeofence
+import com.gachlab.geolocation.BGLog
 import com.gachlab.geolocation.BGLocation
 import com.gachlab.geolocation.ServiceEvent
 import com.gachlab.geolocation.TripScore
@@ -47,6 +49,7 @@ class BackgroundGeolocationPlugin : Plugin() {
 
     override fun load() {
         super.load()
+        BGLog.init(bridge.activity.applicationContext)
         facade = BGFacade(bridge.activity.applicationContext)
         facade.init(::handleServiceEvent)
     }
@@ -144,6 +147,17 @@ class BackgroundGeolocationPlugin : Plugin() {
                 put("httpStatus", event.httpStatus)
                 put("attempts",   event.attempts)
             })
+            ServiceEvent.SyncStart            -> notifyListeners("syncStart", JSObject())
+            is ServiceEvent.SyncProgress      -> notifyListeners("syncProgress", JSObject().apply {
+                put("progress", event.progress)
+            })
+            is ServiceEvent.SyncSuccess       -> notifyListeners("syncSuccess", JSObject().apply {
+                put("sent", event.sent)
+            })
+            is ServiceEvent.SyncError         -> notifyListeners("syncError", JSObject().apply {
+                put("httpStatus", event.httpStatus)
+                put("message",    event.message)
+            })
         }
     }
 
@@ -167,6 +181,7 @@ class BackgroundGeolocationPlugin : Plugin() {
 
     @PermissionCallback
     private fun startAfterPermission(call: PluginCall) {
+        emitAuthorization()
         if (getPermissionState("location") != PermissionState.GRANTED) {
             call.reject("Location permission denied", "403"); return
         }
@@ -188,6 +203,21 @@ class BackgroundGeolocationPlugin : Plugin() {
                 } else call.reject("Timeout waiting for location", "408")
             }
         }
+    }
+
+    @PluginMethod
+    fun getStationaryLocation(call: PluginCall) {
+        val stationary = facade.getStationaryLocation()
+        if (stationary == null) {
+            // Parity with iOS: resolve with no payload when there is no fix yet.
+            call.resolve(); return
+        }
+        val (loc, radius) = stationary
+        try {
+            val js = JSObject.fromJSONObject(loc.toJSONObjectWithId())
+            js.put("radius", radius)
+            call.resolve(js)
+        } catch (e: Exception) { call.reject("JSON error: ${e.message}", "400") }
     }
 
     @PluginMethod
@@ -256,8 +286,16 @@ class BackgroundGeolocationPlugin : Plugin() {
     @PluginMethod fun stopWatchingLocationMode(call: PluginCall) = call.resolve()
 
     @PluginMethod
-    fun getLogEntries(call: PluginCall) =
-        call.resolve(JSObject().apply { put("entries", JSONArray()) })
+    fun getLogEntries(call: PluginCall) {
+        try {
+            val limit    = call.getInt("limit") ?: 0
+            val fromId   = call.getInt("fromId") ?: 0
+            val minLevel = call.getString("minLevel") ?: "DEBUG"
+            val entries  = JSONArray()
+            facade.getLogEntries(limit, fromId, minLevel).forEach { entries.put(it) }
+            call.resolve(JSObject().apply { put("entries", entries) })
+        } catch (e: Exception) { call.reject(e.message, "500", e) }
+    }
 
     @PluginMethod
     fun checkStatus(call: PluginCall) {
@@ -265,13 +303,17 @@ class BackgroundGeolocationPlugin : Plugin() {
             val lm = bridge.activity.getSystemService(Context.LOCATION_SERVICE) as LocationManager
             val locEnabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
                              lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
-            val fineGranted = hasPermission(bridge.activity.applicationContext,
-                Manifest.permission.ACCESS_FINE_LOCATION)
+            val ctx = bridge.activity.applicationContext
+            val foreground = hasPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) ||
+                             hasPermission(ctx, Manifest.permission.ACCESS_COARSE_LOCATION)
+            val background = if (Build.VERSION.SDK_INT >= 29)
+                hasPermission(ctx, "android.permission.ACCESS_BACKGROUND_LOCATION") else true
             call.resolve(JSObject().apply {
                 put("isRunning",              facade.isRunning)
                 put("locationServicesEnabled", locEnabled)
-                put("authorization",          if (fineGranted) 3 else 2)
-                put("hasPermissions",         fineGranted)
+                // AuthorizationStatus contract enum is 0/1/2 (was an invalid 3 here).
+                put("authorization",          AuthorizationStatusMapper.status(foreground, background))
+                put("hasPermissions",         foreground)
             })
         } catch (e: Exception) { call.reject(e.message, "500", e) }
     }
@@ -385,6 +427,7 @@ class BackgroundGeolocationPlugin : Plugin() {
 
     @PermissionCallback
     private fun backgroundLocationPermissionCallback(call: PluginCall) {
+        emitAuthorization()
         val granted = getPermissionState("backgroundLocation") == PermissionState.GRANTED
         call.resolve(JSObject().apply {
             put("granted", granted)
@@ -536,6 +579,23 @@ class BackgroundGeolocationPlugin : Plugin() {
         put("distanceKm",  score.distanceKm)
         put("totalIdleMs", score.totalIdleMs)
         put("idleCount",   score.idleCount)
+    }
+
+    /**
+     * Emit the `authorization` event reflecting the current location-permission
+     * state. Android has no system callback for permission changes, so this is
+     * fired from the permission-request callbacks — the parity equivalent of
+     * iOS `locationManager(_:didChangeAuthorization:)`.
+     */
+    private fun emitAuthorization() {
+        val ctx = bridge.activity.applicationContext
+        val foreground = hasPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) ||
+                         hasPermission(ctx, Manifest.permission.ACCESS_COARSE_LOCATION)
+        val background = if (Build.VERSION.SDK_INT >= 29)
+            hasPermission(ctx, "android.permission.ACCESS_BACKGROUND_LOCATION") else true
+        val status = AuthorizationStatusMapper.status(foreground, background)
+        BGLog.i("Authorization changed: $status")
+        notify("authorization", JSObject().apply { put("status", status) })
     }
 
     private fun hasPermission(ctx: Context, permission: String): Boolean = try {

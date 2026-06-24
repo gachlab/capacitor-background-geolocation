@@ -59,6 +59,15 @@ sealed class ServiceEvent {
     data class PrioritySyncSuccess(val eventType: String, val attemptNumber: Int) : ServiceEvent()
     data class PrioritySyncFailed(val eventType: String, val httpStatus: Int, val attempts: Int) : ServiceEvent()
 
+    // ── Batch sync events (BackgroundSync → plugin) ───────────────────────────
+    // Mirror the iOS BGBackgroundSync* notifications. SyncProgress has no producer
+    // on either platform yet (iOS observes BGBackgroundSyncDidProgress but never
+    // posts it); the type exists so the plumbing is symmetric across platforms.
+    object SyncStart : ServiceEvent()
+    data class SyncProgress(val progress: Int) : ServiceEvent()
+    data class SyncSuccess(val sent: Int) : ServiceEvent()
+    data class SyncError(val httpStatus: Int, val message: String) : ServiceEvent()
+
     companion object {
         const val REASON_WATCHDOG    = "watchdog"
         const val REASON_SYSTEM_KILL = "system_kill"

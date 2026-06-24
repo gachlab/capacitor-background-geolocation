@@ -30,9 +30,14 @@ class BGFacade(private val context: Context) {
 
     @Volatile private var lastScore: TripScore? = null
 
+    /** Last stationary fix and its radius, updated from ServiceEvent.Stationary. */
+    @Volatile private var lastStationary: BGLocation? = null
+    @Volatile private var lastStationaryRadius: Float = 0f
+
     private val configDAO   = ConfigDAO(context.applicationContext)
     private val locationDAO = LocationDAO(context.applicationContext)
     private val sessionDAO  = SessionDAO(context.applicationContext)
+    private val logDAO      = com.gachlab.geolocation.persistence.LogDAO(context.applicationContext)
 
     private var pluginListener: ((ServiceEvent) -> Unit)? = null
 
@@ -109,6 +114,17 @@ class BGFacade(private val context: Context) {
 
     fun getConfig(): BGConfig = configDAO.retrieveConfig() ?: BGConfig.getDefault()
 
+    // ── Stationary ──────────────────────────────────────────────────────────────
+
+    /** Last stationary fix with its radius, or null if none observed yet. */
+    fun getStationaryLocation(): Pair<BGLocation, Float>? =
+        lastStationary?.let { it to lastStationaryRadius }
+
+    // ── Logs ──────────────────────────────────────────────────────────────────
+
+    fun getLogEntries(limit: Int, fromId: Int, minLevel: String) =
+        logDAO.getEntries(limit, fromId, minLevel)
+
     // ── Session ───────────────────────────────────────────────────────────────
 
     fun startSession()          = sessionDAO.startSession()
@@ -156,6 +172,7 @@ class BGFacade(private val context: Context) {
             is ServiceEvent.ServiceStarted -> isRunning = true
             is ServiceEvent.ServiceStopped -> isRunning = false
             is ServiceEvent.TripEnd        -> lastScore = event.score
+            is ServiceEvent.Stationary     -> { lastStationary = event.loc; lastStationaryRadius = event.radius }
             else -> Unit
         }
         // Satisfy any pending getCurrentLocation() call.
