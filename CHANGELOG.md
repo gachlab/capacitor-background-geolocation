@@ -6,6 +6,49 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.6.7] - 2026-06-18
+
+### Fixed
+- **iOS** (`BackgroundSync`): guard `syncUrl` / documents-directory resolution to
+  avoid a force-unwrap crash when sync is not yet configured (#42).
+
+## [1.6.6] - 2026-06-18
+
+### Fixed
+- **Android**: resolve `@`-placeholders inside nested objects and arrays in the
+  location POST template, not just top-level keys (#40).
+
+## [1.6.5] - 2026-06-18
+
+### Fixed
+- **Android**: set request headers *before* `requestMethod`/`doOutput` on the
+  `HttpURLConnection`. Real fix for the intermittent HTTP `-1` responses (#38).
+
+## [1.6.4] - 2026-06-18
+
+### Fixed
+- **Android**: set request headers before `setFixedLengthStreamingMode` as a
+  first attempt at the HTTP `-1` failures (superseded by 1.6.5) (#37).
+
+## [1.6.3] - 2026-06-18
+
+### Fixed
+- **Android**: escape `}` in the `UrlTemplateResolver` regex — strict ART
+  runtimes threw on class init otherwise (#35).
+
+## [1.6.2] - 2026-05-30
+
+### Fixed
+- **Android**: replace `ThreadLocal.withInitial` with a subclass override for
+  API 23+ compatibility (#33).
+
+## [1.6.1] - 2026-05-29
+
+### Fixed
+- **Android build**: declare Kotlin via buildscript classpath instead of
+  `apply plugin: 'kotlin-android'` — AGP 9.x integrates Kotlin and applying it
+  explicitly threw "extension 'kotlin' already registered" (#31, #32).
+
 ## [1.6.0] - 2026-05-27
 
 ### Added

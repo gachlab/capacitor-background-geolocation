@@ -4,7 +4,7 @@
 Verticals: flotilla corporativa + rideshare/taxi. Pain point #1: el tracking se cae en background.
 Prioridad de plataforma: Android primero.
 
-> **Estado (v1.6.0):** Kotlin/Swift rewrites, E2E infra, background reliability, geofencing, idle detection, trip scoring, priority sync, y driving-events heuristics están completos. La deuda activa es: integration tests (P1) y Clean Architecture v2.0 (P2).
+> **Estado (v1.6.7):** Kotlin/Swift rewrites, E2E infra, background reliability, geofencing, idle detection, trip scoring, priority sync, y driving-events heuristics están completos. v1.6.1–1.6.7 fueron patches de estabilidad (build AGP 9.x, HTTP -1 en Android, template resolver, force-unwrap en iOS BackgroundSync) — ver CHANGELOG. La deuda activa es: integration tests (P1) y Clean Architecture v2.0 (P2).
 >
 > **Rol en el ecosistema:** este plugin aporta su capa de cola SQLite + sync HTTP como base del futuro plugin genérico `capacitor-event-sink`; idealmente su foreground service se comparte (un servicio, una cola, un sync).
 
