@@ -29,6 +29,17 @@ interface BrowserPermissions {
   query?: (descriptor: { name: string }) => Promise<{ state: PermissionState }>;
 }
 
+/** Great-circle distance in metres between two lat/lon points (haversine). */
+function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const r = 6_371_000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return 2 * r * Math.asin(Math.sqrt(a));
+}
+
 export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeolocationPlugin {
   private watchId: number | null = null;
   private config: ConfigureOptions = {};
@@ -57,6 +68,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
         this.lastLocation = loc;
         this.storeLocation(loc);
         this.notifyListeners('location', loc);
+        this.evaluateGeofences(loc);
         if (this.config.url) void this.postLocation(loc);
       },
       (err) => {
@@ -294,17 +306,122 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   }
 
   // ---------------- Geofencing ----------------
+  // The browser has no native geofencing API, so we run a JS engine: every location
+  // fix is tested against each registered region (haversine). Mirrors native
+  // semantics — initial ENTER when registering already-inside, EXIT only after a
+  // real entry, a single DWELL per dwell, and `geofenceError` on invalid input.
 
-  async addGeofences(_options: { geofences: Geofence[] }): Promise<void> {
-    /* no-op — browser has no native geofencing API */
+  private geofences = new Map<string, Geofence>();
+  private insideGeofences = new Set<string>();
+  private dwellEnterAt = new Map<string, number>();
+  private dwellTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  async addGeofences(options: { geofences: Geofence[] }): Promise<void> {
+    for (const raw of options?.geofences ?? []) {
+      const gf = this.normalizeGeofence(raw);
+      if (!gf) continue; // invalid → geofenceError already emitted
+      this.geofences.set(gf.id, gf);
+      // Initial ENTER when already inside (parity with iOS requestState / Android
+      // INITIAL_TRIGGER_ENTER).
+      if (this.lastLocation && this.isInside(gf, this.lastLocation)) {
+        this.handleGeofenceEntered(gf, this.lastLocation);
+      }
+    }
   }
 
-  async removeGeofences(_options?: { ids?: string[] }): Promise<void> {
-    /* no-op */
+  async removeGeofences(options?: { ids?: string[] }): Promise<void> {
+    const ids = options?.ids ?? [...this.geofences.keys()];
+    for (const id of ids) {
+      this.geofences.delete(id);
+      this.insideGeofences.delete(id);
+      this.clearDwell(id);
+    }
   }
 
   async getGeofences(): Promise<{ geofences: Geofence[] }> {
-    return { geofences: [] };
+    return { geofences: [...this.geofences.values()] };
+  }
+
+  private normalizeGeofence(gf: Geofence): Geofence | null {
+    const fail = (message: string): null => {
+      this.notifyListeners('geofenceError', { id: gf.id, message });
+      return null;
+    };
+    if (!gf.id) return fail('geofence id is required');
+    if (!Number.isFinite(gf.latitude) || gf.latitude < -90 || gf.latitude > 90)
+      return fail(`invalid latitude for geofence ${gf.id}`);
+    if (!Number.isFinite(gf.longitude) || gf.longitude < -180 || gf.longitude > 180)
+      return fail(`invalid longitude for geofence ${gf.id}`);
+    const radius = gf.radius ?? 200;
+    if (!Number.isFinite(radius) || radius <= 0) return fail(`invalid radius for geofence ${gf.id}`);
+    return {
+      id: gf.id,
+      latitude: gf.latitude,
+      longitude: gf.longitude,
+      radius,
+      notifyOnEntry: gf.notifyOnEntry ?? true,
+      notifyOnExit: gf.notifyOnExit ?? false,
+      notifyOnDwell: gf.notifyOnDwell ?? false,
+      loiteringDelay: gf.loiteringDelay ?? 30_000,
+    };
+  }
+
+  private evaluateGeofences(loc: Location): void {
+    for (const gf of this.geofences.values()) {
+      const inside = this.isInside(gf, loc);
+      const wasInside = this.insideGeofences.has(gf.id);
+      if (inside && !wasInside) this.handleGeofenceEntered(gf, loc);
+      else if (!inside && wasInside) this.handleGeofenceExited(gf, loc);
+      else if (inside && wasInside) this.evaluateDwell(gf, loc);
+    }
+  }
+
+  private handleGeofenceEntered(gf: Geofence, loc: Location): void {
+    if (this.insideGeofences.has(gf.id)) return;
+    this.insideGeofences.add(gf.id);
+    if (gf.notifyOnEntry) this.notifyListeners('geofenceEnter', { id: gf.id, action: 'ENTER', location: loc });
+    if (gf.notifyOnDwell) {
+      this.dwellEnterAt.set(gf.id, loc.time);
+      // Fast path for a stationary device that may stop emitting fixes; the per-fix
+      // evaluateDwell is the resilient path. Whichever fires first wins (fireDwellIfPending).
+      const timer = setTimeout(() => this.fireDwellIfPending(gf.id, loc), gf.loiteringDelay ?? 30_000);
+      (timer as { unref?: () => void }).unref?.();
+      this.dwellTimers.set(gf.id, timer);
+    }
+  }
+
+  private handleGeofenceExited(gf: Geofence, loc: Location): void {
+    const wasInside = this.insideGeofences.delete(gf.id);
+    this.clearDwell(gf.id);
+    // EXIT only on a real boundary crossing (we were inside).
+    if (wasInside && gf.notifyOnExit)
+      this.notifyListeners('geofenceExit', { id: gf.id, action: 'EXIT', location: loc });
+  }
+
+  private evaluateDwell(gf: Geofence, loc: Location): void {
+    const enterAt = this.dwellEnterAt.get(gf.id);
+    if (enterAt === undefined) return;
+    if (loc.time - enterAt >= (gf.loiteringDelay ?? 30_000)) this.fireDwellIfPending(gf.id, loc);
+  }
+
+  /** Fire DWELL at most once per dwell — `dwellEnterAt` presence is the guard. */
+  private fireDwellIfPending(id: string, loc: Location): void {
+    if (!this.dwellEnterAt.has(id)) return;
+    this.clearDwell(id);
+    this.notifyListeners('geofenceDwell', { id, action: 'DWELL', location: loc });
+  }
+
+  private clearDwell(id: string): void {
+    this.dwellEnterAt.delete(id);
+    const timer = this.dwellTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      this.dwellTimers.delete(id);
+    }
+  }
+
+  private isInside(gf: Geofence, loc: Location): boolean {
+    return distanceMeters(gf.latitude, gf.longitude, loc.latitude, loc.longitude) <= (gf.radius ?? 200);
   }
 
   // ---------------- Driver intelligence ----------------
