@@ -109,6 +109,18 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         jitterWindowStart = 0L; jitterCount = 0; lastPhoneUsageAt = 0L
     }
 
+    /**
+     * Records a phone-usage penalty originating from the EXTERNAL sensor-fusion
+     * detector ([SensorFusionDetector]), which lives outside this GPS detector but
+     * shares its trip-scoped [scoreCalc]. The GPS bearing-jitter path below is gated
+     * on `!sensorFusion`, so the two are mutually exclusive and never double-count.
+     * No-op outside an active trip (scoreCalc is null), mirroring the GPS path.
+     */
+    @Synchronized fun recordExternalPhoneUsage(loc: BGLocation) {
+        if (!cfg.enabled) return
+        scoreCalc?.recordPhoneUsage(loc, System.currentTimeMillis())
+    }
+
     @Synchronized fun onLocation(loc: BGLocation) {
         if (!cfg.enabled) return
         val now    = System.currentTimeMillis()

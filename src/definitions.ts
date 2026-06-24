@@ -562,6 +562,21 @@ export interface GeofenceEvent {
 }
 
 /**
+ * Payload emitted by `geofenceError` when a geofence fails to register or monitor.
+ *
+ * - **iOS**: exceeding the ~19 user-region cap, or `CLLocationManager` monitoring failures.
+ * - **Android**: Google Play Services `GeofencingClient.addGeofences` failures.
+ *
+ * @since 1.7.0
+ */
+export interface GeofenceErrorEvent {
+  /** Identifier of the offending geofence, when the failure is tied to one. */
+  id?: string;
+  /** Human-readable description of the failure. */
+  message: string;
+}
+
+/**
  * Per-category score breakdown (0–100 each). @since 1.4.0
  */
 export interface TripScoreBreakdown {
@@ -1352,6 +1367,14 @@ export interface BackgroundGeolocationPlugin {
   addListener(eventName: 'geofenceDwell', listener: (event: GeofenceEvent) => void): Promise<PluginListenerHandle>;
 
   /**
+   * A geofence failed to register or monitor (e.g. the iOS 19-region cap was
+   * exceeded, or a platform monitoring failure).
+   *
+   * @since 1.7.0
+   */
+  addListener(eventName: 'geofenceError', listener: (event: GeofenceErrorEvent) => void): Promise<PluginListenerHandle>;
+
+  /**
    * Vehicle has been stationary during an active trip for at least
    * `drivingEvents.idleThresholdMs` (default 5 min).
    *
@@ -1428,6 +1451,7 @@ export enum BackgroundGeolocationEvents {
   geofenceEnter = 'geofenceEnter',
   geofenceExit = 'geofenceExit',
   geofenceDwell = 'geofenceDwell',
+  geofenceError = 'geofenceError',
   idleStart = 'idleStart',
   idleEnd = 'idleEnd',
   prioritySyncSuccess = 'prioritySyncSuccess',

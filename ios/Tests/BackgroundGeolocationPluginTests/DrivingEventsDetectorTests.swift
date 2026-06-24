@@ -274,6 +274,32 @@ final class DrivingEventsDetectorTests: XCTestCase {
                       "phoneUsage should be among scored events: \(score!.events.map { $0.type })")
     }
 
+    func testExternalPhoneUsageReachesScore() {
+        let (det, rec) = makeDetector()
+        det.sensorFusion = true   // GPS jitter path gated off; the sensor path feeds the score
+
+        // Enter an active trip (minTripDurationSec == 0 → first fast fix starts it).
+        det.feed(loc(speedMps: 6))
+        XCTAssertTrue(rec.events.contains("tripStart"), "expected tripStart: \(rec.events)")
+
+        // Sensor-fusion path (SensorFusionDetector → BGFacade → plugin) records here.
+        det.recordExternalPhoneUsage(loc(speedMps: 6))
+
+        // Stop to end the trip and deliver the score.
+        det.feed(loc(speedMps: 0))
+        Thread.sleep(forTimeInterval: Self.stoppedSec * 2)
+        det.feed(loc(speedMps: 0))
+
+        let score = rec.lastScore
+        XCTAssertNotNil(score, "tripEnd should deliver a score: \(rec.events)")
+        XCTAssertLessThan(score!.breakdown.phoneUsage, 100,
+                          "sensor phoneUsage should penalise the category, got \(score!.breakdown.phoneUsage)")
+        XCTAssertTrue(score!.events.contains { $0.type == "phoneUsage" },
+                      "phoneUsage should be among scored events: \(score!.events.map { $0.type })")
+        // GPS jitter path stayed gated off — the detector itself fired no phoneUsage event.
+        XCTAssertFalse(rec.events.contains("phoneUsage"), "GPS phoneUsage must stay suppressed: \(rec.events)")
+    }
+
     func testPhoneUsageWhileDrivingSuppressedWhenSensorFusion() {
         let (det, rec) = makeDetector()
         det.sensorFusion = true           // GPS path disabled

@@ -42,6 +42,8 @@ sealed class ServiceEvent {
     data class GeofenceEnter(val geofenceId: String, val loc: BGLocation?) : ServiceEvent()
     data class GeofenceExit(val geofenceId: String, val loc: BGLocation?)  : ServiceEvent()
     data class GeofenceDwell(val geofenceId: String, val loc: BGLocation?) : ServiceEvent()
+    /** Geofence registration/monitoring failure. [geofenceId] is null for bulk failures. */
+    data class GeofenceError(val geofenceId: String?, val message: String) : ServiceEvent()
 
     // ── System events ─────────────────────────────────────────────────────────
     data class Heartbeat(val loc: BGLocation?) : ServiceEvent()

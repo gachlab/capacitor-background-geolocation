@@ -122,4 +122,40 @@ class PhoneUsageScoringTest {
         assertTrue(score.breakdown.speeding == 100, "speeding should be clean, got ${score.breakdown.speeding}")
         assertTrue(score.breakdown.sharpTurns == 100, "sharpTurns should be clean, got ${score.breakdown.sharpTurns}")
     }
+
+    @Test
+    @DisplayName("sensor phone usage (recordExternalPhoneUsage) feeds the score under sensorFusion")
+    fun sensorPhoneUsageReachesScore() {
+        // Under sensorFusion the GPS jitter path is gated off; the sensor detector
+        // feeds phone usage to the score through recordExternalPhoneUsage.
+        detector.setConfig(cfg.copy(sensorFusion = true))
+
+        // Warm up into an active trip (constant bearing → no GPS jitter).
+        detector.onLocation(fix(100f)); Thread.sleep(15)
+        detector.onLocation(fix(100f)); Thread.sleep(15)
+        detector.onLocation(fix(100f)); Thread.sleep(15)
+        assertTrue(events.contains("tripStart"), "expected tripStart in $events")
+
+        // Sensor-fusion path records the penalty directly.
+        detector.recordExternalPhoneUsage(fix(100f))
+
+        // Stop to end the trip and deliver the score.
+        detector.onLocation(fix(0f, speedMps = 0f)); Thread.sleep(260)
+        detector.onLocation(fix(0f, speedMps = 0f))
+        assertTrue(events.contains("tripEnd"), "expected tripEnd in $events")
+
+        val score = finalScore
+        assertNotNull(score, "tripEnd should deliver a TripScore")
+        score!!
+        assertTrue(
+            score.breakdown.phoneUsage < 100,
+            "phoneUsage category should be penalised by the sensor path, got ${score.breakdown.phoneUsage}"
+        )
+        assertTrue(
+            score.events.any { it.type == "phoneUsage" },
+            "phoneUsage should be among scored events: ${score.events.map { it.type }}"
+        )
+        // The GPS jitter path stayed gated off — no detector-fired phoneUsage event.
+        assertTrue(!events.contains("phoneUsage"), "GPS phoneUsage event must stay suppressed: $events")
+    }
 }

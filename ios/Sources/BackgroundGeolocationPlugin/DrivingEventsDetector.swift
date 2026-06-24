@@ -128,6 +128,16 @@ final class DrivingEventsDetector {
         jitterWindowStart = 0; jitterCount = 0; lastPhoneUsageAt = 0
     }
 
+    /// Records a phone-usage penalty originating from the EXTERNAL sensor-fusion
+    /// detector, which lives outside this GPS detector but shares its trip-scoped
+    /// `scoreCalc`. The GPS bearing-jitter path is gated on `!sensorFusion`, so the two
+    /// are mutually exclusive and never double-count. No-op outside an active trip.
+    func recordExternalPhoneUsage(_ location: DLLocation?) {
+        guard enabled, tripActive else { return }
+        let loc = location ?? DLLocation(latitude: 0, longitude: 0, speed: -1, bearing: nil, provider: nil)
+        scoreCalc?.recordPhoneUsage(loc, ts: Date().timeIntervalSince1970)
+    }
+
     func feed(_ location: DLLocation) {
         guard enabled else { return }
         let now   = Date().timeIntervalSince1970

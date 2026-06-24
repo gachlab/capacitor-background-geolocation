@@ -136,6 +136,8 @@ class BackgroundGeolocationPlugin : Plugin() {
             is ServiceEvent.GeofenceDwell     -> notifyListeners("geofenceDwell",
                 JSObject().apply { put("id", event.geofenceId); put("action", "DWELL")
                     event.loc?.let { put("location", it.toJSONObjectWithId()) } })
+            is ServiceEvent.GeofenceError     -> notifyListeners("geofenceError",
+                JSObject().apply { event.geofenceId?.let { put("id", it) }; put("message", event.message) })
             ServiceEvent.AbortRequested       -> notifyListeners("abort_requested",    JSObject())
             ServiceEvent.HttpAuthorization    -> notifyListeners("http_authorization", JSObject())
             is ServiceEvent.PrioritySyncSuccess -> notifyListeners("prioritySyncSuccess", JSObject().apply {

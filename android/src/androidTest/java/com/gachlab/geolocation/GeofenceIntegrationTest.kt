@@ -4,6 +4,7 @@
 package com.gachlab.geolocation
 
 import android.content.Context
+import android.os.Build
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.json.JSONArray
@@ -11,6 +12,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -83,5 +85,16 @@ class GeofenceIntegrationTest {
         val arr = JSONArray(json)
         val persistedIds = (0 until arr.length()).map { arr.getJSONObject(it).getString("id") }.toSet()
         assertEquals(setOf("depot", "client-a"), persistedIds)
+    }
+
+    /**
+     * Regression for the FLAG_IMMUTABLE bug: GMS GeofencingClient.addGeofences fails
+     * with "PendingIntent must be mutable" (opStatusCode 10) on API 31+ if the intent
+     * is immutable, which silently broke ALL geofence transitions on Android 12+.
+     */
+    @Test fun pendingIntentIsMutableForGms() {
+        Assume.assumeTrue("isImmutable() requires API 31+", Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        val pi = GeofenceManager.buildPendingIntent(ctx)
+        assertFalse("GMS geofencing requires a MUTABLE PendingIntent", pi.isImmutable)
     }
 }

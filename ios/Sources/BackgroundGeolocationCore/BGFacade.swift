@@ -456,6 +456,7 @@ public final class BGFacade: NSObject {
         if let v = (drivingEventsConfig["sensorCrashCooldownMs"] as? NSNumber)?.doubleValue {
             detector.crashCooldownMs = v
         }
+        detector.sensorFusion = (drivingEventsConfig["sensorFusion"] as? Bool) ?? false
         if let v = (drivingEventsConfig["phoneUsageWindowMs"] as? NSNumber)?.doubleValue {
             detector.phoneUsageWindowMs = v
         }
@@ -573,7 +574,9 @@ extension BGFacade: SensorFusionListener {
 
     public func onPhoneUsageWhileDriving(location: BGLocation?) {
         bufferPendingEvent("phoneUsageWhileDriving", extra: nil)
-        var info: [String: Any] = [:]
+        // Tag the source so the plugin feeds the score for the sensor path only — the
+        // GPS path already records inside DrivingEventsDetector.feed (avoids double-count).
+        var info: [String: Any] = ["source": "sensor"]
         if let loc = location { info["location"] = loc }
         NotificationCenter.default.post(name: .BGPhoneUsageWhileDriving, object: self, userInfo: info)
     }

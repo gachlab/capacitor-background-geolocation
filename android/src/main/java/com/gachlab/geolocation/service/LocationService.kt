@@ -293,6 +293,11 @@ class LocationService : Service() {
             }
             sd.crashImpactG    = opts.crashImpactG
             sd.crashCooldownMs = opts.sensorCrashCooldownMs
+            // Phone-usage by sensor runs only under sensorFusion; the GPS bearing-jitter
+            // path in DrivingEventsDetector owns it otherwise (gated on !sensorFusion).
+            sd.sensorFusion        = opts.sensorFusion
+            sd.phoneUsageWindowMs  = opts.phoneUsageWindowMs
+            sd.phoneUsageCooldownMs = opts.phoneUsageCooldownMs
             sd.lastLocation    = latestLocation
             sd.start()
         } else {
@@ -360,13 +365,23 @@ class LocationService : Service() {
         }
     }
 
-    /** Sensor-based crash (TYPE_LINEAR_ACCELERATION). Fused with the GPS path via source. */
+    /** Sensor-based crash + phone usage. Crash is fused with the GPS path via source;
+     *  phone usage mirrors iOS (sensorFusion only) — emits the event, like its GPS twin. */
     private val sensorCrashListener = object : SensorFusionDetector.Listener {
         override fun onCrash(impactG: Double, location: BGLocation?) {
             val loc = location ?: latestLocation ?: return
             Log.i(TAG, "sensor-event: possibleCrash impactG=${"%.1f".format(impactG)}")
             loc.addDrivingEvent("possibleCrash")
             fire(ServiceEvent.PossibleCrash(loc, impactG, "sensor"))
+        }
+        override fun onPhoneUsageWhileDriving(location: BGLocation?) {
+            val loc = location ?: latestLocation ?: return
+            Log.i(TAG, "sensor-event: phoneUsageWhileDriving")
+            loc.addDrivingEvent("phoneUsageWhileDriving")
+            // Feed the trip score (the GPS jitter path is gated off under sensorFusion,
+            // so this is the only phone-usage source when sensor fusion is on).
+            drivingDetector?.recordExternalPhoneUsage(loc)
+            fire(ServiceEvent.PhoneUsageWhileDriving(loc))
         }
     }
 

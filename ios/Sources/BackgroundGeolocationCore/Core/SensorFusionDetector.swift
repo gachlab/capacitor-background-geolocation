@@ -18,6 +18,10 @@ public final class SensorFusionDetector {
     public var enabled = false
     public var crashImpactG = 3.0
     public var crashCooldownMs = 10_000.0
+    // Phone usage by sensor runs only under sensor fusion; otherwise the GPS bearing-jitter
+    // path in DrivingEventsDetector owns it. Gating here avoids double-counting the same
+    // distraction (matches the Android SensorFusionDetector).
+    public var sensorFusion = false
     public var phoneUsageWindowMs = 4_000.0
     public var phoneUsageCooldownMs = 60_000.0
 
@@ -79,8 +83,8 @@ public final class SensorFusionDetector {
             }
         }
 
-        // Phone usage detection
-        guard tripActive else { return }
+        // Phone usage detection (sensor-fusion only; GPS path handles it otherwise)
+        guard sensorFusion, tripActive else { return }
 
         var appIsActive = false
         if Thread.isMainThread {
