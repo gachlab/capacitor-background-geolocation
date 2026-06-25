@@ -174,11 +174,15 @@ RESULT_BUNDLE="/tmp/e2e-ios-results.xcresult"
 rm -rf "${RESULT_BUNDLE}"
 
 set +e
+# Only the driving tests — the geofence tests share this AppUITests class but need a
+# stationary fix at the geofence center, which e2e-ios-geofencing.sh injects instead.
 xcodebuild test-without-building \
   -project "${EXAMPLE_IOS}/App.xcodeproj" \
   -scheme "${SCHEME}" \
   -destination "id=${UDID}" \
   -resultBundlePath "${RESULT_BUNDLE}" \
+  -only-testing:AppUITests/DrivingEventsE2ETests/testSpeedingEventFires \
+  -only-testing:AppUITests/DrivingEventsE2ETests/testPossibleCrashEventFires \
   SIMULATOR_UDID="${UDID}" \
   2>&1 | tee /tmp/e2e-ios-xcodebuild.log \
        | grep -E "(Test Case|error:|XCTAssert|\\*\\* TEST|Executed)" || true
