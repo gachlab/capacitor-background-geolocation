@@ -10,15 +10,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.location.Location
-import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Build
-import android.os.Bundle
 import android.os.Looper
 import android.util.Log
 import com.gachlab.geolocation.BGConfig
-import com.google.android.gms.common.ConnectionResult
-import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -29,8 +25,13 @@ import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.round
 
+/**
+ * Distance-filter location provider backed by the Google Play Services
+ * `FusedLocationProviderClient`. The legacy `LocationManager` fallback (for
+ * devices without Play Services) was removed — the plugin now requires GMS.
+ */
 internal class DistanceFilterLocationProvider(context: Context) :
-    AbstractLocationProvider(context), LocationListener {
+    AbstractLocationProvider(context) {
 
     private val locationManager by lazy {
         mContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -40,7 +41,6 @@ internal class DistanceFilterLocationProvider(context: Context) :
     }
 
     private var fusedClient: FusedLocationProviderClient? = null
-    private var usingFused = false
 
     private var isMoving = false
     private var isAcquiringStationaryLocation = false
@@ -57,7 +57,6 @@ internal class DistanceFilterLocationProvider(context: Context) :
     // PendingIntents
     private lateinit var stationaryAlarmPI: PendingIntent
     private lateinit var stationaryLocationPollingPI: PendingIntent
-    private var singleUpdatePI: PendingIntent? = null
 
     // ── FLP callbacks ─────────────────────────────────────────────────────────
 
@@ -86,32 +85,14 @@ internal class DistanceFilterLocationProvider(context: Context) :
     private val stationaryLocationMonitorReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
             Log.i(TAG, "Stationary location monitor fired")
-            if (usingFused && fusedClient != null) {
-                val req = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 0L)
-                    .setMaxUpdates(1)
-                    .setWaitForAccurateLocation(false)
-                    .build()
-                try {
-                    fusedClient!!.requestLocationUpdates(req, fusedPollCallback, Looper.getMainLooper())
-                } catch (e: SecurityException) { handleSecurityException(e) }
-            } else {
-                val provider = pickProvider() ?: return
-                try {
-                    locationManager.requestSingleUpdate(provider, singleUpdatePI!!)
-                } catch (e: SecurityException) { handleSecurityException(e) }
-            }
-        }
-    }
-
-    private val singleUpdateReceiver = object : BroadcastReceiver() {
-        override fun onReceive(ctx: Context, intent: Intent) {
-            val loc: Location? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                intent.extras?.getParcelable(LocationManager.KEY_LOCATION_CHANGED, Location::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                intent.extras?.getParcelable(LocationManager.KEY_LOCATION_CHANGED)
-            }
-            loc?.let { onPollStationaryLocation(it) }
+            val fc = fusedClient ?: return
+            val req = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 0L)
+                .setMaxUpdates(1)
+                .setWaitForAccurateLocation(false)
+                .build()
+            try {
+                fc.requestLocationUpdates(req, fusedPollCallback, Looper.getMainLooper())
+            } catch (e: SecurityException) { handleSecurityException(e) }
         }
     }
 
@@ -121,22 +102,12 @@ internal class DistanceFilterLocationProvider(context: Context) :
         super.onCreate()
         PROVIDER_ID = BGConfig.DISTANCE_FILTER_PROVIDER
 
-        val gpsResult = GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(mContext)
-        usingFused = gpsResult == ConnectionResult.SUCCESS
-        if (usingFused) {
-            fusedClient = LocationServices.getFusedLocationProviderClient(mContext)
-            Log.i(TAG, "Using FusedLocationProviderClient")
-        } else {
-            Log.i(TAG, "Falling back to LocationManager (Play Services code=$gpsResult)")
-        }
+        fusedClient = LocationServices.getFusedLocationProviderClient(mContext)
+        Log.i(TAG, "Using FusedLocationProviderClient")
 
         val immutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         else PendingIntent.FLAG_UPDATE_CURRENT
-
-        val mutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_MUTABLE
-        else PendingIntent.FLAG_CANCEL_CURRENT
 
         stationaryAlarmPI = PendingIntent.getBroadcast(
             mContext, 9000,
@@ -149,20 +120,12 @@ internal class DistanceFilterLocationProvider(context: Context) :
             Intent(mContext, StationaryMonitorReceiver::class.java).setAction(ACTION_STATIONARY_MONITOR),
             immutableFlag)
         registerReceiver(stationaryLocationMonitorReceiver, IntentFilter(ACTION_STATIONARY_MONITOR))
-
-        if (!usingFused) {
-            singleUpdatePI = PendingIntent.getBroadcast(
-                mContext, 9003,
-                Intent(mContext, SingleUpdateReceiver::class.java).setAction(ACTION_SINGLE_UPDATE),
-                mutableFlag)
-            registerReceiver(singleUpdateReceiver, IntentFilter(ACTION_SINGLE_UPDATE))
-        }
     }
 
     override fun onStart() {
         if (isStarted) return
         val cfg = mConfig ?: run { Log.w(TAG, "Started without config"); return }
-        Log.i(TAG, "Start recording (fused=$usingFused)")
+        Log.i(TAG, "Start recording")
         scaledDistanceFilter = cfg.distanceFilter ?: BGConfig.DEFAULT_DISTANCE_FILTER
         isStarted = true
         setPace(false)
@@ -186,7 +149,6 @@ internal class DistanceFilterLocationProvider(context: Context) :
         alarmManager.cancel(stationaryLocationPollingPI)
         unregisterReceiver(stationaryAlarmReceiver)
         unregisterReceiver(stationaryLocationMonitorReceiver)
-        if (!usingFused) unregisterReceiver(singleUpdateReceiver)
     }
 
     override fun isStarted() = isStarted
@@ -198,17 +160,6 @@ internal class DistanceFilterLocationProvider(context: Context) :
 
     override fun onCommand(commandId: Int, arg1: Int) {
         if (commandId == CMD_SWITCH_MODE) setPace(arg1 != BACKGROUND_MODE)
-    }
-
-    // ── LocationListener (legacy path) ────────────────────────────────────────
-
-    override fun onLocationChanged(location: Location) = handleNewLocation(location)
-    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-    override fun onProviderEnabled(provider: String) { Log.d(TAG, "$provider enabled") }
-    override fun onProviderDisabled(provider: String) {
-        Log.w(TAG, "$provider disabled")
-        if (pickProvider() == null)
-            handleServiceError("Location provider disabled and no fallback available.")
     }
 
     // ── State machine ─────────────────────────────────────────────────────────
@@ -228,7 +179,7 @@ internal class DistanceFilterLocationProvider(context: Context) :
             if (!isMoving) isAcquiringStationaryLocation = true
             if (!anyProviderEnabled())
                 handleServiceError("No location provider available (GPS and Network disabled).")
-            if (usingFused) subscribeFused() else subscribeLegacy()
+            subscribeFused()
         } catch (e: SecurityException) { handleSecurityException(e) }
     }
 
@@ -255,26 +206,6 @@ internal class DistanceFilterLocationProvider(context: Context) :
         }
         try { fc.requestLocationUpdates(req, fusedCallback, Looper.getMainLooper()) }
         catch (e: SecurityException) { handleSecurityException(e) }
-    }
-
-    private fun subscribeLegacy() {
-        if (isAcquiringSpeed || isAcquiringStationaryLocation) {
-            locationAcquisitionAttempts = 0
-            try {
-                locationManager.allProviders.filter { it != LocationManager.PASSIVE_PROVIDER }
-                    .forEach { p -> locationManager.requestLocationUpdates(p, 0L, 0f, this) }
-            } catch (e: SecurityException) { handleSecurityException(e) }
-        } else {
-            val cfg = mConfig ?: return
-            val interval = cfg.interval?.toLong() ?: BGConfig.DEFAULT_INTERVAL.toLong()
-            val dist = scaledDistanceFilter.toFloat()
-            try {
-                if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
-                    locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, interval, dist, this)
-                if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))
-                    locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, interval, dist, this)
-            } catch (e: SecurityException) { handleSecurityException(e) }
-        }
     }
 
     private fun handleNewLocation(location: Location) {
@@ -368,18 +299,9 @@ internal class DistanceFilterLocationProvider(context: Context) :
 
     private fun unsubscribeLocationUpdates() {
         try {
-            if (usingFused) {
-                fusedClient?.removeLocationUpdates(fusedCallback)
-                fusedClient?.removeLocationUpdates(fusedPollCallback)
-            }
-            locationManager.removeUpdates(this)
+            fusedClient?.removeLocationUpdates(fusedCallback)
+            fusedClient?.removeLocationUpdates(fusedPollCallback)
         } catch (_: SecurityException) {}
-    }
-
-    private fun pickProvider(): String? = when {
-        locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)     -> LocationManager.GPS_PROVIDER
-        locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
-        else -> null
     }
 
     private fun anyProviderEnabled(): Boolean {
@@ -421,16 +343,12 @@ internal class DistanceFilterLocationProvider(context: Context) :
     class StationaryMonitorReceiver : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {}
     }
-    class SingleUpdateReceiver : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {}
-    }
 
     companion object {
         private const val TAG = "DistanceFilterProvider"
         private const val P_NAME = "com.gachlab.bgloc"
         private const val ACTION_STATIONARY_ALARM   = "$P_NAME.STATIONARY_ALARM"
         private const val ACTION_STATIONARY_MONITOR = "$P_NAME.STATIONARY_MONITOR"
-        private const val ACTION_SINGLE_UPDATE      = "$P_NAME.SINGLE_UPDATE"
         private const val MAX_STATIONARY_ATTEMPTS   = 5
         private const val MAX_SPEED_ATTEMPTS        = 3
         private const val ACQUISITION_INTERVAL_MS   = 1000L

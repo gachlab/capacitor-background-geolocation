@@ -41,11 +41,6 @@
             android:name="com.gachlab.geolocation.provider.DistanceFilterLocationProvider$StationaryMonitorReceiver"
             android:enabled="true"
             android:exported="false" />
-        <receiver
-            android:name="com.gachlab.geolocation.provider.DistanceFilterLocationProvider$SingleUpdateReceiver"
-            android:enabled="true"
-            android:exported="false" />
-
         <!-- ActivityLocationProvider activity recognition intent target. -->
         <receiver
             android:name="com.gachlab.geolocation.provider.ActivityLocationProvider$ActivityUpdateReceiver"
