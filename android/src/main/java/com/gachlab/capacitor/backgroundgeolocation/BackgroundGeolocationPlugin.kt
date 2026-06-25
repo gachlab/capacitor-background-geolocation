@@ -345,6 +345,24 @@ class BackgroundGeolocationPlugin : Plugin() {
     fun getPluginVersion(call: PluginCall) =
         call.resolve(JSObject().apply { put("version", PLUGIN_VERSION) })
 
+    /**
+     * The Android die's `misa`: full native hart — always-on background tracking,
+     * activity recognition, GMS geofencing (100 max), sensor fusion, native
+     * driver-intelligence, and OEM settings screens are all implemented.
+     */
+    @PluginMethod
+    fun getCapabilities(call: PluginCall) =
+        call.resolve(JSObject().apply {
+            put("platform",            "android")
+            put("backgroundTracking",  true)
+            put("activityRecognition", true)
+            put("geofencing",          true)
+            put("maxGeofences",        100)
+            put("sensorFusion",        true)
+            put("driverIntelligence",  true)
+            put("oemSettings",         true)
+        })
+
     @PluginMethod
     fun getDiagnostics(call: PluginCall) {
         try {
@@ -601,6 +619,7 @@ class BackgroundGeolocationPlugin : Plugin() {
     }
 
     companion object {
-        private const val PLUGIN_VERSION = "1.5.0"
+        // Keep in sync with package.json `version`. Enforced by version-sync.test.ts.
+        private const val PLUGIN_VERSION = "2.0.0"
     }
 }
