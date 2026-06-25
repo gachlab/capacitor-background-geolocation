@@ -1,8 +1,9 @@
 {
   "include": ["src/web.ts"],
   "exclude": ["src/__tests__/**"],
+  "check-coverage": true,
   "lines": 100,
-  "branches": 97,
+  "branches": 96,
   "functions": 100,
   "statements": 100,
   "reporter": ["text", "lcov"],

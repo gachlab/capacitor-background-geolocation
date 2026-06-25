@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 
 import { AccuracyValue, AuthorizationStatus, LocationProviderValue } from '../definitions.js';
+import type { ConfigureOptions } from '../definitions.js';
 import { BackgroundGeolocationWeb } from '../web.js';
 
 // ─── Mock browser globals ─────────────────────────────────────────────────────
@@ -498,6 +499,98 @@ describe('BackgroundGeolocationWeb', () => {
     });
   });
 
+  // ── HTTP delivery (postLocation + forceSync over a mocked fetch) ─────────────
+
+  describe('HTTP delivery (postLocation + forceSync)', () => {
+    const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+    let savedFetch: typeof globalThis.fetch;
+    let fetchMock: ReturnType<typeof mock.fn>;
+
+    function setFetch(impl: (...args: unknown[]) => Promise<{ ok: boolean }>): void {
+      fetchMock = mock.fn(impl);
+      globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+    }
+
+    // Drive one location through the public watch flow so the private
+    // postLocation() fires; flush() lets the fire-and-forget POST settle.
+    async function postOnce(p: BackgroundGeolocationWeb, options: ConfigureOptions = {}): Promise<void> {
+      await p.configure({ url: 'https://x.test/loc', ...options });
+      await p.start();
+      onWatchSuccess?.(makePosition());
+      await flush();
+    }
+
+    beforeEach(() => {
+      savedFetch = globalThis.fetch;
+    });
+
+    afterEach(() => {
+      globalThis.fetch = savedFetch;
+    });
+
+    it('postLocation POSTs each fix; nothing queued when the server accepts it', async () => {
+      setFetch(async () => ({ ok: true }));
+      await postOnce(plugin, { httpMethod: 'PUT', httpHeaders: { 'X-Tenant': 'gachlab' } });
+      assert.equal(fetchMock.mock.callCount(), 1);
+      const [, init] = fetchMock.mock.calls[0].arguments as [string, RequestInit];
+      assert.equal(init.method, 'PUT');
+      assert.equal((await plugin.getPendingSyncCount()).count, 0);
+    });
+
+    it('postLocation queues the fix on an HTTP failure (!ok)', async () => {
+      setFetch(async () => ({ ok: false }));
+      await postOnce(plugin);
+      assert.equal((await plugin.getPendingSyncCount()).count, 1);
+    });
+
+    it('postLocation queues the fix when fetch throws (offline)', async () => {
+      setFetch(async () => {
+        throw new Error('offline');
+      });
+      await postOnce(plugin);
+      assert.equal((await plugin.getPendingSyncCount()).count, 1);
+    });
+
+    it('forceSync drains the queue and emits syncSuccess on a 2xx', async () => {
+      setFetch(async () => ({ ok: false }));
+      await postOnce(plugin); // fails → 1 queued
+      const sent = collect<{ sent: number }>(plugin, 'syncSuccess');
+      setFetch(async () => ({ ok: true }));
+      await plugin.forceSync();
+      assert.equal((await plugin.getPendingSyncCount()).count, 0);
+      assert.deepEqual(sent, [{ sent: 1 }]);
+    });
+
+    it('forceSync re-queues the batch on an HTTP failure', async () => {
+      setFetch(async () => ({ ok: false }));
+      await postOnce(plugin);
+      setFetch(async () => ({ ok: false }));
+      await plugin.forceSync();
+      assert.equal((await plugin.getPendingSyncCount()).count, 1);
+    });
+
+    it('forceSync re-queues the batch when fetch throws', async () => {
+      setFetch(async () => ({ ok: false }));
+      await postOnce(plugin);
+      setFetch(async () => {
+        throw new Error('offline');
+      });
+      await plugin.forceSync();
+      assert.equal((await plugin.getPendingSyncCount()).count, 1);
+    });
+
+    it('forceSync targets syncUrl (and syncHttpMethod) in preference to url', async () => {
+      setFetch(async () => ({ ok: false }));
+      await postOnce(plugin); // url set, fails → queued
+      setFetch(async () => ({ ok: true }));
+      await plugin.configure({ syncUrl: 'https://x.test/sync', syncHttpMethod: 'PATCH' });
+      await plugin.forceSync();
+      const [calledUrl, init] = fetchMock.mock.calls[0].arguments as [string, RequestInit];
+      assert.equal(calledUrl, 'https://x.test/sync');
+      assert.equal(init.method, 'PATCH');
+    });
+  });
+
   // ── triggerSOS ────────────────────────────────────────────────────────────
 
   describe('triggerSOS()', () => {
@@ -525,6 +618,12 @@ describe('BackgroundGeolocationWeb', () => {
       const events = collect<Record<string, unknown>>(plugin, 'sos');
       await plugin.triggerSOS({});
       assert.equal(events[0]['location'], undefined);
+    });
+
+    it('emits sos with no payload argument at all', async () => {
+      const events = collect<Record<string, unknown>>(plugin, 'sos');
+      await plugin.triggerSOS();
+      assert.equal(events.length, 1);
     });
   });
 
@@ -738,6 +837,14 @@ describe('BackgroundGeolocationWeb', () => {
 
     it('getLogEntries() → empty entries', async () => {
       assert.equal((await plugin.getLogEntries({ limit: 10 })).entries.length, 0);
+    });
+
+    it('getTripScore() → null (web computes no driver-intelligence)', async () => {
+      assert.equal(await plugin.getTripScore(), null);
+    });
+
+    it('removeAllListeners() resolves without throwing', async () => {
+      await plugin.removeAllListeners();
     });
   });
 
@@ -973,6 +1080,51 @@ describe('BackgroundGeolocationWeb', () => {
       );
       await plugin.removeGeofences();
       assert.equal((await plugin.getGeofences()).geofences.length, 0);
+    });
+
+    it('rejects a geofence with no id', async () => {
+      const errs = collect<{ id?: string; message: string }>(plugin, 'geofenceError');
+      await plugin.addGeofences({ geofences: [{ id: '', latitude: CENTER.latitude, longitude: CENTER.longitude }] });
+      assert.equal(errs.length, 1);
+      assert.match(errs[0].message, /id is required/);
+      assert.equal((await plugin.getGeofences()).geofences.length, 0);
+    });
+
+    it('rejects a geofence with an out-of-range latitude', async () => {
+      const errs = collect<{ id?: string; message: string }>(plugin, 'geofenceError');
+      await plugin.addGeofences({ geofences: [{ id: 'x', latitude: 120, longitude: CENTER.longitude }] });
+      assert.equal(errs.length, 1);
+      assert.match(errs[0].message, /latitude/);
+    });
+
+    it('rejects a geofence with an out-of-range longitude', async () => {
+      const errs = collect<{ id?: string; message: string }>(plugin, 'geofenceError');
+      await plugin.addGeofences({ geofences: [{ id: 'x', latitude: CENTER.latitude, longitude: 200 }] });
+      assert.equal(errs.length, 1);
+      assert.match(errs[0].message, /longitude/);
+    });
+
+    it('defaults the radius to 200 m when omitted', async () => {
+      await plugin.addGeofences({
+        geofences: [{ id: 'depot', latitude: CENTER.latitude, longitude: CENTER.longitude }],
+      });
+      const [gf] = (await plugin.getGeofences()).geofences;
+      assert.equal(gf.radius, 200);
+    });
+
+    it('addGeofences with no geofences is a safe no-op', async () => {
+      await plugin.addGeofences(undefined as unknown as Parameters<typeof plugin.addGeofences>[0]);
+      assert.equal((await plugin.getGeofences()).geofences.length, 0);
+    });
+
+    it('re-registering the same id while inside does not double-fire ENTER', async () => {
+      const enters = collect<{ id: string }>(plugin, 'geofenceEnter');
+      await plugin.start();
+      onWatchSuccess?.(geoFix(CENTER.latitude, CENTER.longitude)); // lastLocation = inside
+      const gf = { id: 'depot', latitude: CENTER.latitude, longitude: CENTER.longitude, radius: 200 };
+      await plugin.addGeofences({ geofences: [gf] });
+      await plugin.addGeofences({ geofences: [gf] }); // already inside → entered guard returns
+      assert.equal(enters.length, 1);
     });
   });
 });
