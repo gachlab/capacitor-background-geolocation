@@ -38,6 +38,9 @@ ios/Podfile.lock
 ios/*.xcworkspace/xcuserdata/
 ios/*.xcodeproj/xcuserdata/
 ios/*.xcodeproj/project.xcworkspace/xcuserdata/
+# example-app (Capacitor) — per-user Xcode UI state, never shared
+example-app/ios/App/**/xcuserdata/
+*.xcuserstate
 DerivedData/
 *.hmap
 *.ipa
