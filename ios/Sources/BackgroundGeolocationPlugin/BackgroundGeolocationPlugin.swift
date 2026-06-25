@@ -25,12 +25,9 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         CAPPluginMethod(name: "getConfig", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "deleteLocation", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "deleteAllLocations", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "isLocationEnabled", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "showAppSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "showLocationSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "watchLocationMode", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "stopWatchingLocationMode", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getLogEntries", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "checkStatus", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getDiagnostics", returnType: CAPPluginReturnPromise),
@@ -283,11 +280,6 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         }
     }
 
-    @objc func isLocationEnabled(_ call: CAPPluginCall) {
-        guard let facade = facade else { call.reject("facade not initialized"); return }
-        call.resolve(["enabled": facade.locationServicesEnabled()])
-    }
-
     @objc func showAppSettings(_ call: CAPPluginCall) {
         facade?.showAppSettings()
         call.resolve()
@@ -300,14 +292,6 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
     @objc func openSettings(_ call: CAPPluginCall) {
         facade?.showAppSettings()
-        call.resolve()
-    }
-
-    @objc func watchLocationMode(_ call: CAPPluginCall) {
-        call.resolve()
-    }
-
-    @objc func stopWatchingLocationMode(_ call: CAPPluginCall) {
         call.resolve()
     }
 

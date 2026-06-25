@@ -6,6 +6,30 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-06-25
+
+Legacy cleanup of the Cordova-era inheritance. The only consumer is `drivers-web`,
+so these breaking changes are intentional.
+
+### Removed (BREAKING)
+- **Cordova-era plugin methods** `isLocationEnabled`, `watchLocationMode`,
+  `stopWatchingLocationMode` (iOS + Android) — not part of the TypeScript contract;
+  the latter two were no-ops.
+- **Android**: the `LocationManager` fallback inside `DistanceFilterLocationProvider`.
+  This provider is now **Play Services (fused) only** — devices without Google Play
+  Services are no longer supported by it (use the `raw` provider for those).
+- **Android**: the legacy per-column config storage in the `configuration` table and
+  its fallback hydration — config is now a single `config_json` blob.
+
+### Changed (BREAKING)
+- **Android**: the on-disk database was renamed `cordova_bg_geolocation.db` →
+  `gachlab_bg_geolocation.db` and reset to v1. The ~190 lines of Cordova migration
+  history were dropped. **Locations/config persisted by a previous version are not
+  carried over** on upgrade (the unsynced queue starts empty).
+
+### Internal
+- Removed dead `JosueLMM`/`MAURLocation` references; copyright is uniformly `gachlab`.
+
 ## [1.7.0] - 2026-06-24
 
 ### Fixed

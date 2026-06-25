@@ -3,7 +3,7 @@
 
 import Foundation
 
-// Minimal location value — keeps the detector free of MAURLocation / CoreLocation imports.
+// Minimal location value — keeps the detector free of CoreLocation imports.
 struct DLLocation {
     let latitude: Double
     let longitude: Double

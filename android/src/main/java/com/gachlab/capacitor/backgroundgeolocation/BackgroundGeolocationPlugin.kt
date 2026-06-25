@@ -255,15 +255,6 @@ class BackgroundGeolocationPlugin : Plugin() {
     @PluginMethod fun deleteAllLocations(call: PluginCall) { facade.deleteAllLocations(); call.resolve() }
 
     @PluginMethod
-    fun isLocationEnabled(call: PluginCall) {
-        val lm = bridge.activity.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        call.resolve(JSObject().apply {
-            put("enabled", lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
-                           lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER))
-        })
-    }
-
-    @PluginMethod
     fun showAppSettings(call: PluginCall) {
         try {
             bridge.activity.startActivity(
@@ -283,9 +274,6 @@ class BackgroundGeolocationPlugin : Plugin() {
         } catch (_: Exception) {}
         call.resolve()
     }
-
-    @PluginMethod fun watchLocationMode(call: PluginCall) = call.resolve()
-    @PluginMethod fun stopWatchingLocationMode(call: PluginCall) = call.resolve()
 
     @PluginMethod
     fun getLogEntries(call: PluginCall) {
