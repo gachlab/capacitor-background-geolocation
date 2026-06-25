@@ -58,10 +58,12 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         CAPPluginMethod(name: "removeGeofences", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getGeofences", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getTripScore", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "getTripScore", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getCapabilities", returnType: CAPPluginReturnPromise)
     ]
 
-    private static let pluginVersion = "1.5.0"
+    // Keep in sync with package.json `version`. Enforced by version-sync.test.ts.
+    private static let pluginVersion = "2.0.0"
 
     private var facade: BGFacade?
     private var currentConfig: BGConfig?
@@ -343,6 +345,23 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
     @objc func getPluginVersion(_ call: CAPPluginCall) {
         call.resolve(["version": Self.pluginVersion])
+    }
+
+    /// The iOS die's `misa`: full native hart — background tracking, motion
+    /// activity (`CMMotionActivity`), region geofencing (19 user slots, one
+    /// reserved for the stationary region), sensor fusion, and native
+    /// driver-intelligence. OEM settings screens are Android-only (`false`).
+    @objc func getCapabilities(_ call: CAPPluginCall) {
+        call.resolve([
+            "platform": "ios",
+            "backgroundTracking": true,
+            "activityRecognition": true,
+            "geofencing": true,
+            "maxGeofences": 19,
+            "sensorFusion": true,
+            "driverIntelligence": true,
+            "oemSettings": false
+        ])
     }
 
     @objc func switchMode(_ call: CAPPluginCall) {

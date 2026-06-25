@@ -12,6 +12,7 @@ import type { PermissionState } from '@capacitor/core';
 import type {
   BackgroundGeolocationError,
   BackgroundGeolocationPlugin,
+  Capabilities,
   ConfigureOptions,
   CurrentLocationOptions,
   Diagnostics,
@@ -231,7 +232,27 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   }
 
   async getPluginVersion(): Promise<{ version: string }> {
-    return { version: '1.5.0' };
+    // Keep in sync with package.json `version`. Enforced by version-sync.test.ts.
+    return { version: '2.0.0' };
+  }
+
+  /**
+   * The web die's `misa`: it implements the base ISA (location, geofencing in JS)
+   * but **not** the always-on background extension or native driver-intelligence —
+   * a browser tab has no AOP island. Report that honestly so consumers degrade
+   * gracefully instead of expecting background tracking that cannot exist.
+   */
+  async getCapabilities(): Promise<Capabilities> {
+    return {
+      platform: 'web',
+      backgroundTracking: false,
+      activityRecognition: false,
+      geofencing: true,
+      maxGeofences: -1,
+      sensorFusion: false,
+      driverIntelligence: false,
+      oemSettings: false,
+    };
   }
 
   // ---------------- Permissions ----------------

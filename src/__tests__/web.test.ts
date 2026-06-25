@@ -700,6 +700,21 @@ describe('BackgroundGeolocationWeb', () => {
       assert.ok(typeof r.version === 'string' && r.version.length > 0);
     });
 
+    it('getCapabilities() → web reports backgroundTracking:false (honest misa)', async () => {
+      const caps = await plugin.getCapabilities();
+      assert.equal(caps.platform, 'web');
+      // The whole point of the misa register: the web die has no always-on
+      // island and must not pretend it tracks in the background.
+      assert.equal(caps.backgroundTracking, false);
+      assert.equal(caps.driverIntelligence, false);
+      assert.equal(caps.activityRecognition, false);
+      assert.equal(caps.sensorFusion, false);
+      assert.equal(caps.oemSettings, false);
+      // Base ISA the web die does implement.
+      assert.equal(caps.geofencing, true);
+      assert.equal(caps.maxGeofences, -1);
+    });
+
     it('requestBackgroundLocationPermission() → granted: true, notRequired: true', async () => {
       const r = await plugin.requestBackgroundLocationPermission();
       assert.equal(r.granted, true);

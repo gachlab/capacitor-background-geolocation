@@ -170,6 +170,7 @@ sub.remove();
 | `openAutoStartSettings()` | Open the OEM auto-start/background-activity screen. |
 | `getManufacturerHelp()` | OEM-specific user instructions. |
 | `getPluginVersion()` | Native plugin version string. |
+| `getCapabilities()` | Per-platform capability report (`misa`); web reports `backgroundTracking: false`. |
 
 ### Permissions
 

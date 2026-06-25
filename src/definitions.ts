@@ -498,6 +498,61 @@ export interface Diagnostics {
   authorizationStatusText?: string;
 }
 
+/**
+ * Capability descriptor reported by {@link BackgroundGeolocationPlugin.getCapabilities}.
+ *
+ * This is the plugin's `misa` register: each platform die (hart) declares which
+ * parts of the contract it actually implements, so consumers feature-detect
+ * (`if (caps.backgroundTracking)`) instead of branching on `platform`. The web
+ * die implements the base ISA but **not** the always-on background extension — it
+ * reports that honestly rather than pretending. See `ARCHITECTURE.md` §
+ * "`getCapabilities()` = el registro `misa`".
+ *
+ * @since 2.1.0
+ */
+export interface Capabilities {
+  /** Which die answered. */
+  platform: 'ios' | 'android' | 'web';
+  /**
+   * Tracking continues while the app is backgrounded or terminated.
+   * iOS/Android: `true`. **Web: `false`** — the browser has no always-on island,
+   * `watchPosition` runs only while the page is alive.
+   */
+  backgroundTracking: boolean;
+  /**
+   * Motion-activity classification is available (Android `ActivityRecognition` /
+   * iOS `CMMotionActivity`), feeding the `activity` event. Web: `false`.
+   */
+  activityRecognition: boolean;
+  /** Geofence monitoring is supported. All three dies: `true`. */
+  geofencing: boolean;
+  /**
+   * Maximum simultaneous geofences.
+   * iOS: `19` (one slot reserved for the stationary region); Android: `100`
+   * (Google Play Services cap); web: `-1` (no fixed limit — JS evaluation).
+   */
+  maxGeofences: number;
+  /**
+   * Accelerometer/gyroscope sensor fusion for driving-event detection is
+   * available (gated at runtime by `drivingEvents.sensorFusion`).
+   * iOS/Android: `true`. Web: `false`.
+   */
+  sensorFusion: boolean;
+  /**
+   * Native driver-intelligence — the X-extension: on-device trip scoring and
+   * driving-event inference (`getTripScore`, `hardBrake`, `possibleCrash`, …).
+   * iOS/Android: `true`. **Web: `false`** — `getTripScore` is a stub that
+   * resolves `null`.
+   */
+  driverIntelligence: boolean;
+  /**
+   * OEM-specific battery / auto-start settings screens can be opened
+   * (`openAutoStartSettings`, `openBatterySettings`, `getManufacturerHelp`).
+   * Android: `true`. iOS/web: `false`.
+   */
+  oemSettings: boolean;
+}
+
 /** Persisted log entry returned by {@link BackgroundGeolocationPlugin.getLogEntries}. @since 1.0.0 */
 export interface LogEntry {
   /** DB id. */
@@ -931,6 +986,17 @@ export interface BackgroundGeolocationPlugin {
    * @since 1.0.0
    */
   getPluginVersion(): Promise<{ version: string }>;
+
+  /**
+   * Report which parts of the contract this platform die implements — the
+   * plugin's `misa` register. Consumers should feature-detect against the
+   * returned {@link Capabilities} instead of branching on `Capacitor.getPlatform()`.
+   * Notably the web die reports `backgroundTracking: false` and
+   * `driverIntelligence: false`.
+   *
+   * @since 2.1.0
+   */
+  getCapabilities(): Promise<Capabilities>;
 
   // ---------------- Permissions ----------------
 
