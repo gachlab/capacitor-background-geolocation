@@ -30,23 +30,27 @@ sealed class ServiceEvent {
 
     // ── Driving events ────────────────────────────────────────────────────────
     data class Speeding(val loc: BGLocation, val speedKmh: Double, val limitKmh: Double) : ServiceEvent()
-    data class HardBrake(val loc: BGLocation) : ServiceEvent()
-    data class RapidAcceleration(val loc: BGLocation) : ServiceEvent()
-    data class SharpTurn(val loc: BGLocation) : ServiceEvent()
-    data class PossibleCrash(val loc: BGLocation) : ServiceEvent()
+    // value carries the measured magnitude (decel m/s², accel m/s², deg/s) per the TS contract.
+    data class HardBrake(val loc: BGLocation, val value: Double) : ServiceEvent()
+    data class RapidAcceleration(val loc: BGLocation, val value: Double) : ServiceEvent()
+    data class SharpTurn(val loc: BGLocation, val value: Double) : ServiceEvent()
+    // possibleCrash also carries its detection source ('gps' | 'sensor').
+    data class PossibleCrash(val loc: BGLocation, val value: Double, val source: String) : ServiceEvent()
     data class PhoneUsageWhileDriving(val loc: BGLocation) : ServiceEvent()
 
     // ── Geofence events ───────────────────────────────────────────────────────
     data class GeofenceEnter(val geofenceId: String, val loc: BGLocation?) : ServiceEvent()
     data class GeofenceExit(val geofenceId: String, val loc: BGLocation?)  : ServiceEvent()
     data class GeofenceDwell(val geofenceId: String, val loc: BGLocation?) : ServiceEvent()
+    /** Geofence registration/monitoring failure. [geofenceId] is null for bulk failures. */
+    data class GeofenceError(val geofenceId: String?, val message: String) : ServiceEvent()
 
     // ── System events ─────────────────────────────────────────────────────────
     data class Heartbeat(val loc: BGLocation?) : ServiceEvent()
     data class Error(val message: String) : ServiceEvent()
     data class ProviderChange(val provider: String) : ServiceEvent()
     data class Activity(val data: JSONObject?) : ServiceEvent()
-    data class Sos(val locationId: Long?) : ServiceEvent()
+    data class Sos(val locationId: Long?, val payload: JSONObject? = null) : ServiceEvent()
     object ServiceStarted : ServiceEvent()
     object ServiceStopped : ServiceEvent()
     data class ServiceRestarted(val reason: String) : ServiceEvent()
@@ -56,6 +60,15 @@ sealed class ServiceEvent {
     // ── Priority sync events ──────────────────────────────────────────────────
     data class PrioritySyncSuccess(val eventType: String, val attemptNumber: Int) : ServiceEvent()
     data class PrioritySyncFailed(val eventType: String, val httpStatus: Int, val attempts: Int) : ServiceEvent()
+
+    // ── Batch sync events (BackgroundSync → plugin) ───────────────────────────
+    // Mirror the iOS BGBackgroundSync* notifications. SyncProgress has no producer
+    // on either platform yet (iOS observes BGBackgroundSyncDidProgress but never
+    // posts it); the type exists so the plumbing is symmetric across platforms.
+    object SyncStart : ServiceEvent()
+    data class SyncProgress(val progress: Int) : ServiceEvent()
+    data class SyncSuccess(val sent: Int) : ServiceEvent()
+    data class SyncError(val httpStatus: Int, val message: String) : ServiceEvent()
 
     companion object {
         const val REASON_WATCHDOG    = "watchdog"

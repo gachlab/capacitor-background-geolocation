@@ -65,6 +65,74 @@ final class DrivingEventsE2ETests: XCTestCase {
         XCTAssert(waitForEvent("event:possibleCrash", timeout: 40), "possibleCrash event not fired within 40 s")
     }
 
+    // MARK: - Geofencing (#20)
+    //
+    // The external script injects a STATIONARY fix at the geofence center
+    // (37.3349, -122.009 — matches GF_CENTER in www/main.js), so the device is
+    // already inside the region when it registers.
+
+    // Initial ENTER (GMS INITIAL_TRIGGER_ENTER parity): registering a geofence the
+    // device is already inside must synthesise an ENTER from requestState(.inside).
+    // The 4 s loiteringDelay then fires a foreground DWELL via the Timer fast-path.
+    func testGeofenceInitialEnterAndDwell() throws {
+        tapConfigure()
+        tapStart()
+        clearGeofences()
+        tapGeofenceButton("GF: enter-here")
+        XCTAssert(waitForEvent("event:geofenceEnter", timeout: 30),
+                  "initial ENTER (already-inside) not synthesised")
+        XCTAssert(waitForEvent("event:geofenceDwell", timeout: 30),
+                  "DWELL not fired after loiteringDelay")
+        clearGeofences()
+    }
+
+    // Region cap: iOS allows 19 user geofences (20 app-wide − 1 stationary). Registering
+    // 21 must surface a geofence `error` (code 1005) for the overflow instead of failing
+    // silently.
+    func testGeofenceLimitEmitsError() throws {
+        tapConfigure()
+        tapStart()
+        clearGeofences()
+        tapGeofenceButton("GF: 21 geofences")
+        XCTAssert(waitForEvent("event:geofenceError", timeout: 30),
+                  "geofence limit (>19) did not surface a geofenceError")
+        clearGeofences()
+    }
+
+    // Suspension-resilient DWELL: after ENTER, background the app; the per-region Timer
+    // may be suspended, but evaluateDwell driven by incoming fixes still fires DWELL.
+    // On return to foreground the WebView log shows it.
+    func testGeofenceDwellSurvivesBackground() throws {
+        tapConfigure()
+        tapStart()
+        clearGeofences()
+        tapGeofenceButton("GF: enter-here")
+        XCTAssert(waitForEvent("event:geofenceEnter", timeout: 30), "ENTER not fired before backgrounding")
+        // Background before the 4 s Timer would fire, then let injected fixes drive dwell.
+        XCUIDevice.shared.press(.home)
+        Thread.sleep(forTimeInterval: 8)
+        app.activate()
+        XCTAssert(waitForEvent("event:geofenceDwell", timeout: 30),
+                  "DWELL did not survive the background transition")
+        clearGeofences()
+    }
+
+    // MARK: - Geofence helpers
+
+    private func tapGeofenceButton(_ label: String) {
+        let webView = app.webViews.firstMatch
+        let btn = webView.buttons[label]
+        XCTAssert(btn.waitForExistence(timeout: 10), "Geofence button '\(label)' not found")
+        btn.tap()
+        sleep(1)
+    }
+
+    private func clearGeofences() {
+        let webView = app.webViews.firstMatch
+        let btn = webView.buttons["GF: clear"]
+        if btn.waitForExistence(timeout: 5) { btn.tap(); sleep(1) }
+    }
+
     // MARK: - Helpers
 
     private func tapConfigure() {

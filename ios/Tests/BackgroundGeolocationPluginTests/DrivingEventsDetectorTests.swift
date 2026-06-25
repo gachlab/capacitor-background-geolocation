@@ -7,12 +7,14 @@ import XCTest
 // RecordingDelegate captures each callback as a string token (same pattern as the Java tests).
 private final class RecordingDelegate: DrivingEventsDetectorDelegate {
     var events: [String] = []
+    var lastScore: TripScore?
 
     func detectorOnMoving(_ l: DLLocation)              { events.append("moving") }
     func detectorOnStopped(_ l: DLLocation)             { events.append("stopped") }
     func detectorOnTripStart(_ l: DLLocation)           { events.append("tripStart") }
     func detectorOnTripEnd(_ l: DLLocation, distanceMeters: Double, durationMs: Int64, score: TripScore) {
         events.append("tripEnd(dist=\(Int(distanceMeters))m,dur=\(durationMs)ms)")
+        lastScore = score
     }
     func detectorOnSpeeding(_ l: DLLocation, speedKmh: Double, limitKmh: Double) {
         events.append("speeding(\(Int(speedKmh))kmh)")
@@ -234,6 +236,68 @@ final class DrivingEventsDetectorTests: XCTestCase {
         det.feed(loc(speedMps: 5.5, bearing: bearing))
 
         XCTAssertTrue(rec.events.contains("phoneUsage"), "phoneUsageWhileDriving should fire on jitter: \(rec.events)")
+    }
+
+    // #21 — phone usage must reach the aggregate trip score, not just fire the event.
+    func testPhoneUsageReachesScore() {
+        let (det, rec) = makeDetector()
+        det.sensorFusion = false
+        det.phoneUsageWindowSec = 0.4
+        det.phoneUsageCooldownSec = 0.0
+        det.sharpTurnDegPerSec = 100_000.0   // isolate: jitter must read as phone usage, not sharp turn
+        det.crashImpactKmh = 100_000.0
+
+        // Enter an active trip.
+        det.feed(loc(speedMps: 6))
+
+        // ~±10° bearing oscillation at ~5.5 m/s → phone-usage jitter.
+        var bearing = 90.0
+        for _ in 0..<6 {
+            Thread.sleep(forTimeInterval: 0.07)
+            bearing = bearing == 90.0 ? 100.0 : 90.0
+            det.feed(loc(speedMps: 5.5, bearing: bearing))
+        }
+        Thread.sleep(forTimeInterval: 0.5)
+        det.feed(loc(speedMps: 5.5, bearing: bearing))
+        XCTAssertTrue(rec.events.contains("phoneUsage"), "phoneUsage should fire: \(rec.events)")
+
+        // Stop to end the trip and deliver the score.
+        det.feed(loc(speedMps: 0))
+        Thread.sleep(forTimeInterval: Self.stoppedSec * 2)
+        det.feed(loc(speedMps: 0))
+
+        let score = rec.lastScore
+        XCTAssertNotNil(score, "tripEnd should deliver a score: \(rec.events)")
+        XCTAssertLessThan(score!.breakdown.phoneUsage, 100,
+                          "phoneUsage category should be penalised, got \(score!.breakdown.phoneUsage)")
+        XCTAssertTrue(score!.events.contains { $0.type == "phoneUsage" },
+                      "phoneUsage should be among scored events: \(score!.events.map { $0.type })")
+    }
+
+    func testExternalPhoneUsageReachesScore() {
+        let (det, rec) = makeDetector()
+        det.sensorFusion = true   // GPS jitter path gated off; the sensor path feeds the score
+
+        // Enter an active trip (minTripDurationSec == 0 → first fast fix starts it).
+        det.feed(loc(speedMps: 6))
+        XCTAssertTrue(rec.events.contains("tripStart"), "expected tripStart: \(rec.events)")
+
+        // Sensor-fusion path (SensorFusionDetector → BGFacade → plugin) records here.
+        det.recordExternalPhoneUsage(loc(speedMps: 6))
+
+        // Stop to end the trip and deliver the score.
+        det.feed(loc(speedMps: 0))
+        Thread.sleep(forTimeInterval: Self.stoppedSec * 2)
+        det.feed(loc(speedMps: 0))
+
+        let score = rec.lastScore
+        XCTAssertNotNil(score, "tripEnd should deliver a score: \(rec.events)")
+        XCTAssertLessThan(score!.breakdown.phoneUsage, 100,
+                          "sensor phoneUsage should penalise the category, got \(score!.breakdown.phoneUsage)")
+        XCTAssertTrue(score!.events.contains { $0.type == "phoneUsage" },
+                      "phoneUsage should be among scored events: \(score!.events.map { $0.type })")
+        // GPS jitter path stayed gated off — the detector itself fired no phoneUsage event.
+        XCTAssertFalse(rec.events.contains("phoneUsage"), "GPS phoneUsage must stay suppressed: \(rec.events)")
     }
 
     func testPhoneUsageWhileDrivingSuppressedWhenSensorFusion() {

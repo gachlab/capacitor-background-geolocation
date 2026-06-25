@@ -19,7 +19,7 @@ final class LogReader {
         let sql: String
         if fromId > 0 {
             sql = """
-                SELECT id, created_at, level, msg
+                SELECT id, created_at, level, msg, stack_trace
                 FROM logs
                 WHERE level >= ? AND id < ?
                 ORDER BY id DESC
@@ -27,7 +27,7 @@ final class LogReader {
             """
         } else {
             sql = """
-                SELECT id, created_at, level, msg
+                SELECT id, created_at, level, msg, stack_trace
                 FROM logs
                 WHERE level >= ?
                 ORDER BY id DESC
@@ -57,11 +57,19 @@ final class LogReader {
             } else {
                 msg = ""
             }
+            let stackTrace: String
+            if let cStr = sqlite3_column_text(stmt, 4) {
+                stackTrace = String(cString: cStr)
+            } else {
+                stackTrace = ""
+            }
+            // LogEntry contract shape: id, timestamp, level, message, stackTrace.
             result.append([
-                "id":    id,
-                "time":  createdAt,
-                "level": levelString(from: levelInt),
-                "msg":   msg
+                "id":         id,
+                "timestamp":  createdAt,
+                "level":      levelString(from: levelInt),
+                "message":    msg,
+                "stackTrace": stackTrace
             ])
         }
         return result

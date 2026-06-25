@@ -139,6 +139,7 @@ public final class BGFacade: NSObject {
         scheduleHeartbeat()
         configureSensorFusion()
         sensorFusion?.start()
+        BGLog.shared.i("Service started")
     }
 
     public func stop() throws {
@@ -154,6 +155,7 @@ public final class BGFacade: NSObject {
         }
 
         _isStarted = false
+        BGLog.shared.i("Service stopped")
     }
 
     // MARK: - Location services status
@@ -449,9 +451,12 @@ public final class BGFacade: NSObject {
         if let v = (drivingEventsConfig["crashImpactG"] as? NSNumber)?.doubleValue {
             detector.crashImpactG = v
         }
-        if let v = (drivingEventsConfig["crashCooldownMs"] as? NSNumber)?.doubleValue {
+        // Contract key is `sensorCrashCooldownMs` (Android maps the same). The old
+        // `crashCooldownMs` lookup never matched, so the cooldown was stuck at default.
+        if let v = (drivingEventsConfig["sensorCrashCooldownMs"] as? NSNumber)?.doubleValue {
             detector.crashCooldownMs = v
         }
+        detector.sensorFusion = (drivingEventsConfig["sensorFusion"] as? Bool) ?? false
         if let v = (drivingEventsConfig["phoneUsageWindowMs"] as? NSNumber)?.doubleValue {
             detector.phoneUsageWindowMs = v
         }
@@ -534,6 +539,9 @@ extension BGFacade: LocationProviderDelegate {
         lastReceivedLocation = location
         sensorFusion?.lastLocation = location
         PostLocationTask.shared.add(location)
+        // Resilient geofence dwell: fire DWELL even if the per-region Timer was
+        // suspended/coalesced while the app was backgrounded.
+        GeofenceManager.shared.evaluateDwell(now: location.time ?? Date(), location: location)
         delegate?.onLocationChanged(location)
     }
 
@@ -566,7 +574,9 @@ extension BGFacade: SensorFusionListener {
 
     public func onPhoneUsageWhileDriving(location: BGLocation?) {
         bufferPendingEvent("phoneUsageWhileDriving", extra: nil)
-        var info: [String: Any] = [:]
+        // Tag the source so the plugin feeds the score for the sensor path only — the
+        // GPS path already records inside DrivingEventsDetector.feed (avoids double-count).
+        var info: [String: Any] = ["source": "sensor"]
         if let loc = location { info["location"] = loc }
         NotificationCenter.default.post(name: .BGPhoneUsageWhileDriving, object: self, userInfo: info)
     }

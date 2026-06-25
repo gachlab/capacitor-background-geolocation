@@ -15,11 +15,7 @@ Pod::Spec.new do |s|
   s.homepage = homepage_url
   s.author = package['author']
   s.source = { :git => source_git, :tag => s.version.to_s }
-  s.source_files = 'ios/Sources/**/*.{swift,h,m}'
-  s.exclude_files = [
-    'ios/Sources/BackgroundGeolocationPlugin/BackgroundGeolocationPlugin.m',
-    'ios/Sources/BackgroundGeolocationPlugin/BackgroundGeolocationPlugin-Bridging-Header.h'
-  ]
+  s.source_files = 'ios/Sources/**/*.swift'
   s.ios.deployment_target = '14.0'
   s.dependency 'Capacitor'
   s.swift_version = '5.9'

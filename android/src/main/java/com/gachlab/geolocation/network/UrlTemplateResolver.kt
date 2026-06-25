@@ -33,10 +33,28 @@ internal object UrlTemplateResolver {
         val sb = StringBuffer()
         while (m.find()) {
             val key = m.group(1) ?: continue
-            val value = ctx[key] ?: m.group(0)  // leave unresolved placeholders as-is
-            m.appendReplacement(sb, value?.toString() ?: "")
+            val resolved = ctx[key]
+            // Resolved values are percent-encoded; unknown/null placeholders are left as-is.
+            // Encoding also keeps appendReplacement safe ($ and \ become %24/%5C).
+            val replacement = if (resolved != null) encode(resolved.toString()) else m.group(0)
+            m.appendReplacement(sb, replacement)
         }
         m.appendTail(sb)
+        return sb.toString()
+    }
+
+    // RFC 3986 percent-encoding: keep unreserved chars, percent-encode every other
+    // UTF-8 byte as uppercase %XX. MUST stay byte-identical to the iOS resolver's encode().
+    private const val UNRESERVED =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+
+    private fun encode(value: String): String {
+        val sb = StringBuilder()
+        for (b in value.toByteArray(Charsets.UTF_8)) {
+            val c = b.toInt() and 0xFF
+            if (c < 128 && c.toChar() in UNRESERVED) sb.append(c.toChar())
+            else sb.append('%').append("%02X".format(c))
+        }
         return sb.toString()
     }
 

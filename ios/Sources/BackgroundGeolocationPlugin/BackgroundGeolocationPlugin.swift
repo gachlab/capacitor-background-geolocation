@@ -111,6 +111,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         nc.addObserver(self, selector: #selector(onGeofenceN(_:)), name: .BGGeofenceEnter, object: nil)
         nc.addObserver(self, selector: #selector(onGeofenceN(_:)), name: .BGGeofenceExit,  object: nil)
         nc.addObserver(self, selector: #selector(onGeofenceN(_:)), name: .BGGeofenceDwell, object: nil)
+        nc.addObserver(self, selector: #selector(onGeofenceErrorN(_:)), name: .BGGeofenceError, object: nil)
 
         nc.addObserver(self, selector: #selector(onPrioritySyncSuccessN(_:)), name: .BGPrioritySyncSuccess, object: nil)
         nc.addObserver(self, selector: #selector(onPrioritySyncFailedN(_:)),  name: .BGPrioritySyncFailed,  object: nil)
@@ -640,6 +641,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     // MARK: - LocationProviderDelegate
 
     public func onAuthorizationChanged(_ status: BGAuthorizationStatus) {
+        BGLog.shared.i("Authorization changed: \(status.rawValue)")
         notifyListeners("authorization", data: ["status": status.rawValue])
     }
 
@@ -704,6 +706,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
     public func onError(_ error: Error) {
         let nsErr = error as NSError
+        BGLog.shared.e("Error \(nsErr.code): \(nsErr.localizedDescription)")
         notifyListeners("error", data: [
             "code": nsErr.code,
             "message": nsErr.localizedDescription
@@ -869,7 +872,18 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     }
 
     @objc private func onPhoneUsageWhileDrivingN(_ note: Notification) {
-        if let loc = note.userInfo?["location"] as? BGLocation {
+        let bgLoc = note.userInfo?["location"] as? BGLocation
+        // The sensor-fusion path (source == "sensor") must feed the trip score here —
+        // the GPS path already records inside DrivingEventsDetector.feed, so recording
+        // only for "sensor" avoids double-counting. The two paths are mutually exclusive.
+        if (note.userInfo?["source"] as? String) == "sensor" {
+            let dl = bgLoc.map {
+                DLLocation(latitude: $0.latitude ?? 0, longitude: $0.longitude ?? 0,
+                           speed: $0.speed ?? -1, bearing: $0.heading, provider: $0.provider)
+            }
+            drivingDetector.recordExternalPhoneUsage(dl)
+        }
+        if let loc = bgLoc {
             notifyListeners("phoneUsageWhileDriving", data: loc.toDictionaryWithId())
         } else {
             notifyListeners("phoneUsageWhileDriving", data: [:])
@@ -895,6 +909,14 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         default:      eventName = "geofenceDwell"
         }
         notifyListeners(eventName, data: p)
+    }
+
+    /// Surfaces a geofence registration/monitoring failure (e.g. the iOS 19-region cap
+    /// was exceeded) on the dedicated `geofenceError` channel.
+    @objc private func onGeofenceErrorN(_ note: Notification) {
+        var data: [String: Any] = ["message": note.userInfo?["message"] as? String ?? "geofence error"]
+        if let id = note.userInfo?["id"] as? String { data["id"] = id }
+        notifyListeners("geofenceError", data: data)
     }
 }
 

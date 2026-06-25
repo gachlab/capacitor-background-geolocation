@@ -858,6 +858,108 @@ describe('BackgroundGeolocationWeb', () => {
       delete (globalThis as unknown as Record<string, unknown>).Notification;
     });
   });
+
+  // ── geofencing ──────────────────────────────────────────────────────────────
+  describe('geofencing', () => {
+    const CENTER = { latitude: 19.5, longitude: -99.0 };
+    const geoFix = (lat: number, lon: number, time = 1_716_000_000_000): GeolocationPosition =>
+      ({
+        ...makePosition({ latitude: lat, longitude: lon, speed: 0, heading: 0 }),
+        timestamp: time,
+      }) as GeolocationPosition;
+
+    it('emits geofenceError for an invalid radius (and does not register it)', async () => {
+      const errs = collect<{ id?: string; message: string }>(plugin, 'geofenceError');
+      await plugin.addGeofences({
+        geofences: [{ id: 'bad', latitude: CENTER.latitude, longitude: CENTER.longitude, radius: 0 }],
+      });
+      assert.equal(errs.length, 1);
+      assert.equal(errs[0].id, 'bad');
+      assert.equal((await plugin.getGeofences()).geofences.length, 0);
+    });
+
+    it('synthesises an initial ENTER when registering already inside', async () => {
+      const enters = collect<{ id: string; action: string }>(plugin, 'geofenceEnter');
+      await plugin.start();
+      onWatchSuccess?.(geoFix(CENTER.latitude, CENTER.longitude)); // lastLocation = inside
+      await plugin.addGeofences({
+        geofences: [{ id: 'depot', latitude: CENTER.latitude, longitude: CENTER.longitude, radius: 200 }],
+      });
+      assert.equal(enters.length, 1);
+      assert.equal(enters[0].id, 'depot');
+      assert.equal(enters[0].action, 'ENTER');
+    });
+
+    it('fires ENTER on a boundary crossing, not while still outside', async () => {
+      const enters = collect<{ id: string }>(plugin, 'geofenceEnter');
+      await plugin.start();
+      await plugin.addGeofences({
+        geofences: [{ id: 'depot', latitude: CENTER.latitude, longitude: CENTER.longitude, radius: 200 }],
+      });
+      onWatchSuccess?.(geoFix(20.5, -99.0)); // ~111 km away → outside
+      assert.equal(enters.length, 0);
+      onWatchSuccess?.(geoFix(CENTER.latitude, CENTER.longitude)); // inside → ENTER
+      assert.equal(enters.length, 1);
+    });
+
+    it('fires EXIT only after a real entry', async () => {
+      const exits = collect<{ id: string; action: string }>(plugin, 'geofenceExit');
+      await plugin.start();
+      await plugin.addGeofences({
+        geofences: [
+          { id: 'depot', latitude: CENTER.latitude, longitude: CENTER.longitude, radius: 200, notifyOnExit: true },
+        ],
+      });
+      onWatchSuccess?.(geoFix(20.5, -99.0)); // outside first → no EXIT
+      assert.equal(exits.length, 0);
+      onWatchSuccess?.(geoFix(CENTER.latitude, CENTER.longitude)); // ENTER
+      onWatchSuccess?.(geoFix(20.5, -99.0)); // leave → EXIT
+      assert.equal(exits.length, 1);
+      assert.equal(exits[0].action, 'EXIT');
+    });
+
+    it('fires a single DWELL after the loitering delay', async () => {
+      const dwells = collect<{ id: string; action: string }>(plugin, 'geofenceDwell');
+      await plugin.start();
+      await plugin.addGeofences({
+        geofences: [
+          {
+            id: 'depot',
+            latitude: CENTER.latitude,
+            longitude: CENTER.longitude,
+            radius: 200,
+            notifyOnDwell: true,
+            loiteringDelay: 1000,
+          },
+        ],
+      });
+      onWatchSuccess?.(geoFix(CENTER.latitude, CENTER.longitude, 1_716_000_000_000)); // ENTER @ T
+      assert.equal(dwells.length, 0);
+      onWatchSuccess?.(geoFix(CENTER.latitude, CENTER.longitude, 1_716_000_000_500)); // T+0.5s → not yet
+      assert.equal(dwells.length, 0);
+      onWatchSuccess?.(geoFix(CENTER.latitude, CENTER.longitude, 1_716_000_001_000)); // T+1s → DWELL
+      assert.equal(dwells.length, 1);
+      onWatchSuccess?.(geoFix(CENTER.latitude, CENTER.longitude, 1_716_000_002_000)); // still inside → no repeat
+      assert.equal(dwells.length, 1);
+    });
+
+    it('getGeofences returns the registered set; removeGeofences clears it', async () => {
+      await plugin.addGeofences({
+        geofences: [
+          { id: 'a', latitude: CENTER.latitude, longitude: CENTER.longitude, radius: 200 },
+          { id: 'b', latitude: CENTER.latitude, longitude: CENTER.longitude, radius: 300 },
+        ],
+      });
+      assert.equal((await plugin.getGeofences()).geofences.length, 2);
+      await plugin.removeGeofences({ ids: ['a'] });
+      assert.deepEqual(
+        (await plugin.getGeofences()).geofences.map((g) => g.id),
+        ['b'],
+      );
+      await plugin.removeGeofences();
+      assert.equal((await plugin.getGeofences()).geofences.length, 0);
+    });
+  });
 });
 
 // ── definitions constants ─────────────────────────────────────────────────────

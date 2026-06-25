@@ -253,6 +253,7 @@ detaches a single listener.
 | `geofenceEnter` | `GeofenceEvent` | Device entered a registered geofence. @since 1.3.0 |
 | `geofenceExit` | `GeofenceEvent` | Device exited a registered geofence. @since 1.3.0 |
 | `geofenceDwell` | `GeofenceEvent` | Device has been inside a geofence for `loiteringDelay` ms. @since 1.3.0 |
+| `geofenceError` | `GeofenceErrorEvent` | A geofence failed to register or monitor (e.g. iOS region cap, GMS failure, invalid geofence). @since 1.7.0 |
 | `prioritySyncSuccess` | `PrioritySyncSuccessEvent` | Priority POST delivered; carries `eventType` and `attemptNumber`. @since 1.5.0 |
 | `prioritySyncFailed` | `PrioritySyncFailedEvent` | Priority POST exhausted retries; carries `eventType`, `httpStatus`, and `attempts`. @since 1.5.0 |
 

@@ -111,9 +111,13 @@ final class SQLiteHelper {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at INTEGER,
                 level INTEGER,
-                msg TEXT
+                msg TEXT,
+                stack_trace TEXT
             )
         """)
+        // Idempotent upgrade for DBs created before `stack_trace` existed — fails
+        // silently (column already present) on fresh installs.
+        execute("ALTER TABLE logs ADD COLUMN stack_trace TEXT")
     }
 
     func execute(_ sql: String) {

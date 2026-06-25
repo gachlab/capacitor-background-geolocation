@@ -19,6 +19,7 @@ internal class LocationDbHelper private constructor(context: Context) :
         db.execSafe(SQL_IDX_LOCATION_TIME)
         db.execSafe(SQL_IDX_LOCATION_BATCH)
         db.execSafe(SQL_IDX_SESSION_TIME)
+        db.execSafe(SQL_CREATE_LOGS)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -204,12 +205,18 @@ internal class LocationDbHelper private constructor(context: Context) :
             21 -> {
                 // v22 adds nothing new — just the gachlab rewrite marker
             }
+            22 -> {
+                // v23 adds the `logs` table, created idempotently below.
+            }
             else -> {
                 onDowngrade(db, oldVersion, newVersion)
                 return
             }
         }
         stmts.forEach { db.execSafe(it) }
+        // v23: `logs` table. Idempotent (CREATE TABLE IF NOT EXISTS) so it covers
+        // every upgrade path without threading it through each branch above.
+        db.execSafe(SQL_CREATE_LOGS)
     }
 
     override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -217,6 +224,7 @@ internal class LocationDbHelper private constructor(context: Context) :
         db.execSafe("DROP TABLE IF EXISTS location")
         db.execSafe("DROP TABLE IF EXISTS configuration")
         db.execSafe("DROP TABLE IF EXISTS location_session")
+        db.execSafe("DROP TABLE IF EXISTS logs")
         onCreate(db)
     }
 
@@ -228,7 +236,7 @@ internal class LocationDbHelper private constructor(context: Context) :
     companion object {
         private const val TAG = "LocationDbHelper"
         const val DB_NAME = "cordova_bg_geolocation.db"  // must not change — backward compat
-        private const val DB_VERSION = 22
+        private const val DB_VERSION = 23
 
         @Volatile private var instance: LocationDbHelper? = null
 
@@ -330,6 +338,17 @@ internal class LocationDbHelper private constructor(context: Context) :
                 valid INTEGER,
                 batch_start INTEGER,
                 mock_flags INTEGER
+            )"""
+
+        // Mirrors the iOS `logs` table (SQLiteHelper). IF NOT EXISTS so it is safe
+        // to run from both onCreate and every onUpgrade path.
+        private const val SQL_CREATE_LOGS = """
+            CREATE TABLE IF NOT EXISTS logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at INTEGER,
+                level INTEGER,
+                msg TEXT,
+                stack_trace TEXT
             )"""
 
         private const val SQL_IDX_LOCATION_TIME  = "CREATE INDEX time_idx ON location (time)"

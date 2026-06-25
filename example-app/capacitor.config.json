@@ -1,0 +1,9 @@
+{
+  "appId": "com.gachlab.capacitor.backgroundgeolocation.example",
+  "appName": "Background Geolocation Example",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  }
+}

@@ -6,6 +6,81 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-06-24
+
+### Fixed
+- **Android** (geofencing, critical): `GeofenceManager` built its transition
+  `PendingIntent` with `FLAG_IMMUTABLE`, which GMS `GeofencingClient.addGeofences`
+  rejects with "PendingIntent must be mutable" (opStatusCode 10) on **API 31+**. This
+  silently broke **all** geofence transitions on Android 12+ (no ENTER/EXIT/DWELL ever
+  fired). Now uses `FLAG_MUTABLE` on API ≥ 31.
+
+### Added
+- **`geofenceError` event** (all platforms): a geofence that fails to register or
+  monitor now surfaces a dedicated `geofenceError` (`{ id?, message }`) instead of
+  failing silently — iOS (region cap / monitoring failure), Android (GMS registration
+  failure or invalid geofence), web (invalid geofence).
+- **Phone-usage detection by sensor on Android**: mirror of the iOS
+  `SensorFusionDetector` phone-usage path (accel/gyro jitter), gated by `sensorFusion`
+  so it does not double-count with the GPS bearing-jitter path.
+- **Sensor phone-usage feeds the trip score** on both native platforms.
+- **Web geofencing**: real JS geofence engine over `navigator.geolocation`
+  (initial ENTER when already inside, EXIT, DWELL, `geofenceError`) — previously a no-op.
+
+### Changed
+- **iOS**: `SensorFusionDetector` phone-usage is now gated by `sensorFusion`, fixing a
+  double-count with the GPS phone-usage path when `sensorFusion` was off.
+- **Tooling**: migrated to the native **TypeScript 7** compiler. Type-aware ESLint
+  (`@typescript-eslint`) is temporarily paused (incompatible with the native compiler);
+  `lint` runs Prettier and `typecheck` (`tsc --noEmit`) is the type gate.
+
+### Tests
+- Geofencing E2E across all three platforms: iOS (simulator), Android (GMS emulator),
+  and web (Playwright + Chromium with mocked geolocation).
+
+## [1.6.7] - 2026-06-18
+
+### Fixed
+- **iOS** (`BackgroundSync`): guard `syncUrl` / documents-directory resolution to
+  avoid a force-unwrap crash when sync is not yet configured (#42).
+
+## [1.6.6] - 2026-06-18
+
+### Fixed
+- **Android**: resolve `@`-placeholders inside nested objects and arrays in the
+  location POST template, not just top-level keys (#40).
+
+## [1.6.5] - 2026-06-18
+
+### Fixed
+- **Android**: set request headers *before* `requestMethod`/`doOutput` on the
+  `HttpURLConnection`. Real fix for the intermittent HTTP `-1` responses (#38).
+
+## [1.6.4] - 2026-06-18
+
+### Fixed
+- **Android**: set request headers before `setFixedLengthStreamingMode` as a
+  first attempt at the HTTP `-1` failures (superseded by 1.6.5) (#37).
+
+## [1.6.3] - 2026-06-18
+
+### Fixed
+- **Android**: escape `}` in the `UrlTemplateResolver` regex — strict ART
+  runtimes threw on class init otherwise (#35).
+
+## [1.6.2] - 2026-05-30
+
+### Fixed
+- **Android**: replace `ThreadLocal.withInitial` with a subclass override for
+  API 23+ compatibility (#33).
+
+## [1.6.1] - 2026-05-29
+
+### Fixed
+- **Android build**: declare Kotlin via buildscript classpath instead of
+  `apply plugin: 'kotlin-android'` — AGP 9.x integrates Kotlin and applying it
+  explicitly threw "extension 'kotlin' already registered" (#31, #32).
+
 ## [1.6.0] - 2026-05-27
 
 ### Added

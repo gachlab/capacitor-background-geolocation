@@ -112,6 +112,7 @@ object GeofenceManager {
                     .build()
             } catch (e: Exception) {
                 Log.w(TAG, "Invalid geofence ${gf.id}: ${e.message}")
+                dispatch(ServiceEvent.GeofenceError(gf.id, "Invalid geofence: ${e.message}"))
                 null
             }
         }
@@ -123,13 +124,23 @@ object GeofenceManager {
         val pi = pendingIntent ?: buildPendingIntent(context).also { pendingIntent = it }
         geofencingClient?.addGeofences(request, pi)
             ?.addOnSuccessListener { Log.d(TAG, "Registered ${gmsGeofences.size} geofence(s)") }
-            ?.addOnFailureListener { Log.w(TAG, "addGeofences failed: ${it.message}") }
+            ?.addOnFailureListener {
+                Log.w(TAG, "addGeofences failed: ${it.message}")
+                dispatch(ServiceEvent.GeofenceError(null, "addGeofences failed: ${it.message}"))
+            }
     }
 
-    private fun buildPendingIntent(context: Context): PendingIntent {
+    // internal (not private) so the instrumented test can assert the mutability flag.
+    internal fun buildPendingIntent(context: Context): PendingIntent {
         val intent = Intent(context.applicationContext, GeofenceBroadcastReceiver::class.java)
-        val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+        // GMS geofencing REQUIRES a MUTABLE PendingIntent — it injects the transition
+        // extras into the intent when firing. FLAG_IMMUTABLE makes addGeofences fail with
+        // "PendingIntent must be mutable" (opStatusCode 10) on API 31+, which silently
+        // broke ALL geofence transitions on Android 12+. FLAG_MUTABLE exists since API 31;
+        // on older APIs PendingIntents are mutable by default (flag 0).
+        val mutability =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or mutability
         return PendingIntent.getBroadcast(context.applicationContext, 0, intent, flags)
     }
 
