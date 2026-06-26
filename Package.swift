@@ -35,7 +35,7 @@ let package = Package(
             path: "ios/Sources/BackgroundGeolocationPlugin"),
         .testTarget(
             name: "BackgroundGeolocationPluginTests",
-            dependencies: ["BackgroundGeolocationPlugin"],
+            dependencies: ["BackgroundGeolocationPlugin", "BackgroundGeolocationCore"],
             path: "ios/Tests/BackgroundGeolocationPluginTests")
     ]
 )
