@@ -79,6 +79,10 @@ dependencies {
     testImplementation "org.junit.jupiter:junit-jupiter-api:$junitJupiterVersion"
     testImplementation "org.junit.jupiter:junit-jupiter-params:$junitJupiterVersion"
     testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:$junitJupiterVersion"
+    // Vintage engine runs JUnit4 tests (Robolectric @RunWith) under the JUnit5
+    // platform alongside the Jupiter tests — needed for the LocationService / hub
+    // integration tests that require a Robolectric Android runtime.
+    testRuntimeOnly "org.junit.vintage:junit-vintage-engine:$junitJupiterVersion"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher:1.10.2"
     testImplementation "org.robolectric:robolectric:$robolectricVersion"
     testImplementation "org.mockito:mockito-core:$mockitoVersion"
