@@ -68,10 +68,18 @@ class LocationServiceIntegrationTest {
 
     /** Drive a fix through the same delegate a real provider would call. */
     private fun injectFix(loc: BGLocation) {
+        providerDelegate().onLocation(loc)
+    }
+
+    /** Drive a stationary transition through the provider delegate. */
+    private fun injectStationary(loc: BGLocation, radius: Float) {
+        providerDelegate().onStationary(loc, radius)
+    }
+
+    private fun providerDelegate(): AbstractLocationProvider.Delegate {
         val field = LocationService::class.java.getDeclaredField("providerDelegate")
         field.isAccessible = true
-        val delegate = field.get(service) as AbstractLocationProvider.Delegate
-        delegate.onLocation(loc)
+        return field.get(service) as AbstractLocationProvider.Delegate
     }
 
     private fun fix(
@@ -140,6 +148,18 @@ class LocationServiceIntegrationTest {
             "speeding must propagate from the driving detector through the hub: $events",
             events.filterIsInstance<ServiceEvent.Speeding>().isNotEmpty(),
         )
+    }
+
+    @Test
+    fun emitsStationaryEventWithRadius() {
+        startWith(baseConfig())
+
+        injectStationary(fix(19.4326, -99.1332, 1_716_000_000_000), radius = 75f)
+
+        val stationary = events.filterIsInstance<ServiceEvent.Stationary>()
+        assertEquals("a stationary transition must surface one Stationary event", 1, stationary.size)
+        assertEquals(75f, stationary[0].radius, 0.001f)
+        assertEquals(19.4326, stationary[0].loc.latitude, 1e-9)
     }
 
     // ── Lifecycle (onStartCommand restart/sticky semantics) ─────────────────
