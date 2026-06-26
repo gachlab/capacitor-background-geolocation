@@ -62,7 +62,11 @@ final class DrivingEventsE2ETests: XCTestCase {
     func testPossibleCrashEventFires() throws {
         tapConfigure()
         tapStart()
-        XCTAssert(waitForEvent("event:possibleCrash", timeout: 40), "possibleCrash event not fired within 40 s")
+        // possibleCrash needs a full decel cycle (high-speed → near-stop → confirm),
+        // which the injector reaches once per ~cycle. On a slow CI runner a single
+        // cycle can eat most of a 40 s budget, leaving one fragile attempt. Allow
+        // 120 s so several decel cycles land — turns a single chance into ~3+.
+        XCTAssert(waitForEvent("event:possibleCrash", timeout: 120), "possibleCrash event not fired within 120 s")
     }
 
     // MARK: - Geofencing (#20)

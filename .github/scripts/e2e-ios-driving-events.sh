@@ -122,9 +122,10 @@ xcrun simctl privacy "${UDID}" grant location "${APP_BUNDLE_ID}" 2>/dev/null || 
 # ---------------------------------------------------------------------------
 # Inject a stationary fix first, then drive north with a large step so that
 # speed >> 90 km/h even when xcrun simctl takes 3-4 s per call (CI runners).
-# After 5 fast fixes → 6 near-stop micro-step fixes for the crash window,
-# then cycle repeats. Short cycle (5+6 fixes) keeps the crash phase reachable
-# within the 40 s test timeout on any runner.
+# After 4 fast fixes → 6 near-stop micro-step fixes for the crash window,
+# then cycle repeats. The short cycle (4+6 fixes) makes the decel/crash phase
+# recur often, so multiple possibleCrash opportunities land within the test
+# window (120 s) on any runner — the test only needs one to register.
 GPS_PID=""
 
 inject_gps_loop() {
@@ -144,11 +145,11 @@ inject_gps_loop() {
     sleep 0.5
     i=$((i + 1))
 
-    # After 5 fast fixes: near-stop micro-step for possibleCrash window.
+    # After 4 fast fixes: near-stop micro-step for possibleCrash window.
     # step 0.0000045° ≈ 0.5 m/fix → speed < 1.5 m/s regardless of dt.
     # Distinct positions prevent CoreLocation deduplication.
     # 6 fixes; crash confirms after elapsed >= crashConfirmWindowSec (2 s).
-    if [ $i -eq 5 ]; then
+    if [ $i -eq 4 ]; then
       for j in 1 2 3 4 5 6; do
         lat=$(python3 -c "print(${lat} + 0.0000045)")
         xcrun simctl location "${udid}" set "${lat},${lon}" 2>/dev/null || true
