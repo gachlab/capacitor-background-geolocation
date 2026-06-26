@@ -3,6 +3,8 @@
 
 package com.gachlab.geolocation.service
 
+import android.app.Service
+import android.content.Intent
 import com.gachlab.geolocation.BGConfig
 import com.gachlab.geolocation.BGLocation
 import com.gachlab.geolocation.ServiceEvent
@@ -132,9 +134,76 @@ class LocationServiceIntegrationTest {
             )
         }
         startWith(cfg)
+        driveSpeedingProfile()
 
-        // Drive ~90 km/h (25 m/s) north; one fix every second. hasSpeed=true so the
-        // detector sees the intended speed directly (no derivation ambiguity).
+        assertTrue(
+            "speeding must propagate from the driving detector through the hub: $events",
+            events.filterIsInstance<ServiceEvent.Speeding>().isNotEmpty(),
+        )
+    }
+
+    // ── Lifecycle (onStartCommand restart/sticky semantics) ─────────────────
+
+    @Test
+    fun systemKillRestartEmitsEventAndStaysSticky() {
+        // OS restarts the service with a null intent after a kill (START_STICKY).
+        val ret = service.onStartCommand(null, 0, 1)
+        assertEquals(Service.START_STICKY, ret)
+        assertTrue(
+            "null-intent restart must emit ServiceRestarted(system_kill): $events",
+            events.any { it is ServiceEvent.ServiceRestarted && it.reason == ServiceEvent.REASON_SYSTEM_KILL },
+        )
+    }
+
+    @Test
+    fun bootIntentEmitsBootRestart() {
+        val intent = Intent().putExtra(LocationService.EXTRA_START_REASON, ServiceEvent.REASON_BOOT)
+        service.onStartCommand(intent, 0, 1)
+        assertTrue(
+            "boot-reason intent must emit ServiceRestarted(boot): $events",
+            events.any { it is ServiceEvent.ServiceRestarted && it.reason == ServiceEvent.REASON_BOOT },
+        )
+    }
+
+    @Test
+    fun restartOnKillFalseReturnsNotSticky() {
+        service.configure(baseConfig().apply { restartOnKill = false })
+        val ret = service.onStartCommand(null, 0, 1)
+        assertEquals(Service.START_NOT_STICKY, ret)
+    }
+
+    // ── configure() hot-reconfigure ─────────────────────────────────────────
+
+    @Test
+    fun configureEnablesDrivingDetectorAtRuntime() {
+        startWith(baseConfig().apply { drivingEvents = null })
+        driveSpeedingProfile()
+        assertTrue(
+            "no speeding while the driving detector is disabled: $events",
+            events.filterIsInstance<ServiceEvent.Speeding>().isEmpty(),
+        )
+
+        events.clear()
+        service.configure(
+            baseConfig().apply {
+                drivingEvents = BGConfig.DrivingEventsOptions(
+                    enabled = true,
+                    speedLimitKmh = 50.0,
+                    minMovingSpeedMps = 1.0,
+                    minTripSpeedMps = 3.0,
+                    minTripDurationMs = 0L,
+                )
+            },
+        )
+        driveSpeedingProfile()
+        assertTrue(
+            "configure() must rebuild the detector so speeding now fires: $events",
+            events.filterIsInstance<ServiceEvent.Speeding>().isNotEmpty(),
+        )
+    }
+
+    /** Drive ~90 km/h (25 m/s) north for 8 fixes; hasSpeed=true so the detector sees speed directly. */
+    private fun driveSpeedingProfile() {
         var t = 1_716_000_000_000L
         var lat = 19.4326
         repeat(8) {
@@ -142,10 +211,5 @@ class LocationServiceIntegrationTest {
             lat += 25.0 / 111_000.0 // ~25 m north
             t += 1_000L
         }
-
-        assertTrue(
-            "speeding must propagate from the driving detector through the hub: $events",
-            events.filterIsInstance<ServiceEvent.Speeding>().isNotEmpty(),
-        )
     }
 }
