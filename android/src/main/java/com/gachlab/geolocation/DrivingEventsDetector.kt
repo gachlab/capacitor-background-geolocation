@@ -4,9 +4,9 @@
 package com.gachlab.geolocation
 
 import com.gachlab.geolocation.domain.GeoPoint
+import com.gachlab.geolocation.domain.Heading
 import com.gachlab.geolocation.domain.Position
 import com.gachlab.geolocation.domain.Trip
-import kotlin.math.abs
 
 /**
  * GPS-only driving events state machine.
@@ -64,9 +64,8 @@ internal class DrivingEventsDetector(private val listener: Listener) {
     private var prevPoint: GeoPoint? = null
     private var prevSpeedMps         = 0.0
     private var prevSpeedAt          = 0L
-    private var prevBearingDeg       = 0.0
-    private var prevBearingAt        = 0L
-    private var hasPrevBearing       = false
+    private var prevHeading: Heading? = null
+    private var prevHeadingAt        = 0L
     private var lastHardBrakeAt      = 0L
     private var lastRapidAccelAt     = 0L
     private var lastSharpTurnAt      = 0L
@@ -96,7 +95,7 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         aboveTripSpeedSince = 0L; belowMovingSince = 0L; wasSpeeding = false
         lastProvider = null; prevPoint = null
         prevSpeedMps = 0.0; prevSpeedAt = 0L
-        prevBearingDeg = 0.0; prevBearingAt = 0L; hasPrevBearing = false
+        prevHeading = null; prevHeadingAt = 0L
         lastHardBrakeAt = 0L; lastRapidAccelAt = 0L; lastSharpTurnAt = 0L; lastCrashAt = 0L
         scoreCalc = null
         idleStartedAt = 0L; idleThresholdFired = false; postIdleMovingAt = 0L
@@ -126,7 +125,8 @@ internal class DrivingEventsDetector(private val listener: Listener) {
             provider   = loc.provider,
         )
         val speed: Double = pos.speedMpsOrZero
-        val bearingDeg = pos.bearingDeg
+        val curHeading: Heading? = pos.bearingDeg?.let { Heading(it) }
+        val priorHeading = prevHeading  // snapshot before this fix updates it below
 
         // Provider change
         val provider = pos.provider
@@ -255,11 +255,10 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         }
 
         // ── Sharp turn (bearing change rate) ──────────────────────────────────
-        if (cfg.sharpTurnDegPerSec > 0 && bearingDeg != null && speed >= 5.0 && hasPrevBearing) {
-            val dtMs = now - prevBearingAt
+        if (cfg.sharpTurnDegPerSec > 0 && curHeading != null && speed >= 5.0 && priorHeading != null) {
+            val dtMs = now - prevHeadingAt
             if (dtMs in 1L..5_000L) {
-                var diff = abs(bearingDeg - prevBearingDeg)
-                if (diff > 180) diff = 360 - diff
+                val diff = curHeading.deltaTo(priorHeading)
                 val rate = diff * 1000.0 / dtMs
                 if (rate >= cfg.sharpTurnDegPerSec && now - lastSharpTurnAt >= COOLDOWN_MS) {
                     lastSharpTurnAt = now
@@ -270,12 +269,11 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         }
         // ── Phone usage (GPS bearing jitter, disabled when sensorFusion=true) ──────
         if (!cfg.sensorFusion && cfg.phoneUsageWindowMs > 0
-                && movingState == MovingState.TRIP_ACTIVE && bearingDeg != null && hasPrevBearing
+                && movingState == MovingState.TRIP_ACTIVE && curHeading != null && priorHeading != null
                 && speed >= 1.39 && speed <= 22.2) {
-            val bearingDtMs = now - prevBearingAt
+            val bearingDtMs = now - prevHeadingAt
             if (bearingDtMs in 1L..5_000L) {
-                var bearingDiff = abs(bearingDeg - prevBearingDeg)
-                if (bearingDiff > 180) bearingDiff = 360 - bearingDiff
+                val bearingDiff = curHeading.deltaTo(priorHeading)
                 if (bearingDiff in 5.0..25.0) {
                     if (jitterWindowStart == 0L) jitterWindowStart = now
                     jitterCount++
@@ -291,8 +289,8 @@ internal class DrivingEventsDetector(private val listener: Listener) {
             }
         }
 
-        if (bearingDeg != null) {
-            prevBearingDeg = bearingDeg; prevBearingAt = now; hasPrevBearing = true
+        if (curHeading != null) {
+            prevHeading = curHeading; prevHeadingAt = now
         }
 
         // ── Pending crash confirmation ─────────────────────────────────────────
