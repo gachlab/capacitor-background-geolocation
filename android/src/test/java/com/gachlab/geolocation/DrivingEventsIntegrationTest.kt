@@ -3,6 +3,7 @@
 
 package com.gachlab.geolocation
 
+import com.gachlab.geolocation.domain.Journey
 import com.gachlab.geolocation.domain.TripConfig
 
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -51,9 +52,9 @@ class DrivingEventsIntegrationTest {
         override fun onMoving(loc: BGLocation) { events += "moving" }
         override fun onStopped(loc: BGLocation) { events += "stopped" }
         override fun onTripStart(loc: BGLocation) { events += "tripStart" }
-        override fun onTripEnd(loc: BGLocation, distanceMeters: Double, durationMs: Long, score: TripScore) {
+        override fun onTripEnd(loc: BGLocation, journey: Journey) {
             events += "tripEnd"
-            finalScore = score
+            finalScore = journey.score
         }
         override fun onIdleStart(loc: BGLocation, startedAt: Long) { events += "idleStart" }
         override fun onIdleEnd(loc: BGLocation, durationMs: Long, startedAt: Long) { events += "idleEnd" }

@@ -3,6 +3,7 @@
 
 package com.gachlab.geolocation
 
+import com.gachlab.geolocation.domain.Journey
 import com.gachlab.geolocation.domain.TripConfig
 
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -51,8 +52,8 @@ class PhoneUsageScoringTest {
         override fun onMoving(loc: BGLocation) {}
         override fun onStopped(loc: BGLocation) {}
         override fun onTripStart(loc: BGLocation) { events += "tripStart" }
-        override fun onTripEnd(loc: BGLocation, distanceMeters: Double, durationMs: Long, score: TripScore) {
-            events += "tripEnd"; finalScore = score
+        override fun onTripEnd(loc: BGLocation, journey: Journey) {
+            events += "tripEnd"; finalScore = journey.score
         }
         override fun onIdleStart(loc: BGLocation, startedAt: Long) {}
         override fun onIdleEnd(loc: BGLocation, durationMs: Long, startedAt: Long) {}

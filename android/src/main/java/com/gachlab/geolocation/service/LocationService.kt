@@ -336,10 +336,10 @@ class LocationService : Service() {
             Log.i(TAG, "driving-event: tripStart"); sensorDetector?.tripActive = true
             fire(ServiceEvent.TripStart(loc))
         }
-        override fun onTripEnd(loc: BGLocation, distanceMeters: Double, durationMs: Long, score: com.gachlab.geolocation.TripScore) {
-            Log.i(TAG, "driving-event: tripEnd dist=${distanceMeters.toInt()}m dur=${durationMs}ms")
+        override fun onTripEnd(loc: BGLocation, journey: com.gachlab.geolocation.domain.Journey) {
+            Log.i(TAG, "driving-event: tripEnd dist=${journey.distanceMeters.toInt()}m dur=${journey.durationMs}ms")
             sensorDetector?.tripActive = false
-            fire(ServiceEvent.TripEnd(loc, distanceMeters, durationMs, score))
+            fire(ServiceEvent.TripEnd(loc, journey))
         }
         override fun onIdleStart(loc: BGLocation, startedAt: Long) =
             fire(ServiceEvent.IdleStart(loc, startedAt))
