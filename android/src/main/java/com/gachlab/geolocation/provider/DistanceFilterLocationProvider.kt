@@ -21,7 +21,6 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
-import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.round
 
@@ -290,11 +289,14 @@ internal class DistanceFilterLocationProvider(context: Context) :
         if (isMoving) return
         val radius = (cfg.stationaryRadius ?: BGConfig.DEFAULT_STATIONARY_RADIUS).toFloat()
         val stLoc = stationaryLocation ?: return
-        val distance = abs(location.distanceTo(stLoc) - stLoc.accuracy - location.accuracy)
-        if (distance > radius) onExitStationaryRegion(location)
-        else if (distance > 0) startPollingStationaryLocation(stationaryPollFast())
-        else if (stationaryLocationPollingInterval != stationaryPollLazy())
-            startPollingStationaryLocation(stationaryPollLazy())
+        val distance = StationaryRegion.adjustedDistance(location.distanceTo(stLoc), stLoc.accuracy, location.accuracy)
+        when (StationaryRegion.decide(distance, radius)) {
+            StationaryRegion.Decision.EXIT -> onExitStationaryRegion(location)
+            StationaryRegion.Decision.POLL_FAST -> startPollingStationaryLocation(stationaryPollFast())
+            StationaryRegion.Decision.POLL_LAZY ->
+                if (stationaryLocationPollingInterval != stationaryPollLazy())
+                    startPollingStationaryLocation(stationaryPollLazy())
+        }
     }
 
     private fun unsubscribeLocationUpdates() {
