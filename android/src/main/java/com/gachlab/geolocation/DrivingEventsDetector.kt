@@ -4,6 +4,7 @@
 package com.gachlab.geolocation
 
 import com.gachlab.geolocation.domain.GeoPoint
+import com.gachlab.geolocation.domain.Position
 import com.gachlab.geolocation.domain.Trip
 import kotlin.math.abs
 
@@ -117,12 +118,18 @@ internal class DrivingEventsDetector(private val listener: Listener) {
 
     @Synchronized fun onLocation(loc: BGLocation) {
         if (!cfg.enabled) return
-        val now    = System.currentTimeMillis()
-        val speed: Double = if (loc.hasSpeed) loc.speed.toDouble() else 0.0
-        val curPoint = GeoPoint(loc.latitude, loc.longitude)
+        val now = System.currentTimeMillis()
+        val pos = Position(
+            point      = GeoPoint(loc.latitude, loc.longitude),
+            speedMps   = if (loc.hasSpeed) loc.speed.toDouble() else null,
+            bearingDeg = if (loc.hasBearing) loc.bearing.toDouble() else null,
+            provider   = loc.provider,
+        )
+        val speed: Double = pos.speedMpsOrZero
+        val bearingDeg = pos.bearingDeg
 
         // Provider change
-        val provider = loc.provider
+        val provider = pos.provider
         if (provider != null && provider != lastProvider) {
             lastProvider = provider
             listener.onProviderChange(provider)
@@ -130,8 +137,8 @@ internal class DrivingEventsDetector(private val listener: Listener) {
 
         // Accumulate trip distance
         if (movingState == MovingState.TRIP_ACTIVE)
-            prevPoint?.let { activeTrip = activeTrip?.plusDistance(it.distanceTo(curPoint)) }
-        prevPoint = curPoint
+            prevPoint?.let { activeTrip = activeTrip?.plusDistance(it.distanceTo(pos.point)) }
+        prevPoint = pos.point
 
         // ── Moving / stopped state machine ────────────────────────────────────
         val nowMoving = speed >= cfg.minMovingSpeedMps
@@ -248,10 +255,10 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         }
 
         // ── Sharp turn (bearing change rate) ──────────────────────────────────
-        if (cfg.sharpTurnDegPerSec > 0 && loc.hasBearing && speed >= 5.0 && hasPrevBearing) {
+        if (cfg.sharpTurnDegPerSec > 0 && bearingDeg != null && speed >= 5.0 && hasPrevBearing) {
             val dtMs = now - prevBearingAt
             if (dtMs in 1L..5_000L) {
-                var diff = abs(loc.bearing.toDouble() - prevBearingDeg)
+                var diff = abs(bearingDeg - prevBearingDeg)
                 if (diff > 180) diff = 360 - diff
                 val rate = diff * 1000.0 / dtMs
                 if (rate >= cfg.sharpTurnDegPerSec && now - lastSharpTurnAt >= COOLDOWN_MS) {
@@ -263,11 +270,11 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         }
         // ── Phone usage (GPS bearing jitter, disabled when sensorFusion=true) ──────
         if (!cfg.sensorFusion && cfg.phoneUsageWindowMs > 0
-                && movingState == MovingState.TRIP_ACTIVE && loc.hasBearing && hasPrevBearing
+                && movingState == MovingState.TRIP_ACTIVE && bearingDeg != null && hasPrevBearing
                 && speed >= 1.39 && speed <= 22.2) {
             val bearingDtMs = now - prevBearingAt
             if (bearingDtMs in 1L..5_000L) {
-                var bearingDiff = abs(loc.bearing.toDouble() - prevBearingDeg)
+                var bearingDiff = abs(bearingDeg - prevBearingDeg)
                 if (bearingDiff > 180) bearingDiff = 360 - bearingDiff
                 if (bearingDiff in 5.0..25.0) {
                     if (jitterWindowStart == 0L) jitterWindowStart = now
@@ -284,8 +291,8 @@ internal class DrivingEventsDetector(private val listener: Listener) {
             }
         }
 
-        if (loc.hasBearing) {
-            prevBearingDeg = loc.bearing.toDouble(); prevBearingAt = now; hasPrevBearing = true
+        if (bearingDeg != null) {
+            prevBearingDeg = bearingDeg; prevBearingAt = now; hasPrevBearing = true
         }
 
         // ── Pending crash confirmation ─────────────────────────────────────────
