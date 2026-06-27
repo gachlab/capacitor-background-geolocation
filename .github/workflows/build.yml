@@ -78,10 +78,6 @@ jobs:
         with:
           api-level: 30
           arch: arm64-v8a
-          # Google APIs image (Play Services) so GMS geofencing works — the movement
-          # engine now defaults to the native stationary-exit geofence. The self-hosted
-          # `android-e2e` AVD is provisioned from this same google_apis image.
-          target: google_apis
           profile: Nexus 6
           avd-name: android-e2e
           force-avd-creation: false
