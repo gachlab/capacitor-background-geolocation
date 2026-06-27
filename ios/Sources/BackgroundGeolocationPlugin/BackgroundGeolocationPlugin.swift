@@ -152,28 +152,28 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
     private func configureDrivingDetector(from opts: [String: Any]) {
         guard let de = opts["drivingEvents"] as? [String: Any] else {
-            drivingDetector.enabled = false
+            drivingDetector.config.enabled = false
             drivingDetector.reset()
             return
         }
-        drivingDetector.enabled = (de["enabled"] as? Bool) ?? false
-        if let v = (de["speedLimit"]         as? NSNumber)?.doubleValue { drivingDetector.speedLimitKmh      = v }
-        if let v = (de["minMovingSpeed"]     as? NSNumber)?.doubleValue { drivingDetector.minMovingSpeedMps  = v }
-        if let v = (de["stoppedDuration"]    as? NSNumber)?.doubleValue { drivingDetector.stoppedDurationSec = v }
-        if let v = (de["minTripSpeed"]       as? NSNumber)?.doubleValue { drivingDetector.minTripSpeedMps    = v }
-        if let v = (de["minTripDuration"]    as? NSNumber)?.doubleValue { drivingDetector.minTripDurationSec = v }
-        if let v = (de["hardBrakeMps2"]      as? NSNumber)?.doubleValue { drivingDetector.hardBrakeMps2      = v }
-        if let v = (de["rapidAccelMps2"]     as? NSNumber)?.doubleValue { drivingDetector.rapidAccelMps2     = v }
-        if let v = (de["sharpTurnDegPerSec"] as? NSNumber)?.doubleValue { drivingDetector.sharpTurnDegPerSec = v }
-        if let v = (de["crashImpactKmh"]     as? NSNumber)?.doubleValue { drivingDetector.crashImpactKmh     = v }
-        if let v = (de["crashWindowMs"]      as? NSNumber)?.doubleValue { drivingDetector.crashWindowSec     = v / 1000.0 }
-        if let v = (de["crashConfirmWindowMs"] as? NSNumber)?.doubleValue { drivingDetector.crashConfirmWindowSec = v / 1000.0 }
-        if let v = de["sensorFusion"]        as? Bool                    { drivingDetector.sensorFusion          = v }
-        if let v = (de["phoneUsageWindowMs"]  as? NSNumber)?.doubleValue { drivingDetector.phoneUsageWindowSec   = v / 1000.0 }
-        if let v = (de["phoneUsageCooldownMs"] as? NSNumber)?.doubleValue { drivingDetector.phoneUsageCooldownSec = v / 1000.0 }
+        drivingDetector.config.enabled = (de["enabled"] as? Bool) ?? false
+        if let v = (de["speedLimit"]         as? NSNumber)?.doubleValue { drivingDetector.config.speedLimitKmh      = v }
+        if let v = (de["minMovingSpeed"]     as? NSNumber)?.doubleValue { drivingDetector.config.minMovingSpeedMps  = v }
+        if let v = (de["stoppedDuration"]    as? NSNumber)?.doubleValue { drivingDetector.config.stoppedDurationSec = v }
+        if let v = (de["minTripSpeed"]       as? NSNumber)?.doubleValue { drivingDetector.config.minTripSpeedMps    = v }
+        if let v = (de["minTripDuration"]    as? NSNumber)?.doubleValue { drivingDetector.config.minTripDurationSec = v }
+        if let v = (de["hardBrakeMps2"]      as? NSNumber)?.doubleValue { drivingDetector.config.hardBrakeMps2      = v }
+        if let v = (de["rapidAccelMps2"]     as? NSNumber)?.doubleValue { drivingDetector.config.rapidAccelMps2     = v }
+        if let v = (de["sharpTurnDegPerSec"] as? NSNumber)?.doubleValue { drivingDetector.config.sharpTurnDegPerSec = v }
+        if let v = (de["crashImpactKmh"]     as? NSNumber)?.doubleValue { drivingDetector.config.crashImpactKmh     = v }
+        if let v = (de["crashWindowMs"]      as? NSNumber)?.doubleValue { drivingDetector.config.crashWindowSec     = v / 1000.0 }
+        if let v = (de["crashConfirmWindowMs"] as? NSNumber)?.doubleValue { drivingDetector.config.crashConfirmWindowSec = v / 1000.0 }
+        if let v = de["sensorFusion"]        as? Bool                    { drivingDetector.config.sensorFusion          = v }
+        if let v = (de["phoneUsageWindowMs"]  as? NSNumber)?.doubleValue { drivingDetector.config.phoneUsageWindowSec   = v / 1000.0 }
+        if let v = (de["phoneUsageCooldownMs"] as? NSNumber)?.doubleValue { drivingDetector.config.phoneUsageCooldownSec = v / 1000.0 }
         // v1.4 idle + scoring
-        if let v = (de["idleThresholdMs"]    as? NSNumber)?.doubleValue { drivingDetector.idleThresholdSec    = v / 1000.0 }
-        if let v = (de["idleEndThresholdMs"] as? NSNumber)?.doubleValue { drivingDetector.idleEndThresholdSec = v / 1000.0 }
+        if let v = (de["idleThresholdMs"]    as? NSNumber)?.doubleValue { drivingDetector.config.idleThresholdSec    = v / 1000.0 }
+        if let v = (de["idleEndThresholdMs"] as? NSNumber)?.doubleValue { drivingDetector.config.idleEndThresholdSec = v / 1000.0 }
         if let sw = de["scoring"] as? [String: Any] {
             var weights = ScoringWeights()
             if let v = (sw["speedingWeight"]    as? NSNumber)?.intValue { weights.speeding    = v }
@@ -181,9 +181,9 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
             if let v = (sw["rapidAccelWeight"]  as? NSNumber)?.intValue { weights.rapidAccel  = v }
             if let v = (sw["sharpTurnWeight"]   as? NSNumber)?.intValue { weights.sharpTurn   = v }
             if let v = (sw["phoneUsageWeight"]  as? NSNumber)?.intValue { weights.phoneUsage  = v }
-            drivingDetector.scoringWeights = weights.isValid ? weights : nil
+            drivingDetector.config.scoringWeights = weights.isValid ? weights : nil
         } else {
-            drivingDetector.scoringWeights = nil
+            drivingDetector.config.scoringWeights = nil
         }
         drivingDetector.reset()
     }
