@@ -53,6 +53,11 @@ internal class DistanceFilterLocationProvider(context: Context) :
     private var stationaryLocationPollingInterval = 0L
     private var isStarted = false
 
+    // Native-geofence stationary-exit backstop (Doze-immune). Null until first armed.
+    private var exitBackstop: StationaryExitBackstop? = null
+    /** Seam so unit tests can inject a fake backstop instead of the GMS geofence impl. */
+    internal var exitBackstopFactory: (Context) -> StationaryExitBackstop = { GeofenceExitBackstop(it) }
+
     // PendingIntents
     private lateinit var stationaryAlarmPI: PendingIntent
     private lateinit var stationaryLocationPollingPI: PendingIntent
@@ -134,6 +139,8 @@ internal class DistanceFilterLocationProvider(context: Context) :
         if (!isStarted) return
         try {
             unsubscribeLocationUpdates()
+            exitBackstop?.disarm()
+            exitBackstop = null
             alarmManager.cancel(stationaryAlarmPI)
             alarmManager.cancel(stationaryLocationPollingPI)
         } catch (_: SecurityException) {
@@ -266,12 +273,27 @@ internal class DistanceFilterLocationProvider(context: Context) :
             stationaryLocation = location
             stationaryRadius = proxRadius
             Log.i(TAG, "enterStationary lat=${location.latitude} lon=${location.longitude}")
-            startPollingStationaryLocation(stationaryPollLazy())
+            if (geofenceExitMode()) armGeofenceBackstop(location)
+            else startPollingStationaryLocation(stationaryPollLazy())
         } catch (e: SecurityException) { handleSecurityException(e) }
+    }
+
+    /** "geofence" → native GMS exit-geofence (Doze-immune); otherwise AlarmManager polling. */
+    private fun geofenceExitMode(): Boolean =
+        mConfig?.stationaryExitMode == BGConfig.STATIONARY_EXIT_GEOFENCE
+
+    private fun armGeofenceBackstop(center: Location) {
+        val backstop = exitBackstop ?: exitBackstopFactory(mContext).also { exitBackstop = it }
+        Log.i(TAG, "Arming native geofence exit-backstop r=${stationaryRadius}m (Doze-immune)")
+        backstop.arm(center.latitude, center.longitude, stationaryRadius) {
+            // OS detected the device left the stationary region → resume the moving pace.
+            onExitStationaryRegion(stationaryLocation ?: center)
+        }
     }
 
     fun onExitStationaryRegion(location: Location) {
         try {
+            exitBackstop?.disarm()
             alarmManager.cancel(stationaryLocationPollingPI)
             setPace(true)
         } catch (e: SecurityException) { handleSecurityException(e) }

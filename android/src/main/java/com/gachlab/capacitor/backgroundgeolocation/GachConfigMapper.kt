@@ -122,6 +122,7 @@ object GachConfigMapper {
         if (j.has("restartOnKill")) c.restartOnKill = j.getBoolean("restartOnKill")
         if (j.has("includeBattery")) c.includeBattery = j.getBoolean("includeBattery")
         if (has(j, "wakeLockMode"))  c.wakeLockMode    = j.getString("wakeLockMode")
+        if (has(j, "stationaryExitMode")) c.stationaryExitMode = j.getString("stationaryExitMode")
 
         if (j.has("stationaryTimeout") && !j.isNull("stationaryTimeout"))
             c.stationaryTimeout      = j.getInt("stationaryTimeout")
@@ -216,6 +217,7 @@ object GachConfigMapper {
 
         json.put("includeBattery",             config.includeBattery ?: true)
         json.put("wakeLockMode",               config.wakeLockMode ?: BGConfig.DEFAULT_WAKE_LOCK_MODE)
+        json.put("stationaryExitMode",         config.stationaryExitMode ?: BGConfig.DEFAULT_STATIONARY_EXIT_MODE)
         json.put("stationaryTimeout",          config.stationaryTimeout)
         json.put("stationaryPollInterval",     config.stationaryPollInterval)
         json.put("stationaryPollFast",         config.stationaryPollFast)
@@ -271,6 +273,7 @@ object GachConfigMapper {
         j.put("mockLocationPolicy",         config.mockLocationPolicy)
         j.put("includeBattery",             config.includeBattery)
         j.put("wakeLockMode",               config.wakeLockMode)
+        j.put("stationaryExitMode",         config.stationaryExitMode)
         j.put("stationaryTimeout",          config.stationaryTimeout)
         j.put("stationaryPollInterval",     config.stationaryPollInterval)
         j.put("stationaryPollFast",         config.stationaryPollFast)
