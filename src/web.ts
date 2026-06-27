@@ -25,20 +25,10 @@ import type {
   TripScore,
 } from './definitions';
 import { AuthorizationStatus } from './definitions';
+import { GeoPoint } from './domain/geo-point';
 
 interface BrowserPermissions {
   query?: (descriptor: { name: string }) => Promise<{ state: PermissionState }>;
-}
-
-/** Great-circle distance in metres between two lat/lon points (haversine). */
-function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const r = 6_371_000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return 2 * r * Math.asin(Math.sqrt(a));
 }
 
 export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeolocationPlugin {
@@ -442,7 +432,10 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   }
 
   private isInside(gf: Geofence, loc: Location): boolean {
-    return distanceMeters(gf.latitude, gf.longitude, loc.latitude, loc.longitude) <= (gf.radius ?? 200);
+    return (
+      new GeoPoint(gf.latitude, gf.longitude).distanceTo(new GeoPoint(loc.latitude, loc.longitude)) <=
+      (gf.radius ?? 200)
+    );
   }
 
   // ---------------- Driver intelligence ----------------
