@@ -300,7 +300,10 @@ class BGConfig() : Parcelable {
         const val DEFAULT_STATIONARY_POLL_FAST         = 60 * 1000
         const val STATIONARY_EXIT_POLLING              = "polling"
         const val STATIONARY_EXIT_GEOFENCE             = "geofence"
-        const val DEFAULT_STATIONARY_EXIT_MODE         = STATIONARY_EXIT_POLLING
+        // Default to the native GMS exit-geofence (Doze-immune). The provider is
+        // already fused-only (requires Play Services), so GMS geofencing is always
+        // available where this provider runs; "polling" stays as an explicit fallback.
+        const val DEFAULT_STATIONARY_EXIT_MODE         = STATIONARY_EXIT_GEOFENCE
         const val DEFAULT_ACTIVITY_CONFIDENCE_THRESHOLD = 50
         const val DEFAULT_HTTP_METHOD                  = "POST"
         const val DEFAULT_SYNC_HTTP_METHOD             = "POST"
