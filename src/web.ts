@@ -26,6 +26,7 @@ import type {
 } from './definitions';
 import { AuthorizationStatus } from './definitions';
 import { GeoPoint } from './domain/geo-point';
+import { GeofenceTransition } from './domain/geofence-transition';
 
 interface BrowserPermissions {
   query?: (descriptor: { name: string }) => Promise<{ state: PermissionState }>;
@@ -390,7 +391,8 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   private handleGeofenceEntered(gf: Geofence, loc: Location): void {
     if (this.insideGeofences.has(gf.id)) return;
     this.insideGeofences.add(gf.id);
-    if (gf.notifyOnEntry) this.notifyListeners('geofenceEnter', { id: gf.id, action: 'ENTER', location: loc });
+    if (gf.notifyOnEntry)
+      this.notifyListeners('geofenceEnter', { id: gf.id, action: GeofenceTransition.ENTER, location: loc });
     if (gf.notifyOnDwell) {
       this.dwellEnterAt.set(gf.id, loc.time);
       // Fast path for a stationary device that may stop emitting fixes; the per-fix
@@ -406,7 +408,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     this.clearDwell(gf.id);
     // EXIT only on a real boundary crossing (we were inside).
     if (wasInside && gf.notifyOnExit)
-      this.notifyListeners('geofenceExit', { id: gf.id, action: 'EXIT', location: loc });
+      this.notifyListeners('geofenceExit', { id: gf.id, action: GeofenceTransition.EXIT, location: loc });
   }
 
   private evaluateDwell(gf: Geofence, loc: Location): void {
@@ -419,7 +421,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   private fireDwellIfPending(id: string, loc: Location): void {
     if (!this.dwellEnterAt.has(id)) return;
     this.clearDwell(id);
-    this.notifyListeners('geofenceDwell', { id, action: 'DWELL', location: loc });
+    this.notifyListeners('geofenceDwell', { id, action: GeofenceTransition.DWELL, location: loc });
   }
 
   private clearDwell(id: string): void {
