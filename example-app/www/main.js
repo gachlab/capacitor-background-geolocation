@@ -88,6 +88,15 @@ document.addEventListener('DOMContentLoaded', () => {
       }),
     );
 
+  // changePace equivalent (Transistorsoft-style): force the movement state machine
+  // for manual on-device geofence-mode testing — mock-GPS (Lockito) does not trigger
+  // the stationary↔moving transition by itself, so drive it here. switchMode(1)=moving,
+  // switchMode(0)=stationary (acquire → enterStationary → arm the exit-geofence).
+  document.getElementById('pace-moving').onclick = () =>
+    safe('switchMode(moving)', () => BackgroundGeolocation.switchMode({ mode: 1 }));
+  document.getElementById('pace-stationary').onclick = () =>
+    safe('switchMode(stationary)', () => BackgroundGeolocation.switchMode({ mode: 0 }));
+
   document.getElementById('start').onclick = () => safe('start', () => BackgroundGeolocation.start());
   document.getElementById('stop').onclick = () => safe('stop', () => BackgroundGeolocation.stop());
   document.getElementById('status').onclick = () => safe('checkStatus', () => BackgroundGeolocation.checkStatus());
