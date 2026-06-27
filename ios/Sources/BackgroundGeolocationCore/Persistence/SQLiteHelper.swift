@@ -25,7 +25,13 @@ final class SQLiteHelper {
         let dbURL = appSupportDir.appendingPathComponent("gachlab_geo.sqlite")
         let dbPath = dbURL.path
 
-        if sqlite3_open(dbPath, &db) != SQLITE_OK {
+        // This single connection is shared across threads (main-thread queries, the
+        // PostLocationTask background sync, location callbacks). Open it FULLMUTEX so the
+        // handle is serialized — a plain sqlite3_open inherits the system libsqlite3's
+        // default threading mode, which can hand back a no-mutex connection and trip
+        // `sqlite3MutexMisuseAssert` (a hard trap) under concurrent use.
+        let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
+        if sqlite3_open_v2(dbPath, &db, flags, nil) != SQLITE_OK {
             db = nil
         }
     }
