@@ -68,6 +68,26 @@ document.addEventListener('DOMContentLoaded', () => {
       }),
     );
 
+  // Same provider as Configure but with the native geofence stationary-exit backstop
+  // enabled — used by the stationary-geofence E2E (needs Play Services / a GMS emulator).
+  document.getElementById('configure-gf-exit').onclick = () =>
+    safe('configure', () =>
+      BackgroundGeolocation.configure({
+        locationProvider: 2,
+        desiredAccuracy: 0,
+        stationaryRadius: 25,
+        stationaryExitMode: 'geofence',
+        distanceFilter: 0,
+        debug: false,
+        stopOnTerminate: false,
+        interval: 1000,
+        notificationsEnabled: true,
+        startForeground: true,
+        notificationTitle: 'GF-exit test',
+        notificationText: 'Location enabled',
+      }),
+    );
+
   document.getElementById('start').onclick = () => safe('start', () => BackgroundGeolocation.start());
   document.getElementById('stop').onclick = () => safe('stop', () => BackgroundGeolocation.stop());
   document.getElementById('status').onclick = () => safe('checkStatus', () => BackgroundGeolocation.checkStatus());
