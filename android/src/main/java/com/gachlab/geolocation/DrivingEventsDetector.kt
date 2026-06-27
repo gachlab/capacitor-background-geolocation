@@ -3,12 +3,9 @@
 
 package com.gachlab.geolocation
 
+import com.gachlab.geolocation.domain.GeoPoint
 import com.gachlab.geolocation.domain.Trip
 import kotlin.math.abs
-import kotlin.math.asin
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 /**
  * GPS-only driving events state machine.
@@ -63,9 +60,7 @@ internal class DrivingEventsDetector(private val listener: Listener) {
     private var belowMovingSince     = 0L
     private var wasSpeeding          = false
     private var lastProvider: String? = null
-    private var prevLat              = 0.0
-    private var prevLon              = 0.0
-    private var hasPrev              = false
+    private var prevPoint: GeoPoint? = null
     private var prevSpeedMps         = 0.0
     private var prevSpeedAt          = 0L
     private var prevBearingDeg       = 0.0
@@ -98,7 +93,7 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         movingState = MovingState.STATIONARY
         activeTrip = null
         aboveTripSpeedSince = 0L; belowMovingSince = 0L; wasSpeeding = false
-        lastProvider = null; hasPrev = false
+        lastProvider = null; prevPoint = null
         prevSpeedMps = 0.0; prevSpeedAt = 0L
         prevBearingDeg = 0.0; prevBearingAt = 0L; hasPrevBearing = false
         lastHardBrakeAt = 0L; lastRapidAccelAt = 0L; lastSharpTurnAt = 0L; lastCrashAt = 0L
@@ -124,8 +119,7 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         if (!cfg.enabled) return
         val now    = System.currentTimeMillis()
         val speed: Double = if (loc.hasSpeed) loc.speed.toDouble() else 0.0
-        val curLat = loc.latitude
-        val curLon = loc.longitude
+        val curPoint = GeoPoint(loc.latitude, loc.longitude)
 
         // Provider change
         val provider = loc.provider
@@ -135,9 +129,9 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         }
 
         // Accumulate trip distance
-        if (hasPrev && movingState == MovingState.TRIP_ACTIVE)
-            activeTrip = activeTrip?.plusDistance(haversineMeters(prevLat, prevLon, curLat, curLon))
-        prevLat = curLat; prevLon = curLon; hasPrev = true
+        if (movingState == MovingState.TRIP_ACTIVE)
+            prevPoint?.let { activeTrip = activeTrip?.plusDistance(it.distanceTo(curPoint)) }
+        prevPoint = curPoint
 
         // ── Moving / stopped state machine ────────────────────────────────────
         val nowMoving = speed >= cfg.minMovingSpeedMps
@@ -314,15 +308,5 @@ internal class DrivingEventsDetector(private val listener: Listener) {
 
     companion object {
         private const val COOLDOWN_MS = 4_000L
-        private const val R_METERS    = 6_371_000.0
-
-        private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-            val dLat = Math.toRadians(lat2 - lat1)
-            val dLon = Math.toRadians(lon2 - lon1)
-            val a = sin(dLat / 2).let { it * it } +
-                    cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
-                    sin(dLon / 2).let { it * it }
-            return 2 * R_METERS * asin(sqrt(a))
-        }
     }
 }
