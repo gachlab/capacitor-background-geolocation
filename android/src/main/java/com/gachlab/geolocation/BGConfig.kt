@@ -98,6 +98,13 @@ class BGConfig() : Parcelable {
     var stationaryTimeout: Int?     = null  // ms
     var stationaryPollInterval: Int? = null // ms
     var stationaryPollFast: Int?    = null  // ms
+    /**
+     * How the engine detects leaving the stationary region: `"polling"` (default —
+     * AlarmManager + fused poll) or `"geofence"` (a native GMS exit-geofence, Doze-immune,
+     * zero app CPU while parked). `"geofence"` requires Google Play Services; the engine
+     * falls back to polling where GMS is unavailable.
+     */
+    var stationaryExitMode: String? = null
 
     // ── Provider hardening (v4.5.2) ───────────────────────────────────────────
     var activityConfidenceThreshold: Int? = null
@@ -235,6 +242,7 @@ class BGConfig() : Parcelable {
         // v4.4+
         dest.writeValue(includeBattery)
         dest.writeString(wakeLockMode)
+        dest.writeString(stationaryExitMode)
         dest.writeValue(stationaryTimeout)
         dest.writeValue(stationaryPollInterval)
         dest.writeValue(stationaryPollFast)
@@ -290,6 +298,9 @@ class BGConfig() : Parcelable {
         const val DEFAULT_STATIONARY_TIMEOUT           = 5 * 60 * 1000
         const val DEFAULT_STATIONARY_POLL_INTERVAL     = 3 * 60 * 1000
         const val DEFAULT_STATIONARY_POLL_FAST         = 60 * 1000
+        const val STATIONARY_EXIT_POLLING              = "polling"
+        const val STATIONARY_EXIT_GEOFENCE             = "geofence"
+        const val DEFAULT_STATIONARY_EXIT_MODE         = STATIONARY_EXIT_POLLING
         const val DEFAULT_ACTIVITY_CONFIDENCE_THRESHOLD = 50
         const val DEFAULT_HTTP_METHOD                  = "POST"
         const val DEFAULT_SYNC_HTTP_METHOD             = "POST"
@@ -349,6 +360,7 @@ class BGConfig() : Parcelable {
             stationaryTimeout          = DEFAULT_STATIONARY_TIMEOUT
             stationaryPollInterval     = DEFAULT_STATIONARY_POLL_INTERVAL
             stationaryPollFast         = DEFAULT_STATIONARY_POLL_FAST
+            stationaryExitMode         = DEFAULT_STATIONARY_EXIT_MODE
             activityConfidenceThreshold = DEFAULT_ACTIVITY_CONFIDENCE_THRESHOLD
             maxAcceptedAccuracy        = null
         }
@@ -409,6 +421,7 @@ class BGConfig() : Parcelable {
             result.drivingEvents               = b.drivingEvents
             result.includeBattery              = b.includeBattery
             result.wakeLockMode                = b.wakeLockMode
+            result.stationaryExitMode          = b.stationaryExitMode
             result.stationaryTimeout           = b.stationaryTimeout
             result.stationaryPollInterval      = b.stationaryPollInterval
             result.stationaryPollFast          = b.stationaryPollFast
@@ -466,6 +479,7 @@ class BGConfig() : Parcelable {
             o.drivingEvents?.let               { result.drivingEvents               = it }
             o.includeBattery?.let              { result.includeBattery              = it }
             o.wakeLockMode?.let                { result.wakeLockMode                = it }
+            o.stationaryExitMode?.let          { result.stationaryExitMode          = it.lowercase(Locale.US) }
             o.stationaryTimeout?.let           { result.stationaryTimeout           = it }
             o.stationaryPollInterval?.let      { result.stationaryPollInterval      = it }
             o.stationaryPollFast?.let          { result.stationaryPollFast          = it }
@@ -561,6 +575,7 @@ class BGConfig() : Parcelable {
                 }
                 c.includeBattery              = parcel.readValue(null) as? Boolean
                 c.wakeLockMode                = parcel.readString()
+                c.stationaryExitMode          = parcel.readString()
                 c.stationaryTimeout           = parcel.readValue(null) as? Int
                 c.stationaryPollInterval      = parcel.readValue(null) as? Int
                 c.stationaryPollFast          = parcel.readValue(null) as? Int

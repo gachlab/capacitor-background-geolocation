@@ -53,6 +53,12 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Internal stationary-exit geofence backstop (movement engine, Doze-immune). -->
+        <receiver
+            android:name="com.gachlab.geolocation.provider.StationaryGeofenceReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
         <!-- Restart the service after device reboot when startOnBoot is enabled. -->
         <receiver
             android:name="com.gachlab.geolocation.BootReceiver"
