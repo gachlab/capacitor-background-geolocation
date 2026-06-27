@@ -7,6 +7,7 @@ import com.gachlab.geolocation.domain.GeoPoint
 import com.gachlab.geolocation.domain.Heading
 import com.gachlab.geolocation.domain.Position
 import com.gachlab.geolocation.domain.Trip
+import com.gachlab.geolocation.domain.TripConfig
 
 /**
  * GPS-only driving events state machine.
@@ -30,30 +31,9 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         fun onPhoneUsageWhileDriving(loc: BGLocation)
     }
 
-    data class Config(
-        val enabled:             Boolean = false,
-        val speedLimitKmh:       Double  = 0.0,
-        val minMovingSpeedMps:   Double  = 1.0,
-        val stoppedDurationMs:   Long    = 60_000L,
-        val minTripSpeedMps:     Double  = 3.0,
-        val minTripDurationMs:   Long    = 30_000L,
-        val hardBrakeMps2:       Double  = 3.5,
-        val rapidAccelMps2:      Double  = 3.5,
-        val sharpTurnDegPerSec:  Double  = 30.0,
-        val crashImpactKmh:      Double  = 25.0,
-        val crashWindowMs:       Long    = 2_000L,
-        val idleThresholdMs:     Long    = 300_000L,
-        val idleEndThresholdMs:  Long    = 30_000L,
-        val scoringWeights:      ScoringWeights? = null,
-        val crashConfirmWindowMs: Long   = 0L,
-        val sensorFusion:        Boolean = false,
-        val phoneUsageWindowMs:  Long    = 4_000L,
-        val phoneUsageCooldownMs: Long   = 60_000L,
-    )
-
     private enum class MovingState { STATIONARY, MOVING, TRIP_ACTIVE }
 
-    @Volatile private var cfg = Config()
+    @Volatile private var cfg = TripConfig()
 
     private var movingState          = MovingState.STATIONARY
     private var activeTrip: Trip?    = null
@@ -87,7 +67,7 @@ internal class DrivingEventsDetector(private val listener: Listener) {
     private var jitterCount:          Int  = 0
     private var lastPhoneUsageAt:     Long = 0L
 
-    @Synchronized fun setConfig(c: Config) { cfg = c }
+    @Synchronized fun setConfig(c: TripConfig) { cfg = c }
 
     @Synchronized fun reset() {
         movingState = MovingState.STATIONARY

@@ -3,6 +3,8 @@
 
 package com.gachlab.geolocation
 
+import com.gachlab.geolocation.domain.TripConfig
+
 import com.gachlab.geolocation.fixtures.MockTripBuilder
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -18,7 +20,7 @@ class DrivingEventsDetectorTest {
     private var lastScore: TripScore? = null
     private lateinit var detector: DrivingEventsDetector
 
-    private val cfg = DrivingEventsDetector.Config(
+    private val cfg = TripConfig(
         enabled            = true,
         speedLimitKmh      = 120.0,
         minMovingSpeedMps  = 1.0,
@@ -132,7 +134,7 @@ class DrivingEventsDetectorTest {
 
     @Nested @DisplayName("idle detection")
     inner class IdleDetection {
-        private val idleCfg = DrivingEventsDetector.Config(
+        private val idleCfg = TripConfig(
             enabled             = true,
             minMovingSpeedMps   = 1.0,
             stoppedDurationMs   = 60_000L,
