@@ -54,9 +54,11 @@ final class DrivingEventsE2ETests: XCTestCase {
     func testSpeedingEventFires() throws {
         tapConfigure()
         tapStart()
-        // GPS is injected by the external shell script; allow up to 40 s for the
-        // speeding event to appear in the WebView log.
-        XCTAssert(waitForEvent("event:speeding", timeout: 40), "speeding event not fired within 40 s")
+        // GPS is injected by the external shell script; `xcrun simctl location set` is
+        // slow and unreliable on CI runners (3-4 s/fix, occasional stalls), so the
+        // injected fixes can take a while to start landing. Allow a generous window —
+        // this is pure test tolerance, not a product timing constraint.
+        XCTAssert(waitForEvent("event:speeding", timeout: 90), "speeding event not fired within 90 s")
     }
 
     func testPossibleCrashEventFires() throws {
@@ -64,9 +66,10 @@ final class DrivingEventsE2ETests: XCTestCase {
         tapStart()
         // possibleCrash needs a full decel cycle (high-speed → near-stop → confirm),
         // which the injector reaches once per ~cycle. On a slow CI runner a single
-        // cycle can eat most of a 40 s budget, leaving one fragile attempt. Allow
-        // 120 s so several decel cycles land — turns a single chance into ~3+.
-        XCTAssert(waitForEvent("event:possibleCrash", timeout: 120), "possibleCrash event not fired within 120 s")
+        // cycle can eat most of the budget, leaving one fragile attempt, and simctl
+        // injection can stall for tens of seconds. Allow 180 s so several decel cycles
+        // land — pure test tolerance, not a product timing constraint.
+        XCTAssert(waitForEvent("event:possibleCrash", timeout: 180), "possibleCrash event not fired within 180 s")
     }
 
     // MARK: - Geofencing (#20)
