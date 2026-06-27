@@ -171,7 +171,7 @@ class BGFacade(private val context: Context) {
         when (event) {
             is ServiceEvent.ServiceStarted -> isRunning = true
             is ServiceEvent.ServiceStopped -> isRunning = false
-            is ServiceEvent.TripEnd        -> lastScore = event.score
+            is ServiceEvent.TripEnd        -> lastScore = event.journey.score
             is ServiceEvent.Stationary     -> { lastStationary = event.loc; lastStationaryRadius = event.radius }
             else -> Unit
         }

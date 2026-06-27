@@ -5,6 +5,7 @@ package com.gachlab.geolocation
 
 import com.gachlab.geolocation.domain.GeoPoint
 import com.gachlab.geolocation.domain.Heading
+import com.gachlab.geolocation.domain.Journey
 import com.gachlab.geolocation.domain.Position
 import com.gachlab.geolocation.domain.Trip
 import com.gachlab.geolocation.domain.TripConfig
@@ -19,7 +20,7 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         fun onMoving(loc: BGLocation)
         fun onStopped(loc: BGLocation)
         fun onTripStart(loc: BGLocation)
-        fun onTripEnd(loc: BGLocation, distanceMeters: Double, durationMs: Long, score: TripScore)
+        fun onTripEnd(loc: BGLocation, journey: Journey)
         fun onSpeeding(loc: BGLocation, speedKmh: Double, limitKmh: Double)
         fun onProviderChange(provider: String)
         fun onHardBrake(loc: BGLocation, decelMps2: Double)
@@ -152,7 +153,7 @@ internal class DrivingEventsDetector(private val listener: Listener) {
                         ?: ScoreCalculator().compute(trip.id, trip.startedAtMs, now, trip.distanceMeters)
                     scoreCalc = null
                     activeTrip = null
-                    listener.onTripEnd(loc, trip.distanceMeters, trip.durationMs(now), score)
+                    listener.onTripEnd(loc, Journey.completed(trip, now, score))
                 }
             }
         }

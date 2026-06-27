@@ -93,9 +93,9 @@ class BackgroundGeolocationPlugin : Plugin() {
             is ServiceEvent.PhoneUsageWhileDriving -> notify("phoneUsageWhileDriving", event.loc.toJS())
             is ServiceEvent.TripEnd           -> notifyListeners("tripEnd", JSObject().apply {
                 put("location",   event.loc.toJSONObjectWithId())
-                put("distance",   event.distanceMeters)
-                put("durationMs", event.durationMs)
-                event.score?.let { put("score", scoreToJS(it)) }
+                put("distance",   event.journey.distanceMeters)
+                put("durationMs", event.journey.durationMs)
+                put("score", scoreToJS(event.journey.score))
             })
             is ServiceEvent.IdleStart         -> notifyListeners("idleStart", JSObject().apply {
                 put("location", event.loc.toJSONObjectWithId())
