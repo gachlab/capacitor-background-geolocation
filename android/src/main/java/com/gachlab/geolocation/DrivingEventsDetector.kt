@@ -3,6 +3,7 @@
 
 package com.gachlab.geolocation
 
+import com.gachlab.geolocation.domain.Trip
 import kotlin.math.abs
 import kotlin.math.asin
 import kotlin.math.cos
@@ -57,8 +58,7 @@ internal class DrivingEventsDetector(private val listener: Listener) {
     @Volatile private var cfg = Config()
 
     private var movingState          = MovingState.STATIONARY
-    private var tripStartedAt        = 0L
-    private var tripDistanceMeters   = 0.0
+    private var activeTrip: Trip?    = null
     private var aboveTripSpeedSince  = 0L
     private var belowMovingSince     = 0L
     private var wasSpeeding          = false
@@ -78,7 +78,6 @@ internal class DrivingEventsDetector(private val listener: Listener) {
 
     // Scoring / idle state
     private var scoreCalc:            ScoreCalculator? = null
-    private var tripId:               String = ""
     private var idleStartedAt:        Long = 0L
     private var idleThresholdFired:   Boolean = false
     private var postIdleMovingAt:     Long = 0L
@@ -97,13 +96,13 @@ internal class DrivingEventsDetector(private val listener: Listener) {
 
     @Synchronized fun reset() {
         movingState = MovingState.STATIONARY
-        tripStartedAt = 0L; tripDistanceMeters = 0.0
+        activeTrip = null
         aboveTripSpeedSince = 0L; belowMovingSince = 0L; wasSpeeding = false
         lastProvider = null; hasPrev = false
         prevSpeedMps = 0.0; prevSpeedAt = 0L
         prevBearingDeg = 0.0; prevBearingAt = 0L; hasPrevBearing = false
         lastHardBrakeAt = 0L; lastRapidAccelAt = 0L; lastSharpTurnAt = 0L; lastCrashAt = 0L
-        scoreCalc = null; tripId = ""
+        scoreCalc = null
         idleStartedAt = 0L; idleThresholdFired = false; postIdleMovingAt = 0L
         pendingCrashLoc = null; pendingCrashDropKmh = 0.0; pendingCrashDetectedAt = 0L
         jitterWindowStart = 0L; jitterCount = 0; lastPhoneUsageAt = 0L
@@ -137,7 +136,7 @@ internal class DrivingEventsDetector(private val listener: Listener) {
 
         // Accumulate trip distance
         if (hasPrev && movingState == MovingState.TRIP_ACTIVE)
-            tripDistanceMeters += haversineMeters(prevLat, prevLon, curLat, curLon)
+            activeTrip = activeTrip?.plusDistance(haversineMeters(prevLat, prevLon, curLat, curLon))
         prevLat = curLat; prevLon = curLon; hasPrev = true
 
         // ── Moving / stopped state machine ────────────────────────────────────
@@ -153,8 +152,7 @@ internal class DrivingEventsDetector(private val listener: Listener) {
                     if (aboveTripSpeedSince == 0L) aboveTripSpeedSince = now
                     if (now - aboveTripSpeedSince >= cfg.minTripDurationMs) {
                         movingState = MovingState.TRIP_ACTIVE
-                        tripStartedAt = now; tripDistanceMeters = 0.0
-                        tripId = now.toString()
+                        activeTrip = Trip.startedAt(now)
                         scoreCalc = ScoreCalculator(cfg.scoringWeights ?: ScoringWeights())
                         listener.onTripStart(loc)
                     }
@@ -168,10 +166,12 @@ internal class DrivingEventsDetector(private val listener: Listener) {
                 movingState = MovingState.STATIONARY
                 listener.onStopped(loc)
                 if (wasTripActive) {
-                    val score = scoreCalc?.compute(tripId, tripStartedAt, now, tripDistanceMeters)
-                        ?: ScoreCalculator().compute(tripId, tripStartedAt, now, tripDistanceMeters)
+                    val trip = activeTrip ?: Trip.startedAt(now)
+                    val score = scoreCalc?.compute(trip.id, trip.startedAtMs, now, trip.distanceMeters)
+                        ?: ScoreCalculator().compute(trip.id, trip.startedAtMs, now, trip.distanceMeters)
                     scoreCalc = null
-                    listener.onTripEnd(loc, tripDistanceMeters, now - tripStartedAt, score)
+                    activeTrip = null
+                    listener.onTripEnd(loc, trip.distanceMeters, trip.durationMs(now), score)
                 }
             }
         }
