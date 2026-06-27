@@ -16,7 +16,7 @@ protocol DrivingEventsDetectorDelegate: AnyObject {
     func detectorOnMoving(_ location: DLLocation)
     func detectorOnStopped(_ location: DLLocation)
     func detectorOnTripStart(_ location: DLLocation)
-    func detectorOnTripEnd(_ location: DLLocation, distanceMeters: Double, durationMs: Int64, score: TripScore)
+    func detectorOnTripEnd(_ location: DLLocation, journey: Journey)
     func detectorOnSpeeding(_ location: DLLocation, speedKmh: Double, limitKmh: Double)
     func detectorOnProviderChange(provider: String)
     func detectorOnHardBrake(_ location: DLLocation, decelMps2: Double)
@@ -170,7 +170,6 @@ final class DrivingEventsDetector {
                 if tripActive {
                     let trip  = activeTrip ?? Trip.startedAt(now)
                     let dist  = trip.distanceMeters
-                    let durMs = trip.durationMs(now)
                     let score = scoreCalc?.compute(tripId: trip.id, startedAt: trip.startedAt,
                                                    endedAt: now, distanceMeters: dist)
                                ?? ScoreCalculator().compute(tripId: trip.id, startedAt: trip.startedAt,
@@ -178,7 +177,7 @@ final class DrivingEventsDetector {
                     tripActive = false
                     scoreCalc  = nil
                     activeTrip = nil
-                    delegate?.detectorOnTripEnd(location, distanceMeters: dist, durationMs: durMs, score: score)
+                    delegate?.detectorOnTripEnd(location, journey: Journey.completed(trip, endedAt: now, score: score))
                 }
             }
         }

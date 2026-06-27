@@ -940,14 +940,14 @@ extension BackgroundGeolocationPlugin {
         postDrivingNote(.BGTripStart)
     }
 
-    func detectorOnTripEnd(_ location: DLLocation, distanceMeters: Double, durationMs: Int64, score: TripScore) {
+    func detectorOnTripEnd(_ location: DLLocation, journey: Journey) {
         facade?.drivingTripActive = false
-        lastTripScore = score
+        lastTripScore = journey.score
         var info: [String: Any] = [:]
         if let loc = lastBGLocation { info["location"] = loc }
-        info["distance"]   = distanceMeters
-        info["durationMs"] = NSNumber(value: durationMs)
-        info["score"]      = score
+        info["distance"]   = journey.distanceMeters
+        info["durationMs"] = NSNumber(value: journey.durationMs)
+        info["score"]      = journey.score
         NotificationCenter.default.post(name: .BGTripEnd, object: nil, userInfo: info)
     }
 

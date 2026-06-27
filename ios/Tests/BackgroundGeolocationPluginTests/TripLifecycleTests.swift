@@ -15,9 +15,9 @@ private final class ScoreCapturingDelegate: DrivingEventsDetectorDelegate {
     func detectorOnMoving(_ l: DLLocation)    { events.append("moving") }
     func detectorOnStopped(_ l: DLLocation)   { events.append("stopped") }
     func detectorOnTripStart(_ l: DLLocation) { events.append("tripStart") }
-    func detectorOnTripEnd(_ l: DLLocation, distanceMeters: Double, durationMs: Int64, score: TripScore) {
+    func detectorOnTripEnd(_ l: DLLocation, journey: Journey) {
         events.append("tripEnd")
-        finalScore = score
+        finalScore = journey.score
     }
     func detectorOnSpeeding(_ l: DLLocation, speedKmh: Double, limitKmh: Double) { events.append("speeding") }
     func detectorOnProviderChange(provider: String) {}
