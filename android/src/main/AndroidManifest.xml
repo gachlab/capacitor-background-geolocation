@@ -59,6 +59,12 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Internal stationary-exit activity-recognition backstop (primary resume trigger). -->
+        <receiver
+            android:name="com.gachlab.geolocation.provider.ActivityExitReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
         <!-- Restart the service after device reboot when startOnBoot is enabled. -->
         <receiver
             android:name="com.gachlab.geolocation.BootReceiver"

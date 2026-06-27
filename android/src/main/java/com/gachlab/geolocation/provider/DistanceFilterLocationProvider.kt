@@ -53,10 +53,14 @@ internal class DistanceFilterLocationProvider(context: Context) :
     private var stationaryLocationPollingInterval = 0L
     private var isStarted = false
 
-    // Native-geofence stationary-exit backstop (Doze-immune). Null until first armed.
+    // Stationary-exit backstop (Doze-immune). Null until first armed. When the geofence
+    // mode is on, it is a composite of the native geofence (spatial) + activity
+    // recognition (motion) — either resumes tracking, the Transistorsoft robustness model.
     private var exitBackstop: StationaryExitBackstop? = null
-    /** Seam so unit tests can inject a fake backstop instead of the GMS geofence impl. */
-    internal var exitBackstopFactory: (Context) -> StationaryExitBackstop = { GeofenceExitBackstop(it) }
+    /** Seam so unit tests can inject a fake backstop instead of the GMS impls. */
+    internal var exitBackstopFactory: (Context) -> StationaryExitBackstop = { ctx ->
+        CompositeExitBackstop(listOf(GeofenceExitBackstop(ctx), ActivityExitBackstop(ctx)))
+    }
 
     // PendingIntents
     private lateinit var stationaryAlarmPI: PendingIntent
