@@ -3,6 +3,8 @@
 
 package com.gachlab.geolocation
 
+import com.gachlab.geolocation.domain.TripConfig
+
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -26,7 +28,7 @@ class PhoneUsageScoringTest {
     private var finalScore: TripScore? = null
     private lateinit var detector: DrivingEventsDetector
 
-    private val cfg = DrivingEventsDetector.Config(
+    private val cfg = TripConfig(
         enabled              = true,
         speedLimitKmh        = 500.0,    // never speeding at ~36 km/h
         minMovingSpeedMps    = 1.0,

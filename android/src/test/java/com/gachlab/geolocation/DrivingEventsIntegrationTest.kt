@@ -3,6 +3,8 @@
 
 package com.gachlab.geolocation
 
+import com.gachlab.geolocation.domain.TripConfig
+
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -27,7 +29,7 @@ class DrivingEventsIntegrationTest {
     private lateinit var detector: DrivingEventsDetector
 
     // Tight thresholds so the lifecycle runs in well under a second of wall-clock.
-    private val cfg = DrivingEventsDetector.Config(
+    private val cfg = TripConfig(
         enabled            = true,
         speedLimitKmh      = 120.0,
         minMovingSpeedMps  = 1.0,

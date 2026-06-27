@@ -3,6 +3,8 @@
 
 package com.gachlab.geolocation.service
 
+import com.gachlab.geolocation.domain.TripConfig
+
 import android.app.Service
 import android.content.Intent
 import android.content.IntentFilter
@@ -303,7 +305,7 @@ class LocationService : Service() {
         } else {
             sensorDetector?.stop(); sensorDetector = null
         }
-        val detectorCfg = DrivingEventsDetector.Config(
+        val detectorCfg = TripConfig(
             enabled              = opts.enabled,
             speedLimitKmh        = opts.speedLimitKmh,
             minMovingSpeedMps    = opts.minMovingSpeedMps,
