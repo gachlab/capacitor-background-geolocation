@@ -228,6 +228,22 @@ final class LocationDAO {
         }
     }
 
+    /// Restore only the given rows (syncPending → postPending) so a failed upload
+    /// retries WITHOUT touching siblings — used by `single` sync mode where N tasks
+    /// share one flush and must not clobber each other's rows.
+    func restoreLocations(_ ids: [Int64]) {
+        q.sync {
+            guard let db = self.db, !ids.isEmpty else { return }
+            let placeholders = ids.map { _ in "?" }.joined(separator: ",")
+            let sql = "UPDATE locations SET status = \(BGLocationStatus.postPending.rawValue) WHERE status = \(BGLocationStatus.syncPending.rawValue) AND id IN (\(placeholders))"
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+            defer { sqlite3_finalize(stmt) }
+            for (i, id) in ids.enumerated() { sqlite3_bind_int64(stmt, Int32(i + 1), id) }
+            sqlite3_step(stmt)
+        }
+    }
+
     func restoreStaleSyncLocations(olderThan cutoff: Date) {
         q.sync {
             guard let db = self.db else { return }

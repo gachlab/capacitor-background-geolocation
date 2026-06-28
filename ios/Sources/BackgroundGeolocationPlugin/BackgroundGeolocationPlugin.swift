@@ -419,8 +419,9 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     }
 
     @objc func triggerSOS(_ call: CAPPluginCall) {
-        let payload = call.getObject("payload")
-        facade?.triggerSOS(payload)
+        // The JS contract passes the payload as the bare call args (web spreads it at
+        // top level), not under a "payload" key — read the whole options dict.
+        facade?.triggerSOS(call.options as? [String: Any])
         call.resolve()
     }
 
@@ -814,9 +815,12 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     }
 
     @objc private func onSOSN(_ note: Notification) {
+        // BGFacade flattens the user payload into userInfo at top level (matching web's
+        // `{...payload, location}` and Android's flattening), so copy those keys through;
+        // `location` is handled separately below.
         var p: [String: Any] = [:]
-        if let userPayload = note.userInfo?["payload"] as? [String: Any] {
-            for (k, v) in userPayload { p[k] = v }
+        if let info = note.userInfo as? [String: Any] {
+            for (k, v) in info where k != "location" { p[k] = v }
         }
         if let loc = note.userInfo?["location"] as? BGLocation {
             p["location"] = loc.toDictionaryWithId()

@@ -400,8 +400,9 @@ class LocationService : Service() {
         val cfg = config ?: return
         if (!isRunning) return
         val interval = cfg.watchdogIntervalMs ?: 60_000L
-        val elapsed  = System.currentTimeMillis() - buffer.lastFixAtMs
-        if (buffer.lastFixAtMs > 0 && elapsed > interval) {
+        val ts       = buffer.lastFixAtMs   // snapshot once: a concurrent record() between
+        val elapsed  = System.currentTimeMillis() - ts  // the two reads could pass a stale elapsed
+        if (ts > 0 && elapsed > interval) {
             val p = provider
             if (p != null && p.isStarted()) {
                 Log.i(TAG, "Watchdog: no update in ${elapsed / 1000}s — restarting provider")
