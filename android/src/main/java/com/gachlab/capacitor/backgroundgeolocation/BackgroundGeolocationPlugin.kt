@@ -420,7 +420,7 @@ class BackgroundGeolocationPlugin : Plugin() {
     }
 
     @PluginMethod
-    fun triggerSOS(call: PluginCall) { facade.triggerSOS(call.getObject("payload")); call.resolve() }
+    fun triggerSOS(call: PluginCall) { facade.triggerSOS(call.data); call.resolve() }
 
     @PluginMethod
     fun requestBackgroundLocationPermission(call: PluginCall) {

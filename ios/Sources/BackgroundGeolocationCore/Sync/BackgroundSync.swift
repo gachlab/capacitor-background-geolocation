@@ -11,10 +11,10 @@ final class BackgroundSync: NSObject, URLSessionDelegate, URLSessionTaskDelegate
 
     private struct TaskMeta {
         let fileURL: URL
-        let cutoffDate: Date
         let batch: BatchProgress
-        /// Locations carried by this task: 1 in `single` mode, N in `batch` mode.
-        let locationsInTask: Int
+        /// Row ids carried by this task: 1 in `single` mode, N in `batch` mode.
+        /// Used to clear/restore ONLY this task's rows, so siblings can't clobber it.
+        let locationIds: [Int64]
     }
 
     /// Shared, mutable progress accumulator for one sync() call. Aggregates the
@@ -67,7 +67,7 @@ final class BackgroundSync: NSObject, URLSessionDelegate, URLSessionTaskDelegate
         let batchId = String(Int64(cutoffDate.timeIntervalSince1970 * 1000))
 
         // Builds one upload-from-file request; returns nil if serialisation/IO fails.
-        func makeUpload(_ jsonObject: Any, locationsInTask: Int) -> (request: URLRequest, fileURL: URL, count: Int)? {
+        func makeUpload(_ jsonObject: Any, ids: [Int64]) -> (request: URLRequest, fileURL: URL, ids: [Int64])? {
             guard let bodyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: []) else { return nil }
             guard let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
             let fileURL = docsDir.appendingPathComponent("locations_\(UUID().uuidString).json")
@@ -80,21 +80,23 @@ final class BackgroundSync: NSObject, URLSessionDelegate, URLSessionTaskDelegate
             if let headers = config.httpHeaders {
                 for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
             }
-            return (request, fileURL, locationsInTask)
+            return (request, fileURL, ids)
         }
 
         // `single` → one request per location (single JSON object, what the BE
         // expects for real-time). `batch` → one request carrying a JSON array.
-        var uploads = [(request: URLRequest, fileURL: URL, count: Int)]()
+        var uploads = [(request: URLRequest, fileURL: URL, ids: [Int64])]()
         if mode == "single" {
             for location in locations {
-                if let u = makeUpload(location.toResult(from: config.resolvedTemplate), locationsInTask: 1) {
+                let ids = location.locationId.map { [$0] } ?? []
+                if let u = makeUpload(location.toResult(from: config.resolvedTemplate), ids: ids) {
                     uploads.append(u)
                 }
             }
         } else {
             let array = locations.map { $0.toResult(from: config.resolvedTemplate) }
-            if let u = makeUpload(array, locationsInTask: locations.count) {
+            let ids = locations.compactMap { $0.locationId }
+            if let u = makeUpload(array, ids: ids) {
                 uploads.append(u)
             }
         }
@@ -111,9 +113,8 @@ final class BackgroundSync: NSObject, URLSessionDelegate, URLSessionTaskDelegate
             lock.lock()
             taskMeta[task.taskIdentifier] = TaskMeta(
                 fileURL: item.fileURL,
-                cutoffDate: cutoffDate,
                 batch: batch,
-                locationsInTask: item.count
+                locationIds: item.ids
             )
             lock.unlock()
             task.resume()
@@ -136,7 +137,6 @@ final class BackgroundSync: NSObject, URLSessionDelegate, URLSessionTaskDelegate
         }
 
         // Per-task outcome.
-        let cutoff = meta?.cutoffDate ?? Date()
         var success = false
         var status  = 0
         var message = ""
@@ -150,11 +150,15 @@ final class BackgroundSync: NSObject, URLSessionDelegate, URLSessionTaskDelegate
             message = "No HTTP response"
         }
 
-        // Per-task DB side effects (unchanged): clear sent rows / restore failed.
+        // Per-task DB side effects: clear/restore ONLY this task's rows by id. In
+        // `single` mode N tasks share one flush; deleting by a shared cutoff let the
+        // first success delete rows whose own upload later failed (silent data loss).
+        // Per-id matches Android's deleteById/restore.
+        let ids = meta?.locationIds ?? []
         if success {
-            LocationDAO.shared.deleteSyncedLocationsBefore(cutoff)
-        } else {
-            LocationDAO.shared.restoreFailedSyncLocations()
+            for id in ids { try? LocationDAO.shared.deleteLocation(id: id) }
+        } else if !ids.isEmpty {
+            LocationDAO.shared.restoreLocations(ids)
         }
 
         guard let batch = meta?.batch else { return }
@@ -165,7 +169,7 @@ final class BackgroundSync: NSObject, URLSessionDelegate, URLSessionTaskDelegate
         batch.completed += 1
         if success {
             batch.succeeded += 1
-            batch.sentLocations += (meta?.locationsInTask ?? 0)
+            batch.sentLocations += (meta?.locationIds.count ?? 0)
         } else if batch.firstFailure == nil {
             batch.firstFailure = (status, message)
         }

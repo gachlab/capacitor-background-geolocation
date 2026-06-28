@@ -10,21 +10,24 @@ import Foundation
 ///
 /// It was three loose arguments threaded through `detectorOnTripEnd`
 /// (distanceMeters / durationMs / score); bundling them gives the detector and the bridge
-/// a single value to carry to the `tripEnd` event. `startedAt`/`endedAt` are seconds
-/// (the iOS detector clock); `durationMs` is derived in milliseconds.
+/// a single value to carry to the `tripEnd` event. `startedAtMs`/`endedAtMs` are Unix
+/// epoch **milliseconds** — same unit and field names as the Android twin, so the
+/// timestamps are safe to emit cross-platform (avoids a seconds-vs-ms trap).
 struct Journey {
     let id: String
-    let startedAt: Double      // seconds (timeIntervalSince1970)
-    let endedAt: Double
+    let startedAtMs: Int64
+    let endedAtMs: Int64
     let distanceMeters: Double
     let score: TripScore
 
     /// Trip span in milliseconds.
-    var durationMs: Int64 { Int64((endedAt - startedAt) * 1000) }
+    var durationMs: Int64 { endedAtMs - startedAtMs }
 
     /// The Journey that `trip` becomes when it ends at `endedAt` (seconds) with `score`.
     static func completed(_ trip: Trip, endedAt: Double, score: TripScore) -> Journey {
-        Journey(id: trip.id, startedAt: trip.startedAt, endedAt: endedAt,
+        Journey(id: trip.id,
+                startedAtMs: Int64(trip.startedAt * 1000),
+                endedAtMs: Int64(endedAt * 1000),
                 distanceMeters: trip.distanceMeters, score: score)
     }
 }
