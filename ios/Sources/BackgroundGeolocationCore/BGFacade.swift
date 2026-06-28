@@ -537,7 +537,7 @@ extension BGFacade: LocationProviderDelegate {
         if let max = _config?.maxAcceptedAccuracy, max > 0,
            let acc = location.accuracy, acc > max { return }
         stationaryLocation = nil
-        buffer.record(location, at: Date().timeIntervalSince1970)
+        buffer.record(location, at: Date().timeIntervalSince1970 * 1000) // ms, parity with Android
         sensorFusion?.lastLocation = location
         PostLocationTask.shared.add(location)
         // Resilient geofence dwell: fire DWELL even if the per-region Timer was

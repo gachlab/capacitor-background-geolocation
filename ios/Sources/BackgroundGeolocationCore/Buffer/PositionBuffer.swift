@@ -28,13 +28,14 @@ public final class PositionBuffer {
         return _lastFix
     }
 
-    /// Seconds (timeIntervalSince1970) when `lastFix` was recorded (0 if none).
+    /// Milliseconds (Unix epoch) when `lastFix` was recorded (0 if none) — same unit as
+    /// the Android twin's `lastFixAtMs`.
     public var lastFixAtMs: Double {
         lock.lock(); defer { lock.unlock() }
         return _lastFixAtMs
     }
 
-    /// Write-through: record `fix` as the latest, stamped at `at` (seconds).
+    /// Write-through: record `fix` as the latest, stamped at `at` (Unix epoch ms).
     public func record(_ fix: BGLocation, at: Double) {
         lock.lock(); _lastFix = fix; _lastFixAtMs = at; lock.unlock()
     }
