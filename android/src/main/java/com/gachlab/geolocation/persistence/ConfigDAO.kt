@@ -14,11 +14,11 @@ import com.gachlab.geolocation.BGConfig
  * Persists [BGConfig] as a single JSON blob in the `configuration` table. The legacy
  * per-column storage (and its fallback hydration) was removed with the Cordova DB.
  */
-internal class ConfigDAO(context: Context) {
+internal class ConfigDAO(context: Context) : com.gachlab.geolocation.ports.ConfigRepository {
 
     private val db: SQLiteDatabase = LocationDbHelper.getInstance(context).writableDatabase
 
-    fun retrieveConfig(): BGConfig? {
+    override fun retrieveConfig(): BGConfig? {
         db.query("configuration", arrayOf("config_json"), null, null, null, null, null).use { c ->
             if (!c.moveToFirst() || c.isNull(0)) return null
             val json = c.getString(0)
@@ -32,7 +32,7 @@ internal class ConfigDAO(context: Context) {
         }
     }
 
-    fun persistConfig(config: BGConfig) {
+    override fun persistConfig(config: BGConfig) {
         val configJson = try {
             GachConfigMapper.toJSONObject(config).toString()
         } catch (e: Exception) {

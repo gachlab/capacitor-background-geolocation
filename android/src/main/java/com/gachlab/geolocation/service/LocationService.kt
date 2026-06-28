@@ -32,6 +32,8 @@ import com.gachlab.geolocation.persistence.LocationDAO
 import com.gachlab.geolocation.persistence.SessionDAO
 import com.gachlab.geolocation.network.BackgroundSync
 import com.gachlab.geolocation.network.PostLocationTask
+import com.gachlab.geolocation.ports.ConfigRepository
+import com.gachlab.geolocation.ports.LocationPublisher
 import com.gachlab.geolocation.network.PrioritySyncManager
 import com.gachlab.geolocation.provider.AbstractLocationProvider
 import com.gachlab.geolocation.provider.ActivityLocationProvider
@@ -91,7 +93,7 @@ class LocationService : Service() {
 
     private var config: BGConfig? = null
     private var provider: AbstractLocationProvider? = null
-    private var postTask: PostLocationTask? = null
+    private var postTask: LocationPublisher? = null
     private var prioritySyncManager: PrioritySyncManager? = null
     private var drivingDetector: DrivingEventsDetector? = null
     private var sensorDetector: SensorFusionDetector? = null
@@ -103,7 +105,7 @@ class LocationService : Service() {
 
     private lateinit var locationDAO: LocationDAO
     private lateinit var sessionDAO: SessionDAO
-    private lateinit var configDAO: ConfigDAO
+    private lateinit var configDAO: ConfigRepository
     private lateinit var mainHandler: Handler
 
     private val watchdogRunnable = Runnable { checkWatchdog() }
