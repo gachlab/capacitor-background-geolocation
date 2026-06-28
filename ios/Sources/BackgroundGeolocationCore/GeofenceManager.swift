@@ -31,8 +31,8 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     /// 20 app-wide region slots minus one reserved for `BGStationaryRegion`.
     private static let maxUserGeofences = 19
 
-    // Invoked with (geofenceId, transition, location?) on each transition.
-    public var eventListener: ((String, GeofenceTransition, BGLocation?) -> Void)?
+    // Invoked with the domain GeoEvent + the triggering platform location on each transition.
+    public var eventListener: ((GeoEvent, BGLocation?) -> Void)?
 
     private let locationManager = CLLocationManager()
     private var geofences: [String: BGGeofence] = [:]
@@ -217,7 +217,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     }
 
     private func fire(_ transition: GeofenceTransition, id: String, location: BGLocation?) {
-        eventListener?(id, transition, location)
+        eventListener?(GeoEvent(geofenceId: id, transition: transition), location)
     }
 
     private func runOnMain(_ block: @escaping () -> Void) {
