@@ -6,6 +6,7 @@ package com.gachlab.geolocation
 import android.os.Bundle
 import android.os.Parcel
 import android.os.Parcelable
+import com.gachlab.geolocation.domain.TrackingConfig
 import org.json.JSONException
 import org.json.JSONObject
 import java.util.Locale
@@ -118,6 +119,28 @@ class BGConfig() : Parcelable {
 
     /** True when syncEnabled is not explicitly false and syncUrl is non-empty. */
     val isSyncEnabled: Boolean get() = syncEnabled != false && hasValidSyncUrl
+
+    /**
+     * Resolve this (partial, nullable) config into the pure domain [TrackingConfig],
+     * applying the same `DEFAULT_*` fallbacks the providers use today — one place
+     * instead of scattered `?: DEFAULT_X`. [maxAcceptedAccuracy] stays nullable
+     * (null = no accuracy gate).
+     */
+    fun toTrackingConfig(): TrackingConfig = TrackingConfig(
+        stationaryRadius            = stationaryRadius            ?: DEFAULT_STATIONARY_RADIUS,
+        distanceFilter              = distanceFilter              ?: DEFAULT_DISTANCE_FILTER,
+        desiredAccuracy             = desiredAccuracy             ?: DEFAULT_DESIRED_ACCURACY,
+        locationProvider            = locationProvider            ?: DEFAULT_LOCATION_PROVIDER,
+        interval                    = interval                    ?: DEFAULT_INTERVAL,
+        fastestInterval             = fastestInterval             ?: DEFAULT_FASTEST_INTERVAL,
+        activitiesInterval          = activitiesInterval          ?: DEFAULT_ACTIVITIES_INTERVAL,
+        stationaryTimeout           = stationaryTimeout           ?: DEFAULT_STATIONARY_TIMEOUT,
+        stationaryPollInterval      = stationaryPollInterval      ?: DEFAULT_STATIONARY_POLL_INTERVAL,
+        stationaryPollFast          = stationaryPollFast          ?: DEFAULT_STATIONARY_POLL_FAST,
+        stationaryExitMode          = stationaryExitMode          ?: DEFAULT_STATIONARY_EXIT_MODE,
+        activityConfidenceThreshold = activityConfidenceThreshold ?: DEFAULT_ACTIVITY_CONFIDENCE_THRESHOLD,
+        maxAcceptedAccuracy         = maxAcceptedAccuracy,
+    )
 
     // ── Driver-insight options ────────────────────────────────────────────────
 
