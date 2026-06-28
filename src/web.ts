@@ -26,6 +26,7 @@ import type {
 } from './definitions';
 import { AuthorizationStatus } from './definitions';
 import { GeoPoint } from './domain/geo-point';
+import { GeoEvent } from './domain/geo-event';
 import { GeofenceTransition } from './domain/geofence-transition';
 
 interface BrowserPermissions {
@@ -391,8 +392,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   private handleGeofenceEntered(gf: Geofence, loc: Location): void {
     if (this.insideGeofences.has(gf.id)) return;
     this.insideGeofences.add(gf.id);
-    if (gf.notifyOnEntry)
-      this.notifyListeners('geofenceEnter', { id: gf.id, action: GeofenceTransition.ENTER, location: loc });
+    if (gf.notifyOnEntry) this.emitGeoEvent(new GeoEvent(gf.id, GeofenceTransition.ENTER), loc);
     if (gf.notifyOnDwell) {
       this.dwellEnterAt.set(gf.id, loc.time);
       // Fast path for a stationary device that may stop emitting fixes; the per-fix
@@ -407,8 +407,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     const wasInside = this.insideGeofences.delete(gf.id);
     this.clearDwell(gf.id);
     // EXIT only on a real boundary crossing (we were inside).
-    if (wasInside && gf.notifyOnExit)
-      this.notifyListeners('geofenceExit', { id: gf.id, action: GeofenceTransition.EXIT, location: loc });
+    if (wasInside && gf.notifyOnExit) this.emitGeoEvent(new GeoEvent(gf.id, GeofenceTransition.EXIT), loc);
   }
 
   private evaluateDwell(gf: Geofence, loc: Location): void {
@@ -421,7 +420,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   private fireDwellIfPending(id: string, loc: Location): void {
     if (!this.dwellEnterAt.has(id)) return;
     this.clearDwell(id);
-    this.notifyListeners('geofenceDwell', { id, action: GeofenceTransition.DWELL, location: loc });
+    this.emitGeoEvent(new GeoEvent(id, GeofenceTransition.DWELL), loc);
   }
 
   private clearDwell(id: string): void {
@@ -431,6 +430,17 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
       clearTimeout(timer);
       this.dwellTimers.delete(id);
     }
+  }
+
+  /** Map a domain GeoEvent to its listener name + payload (single emission path). */
+  private emitGeoEvent(event: GeoEvent, location: Location): void {
+    const eventName =
+      event.transition === GeofenceTransition.ENTER
+        ? 'geofenceEnter'
+        : event.transition === GeofenceTransition.EXIT
+          ? 'geofenceExit'
+          : 'geofenceDwell';
+    this.notifyListeners(eventName, { id: event.geofenceId, action: event.transition, location });
   }
 
   private isInside(gf: Geofence, loc: Location): boolean {
