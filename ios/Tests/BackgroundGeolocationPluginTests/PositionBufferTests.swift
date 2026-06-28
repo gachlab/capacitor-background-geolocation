@@ -16,9 +16,9 @@ final class PositionBufferTests: XCTestCase {
     func testRecordsZeroCopy() {
         let b = PositionBuffer()
         let loc = BGLocation()
-        b.record(loc, at: 1_716_000_000)
+        b.record(loc, at: 1_716_000_000_000) // ms
         XCTAssertTrue(b.lastFix === loc) // same reference — no re-serialisation
-        XCTAssertEqual(b.lastFixAtMs, 1_716_000_000)
+        XCTAssertEqual(b.lastFixAtMs, 1_716_000_000_000)
     }
 
     func testOverwrites() {
