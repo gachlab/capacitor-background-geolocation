@@ -28,7 +28,7 @@ public final class BGFacade: NSObject {
     private var operationMode: BGOperationalMode = .foreground
     private var _config: BGConfig?
     private var stationaryLocation: BGLocation?
-    private var lastReceivedLocation: BGLocation?
+    private let buffer = PositionBuffer.shared
     private var heartbeatTimer: Timer?
     private var locationProvider: LocationProvider?
     private var sensorFusion: SensorFusionDetector?
@@ -43,6 +43,7 @@ public final class BGFacade: NSObject {
 
     public override init() {
         super.init()
+        buffer.clear()   // fresh hub lifecycle starts with no cached fix
         PostLocationTask.shared.delegate = self
         PostLocationTask.shared.attachBatterySnapshot = { [weak self] loc in
             self?.attachBatterySnapshotTo(loc)
@@ -338,7 +339,7 @@ public final class BGFacade: NSObject {
 
     public func triggerSOS(_ payload: [String: Any]? = nil) {
         var userInfo: [String: Any] = [:]
-        if let loc = lastReceivedLocation {
+        if let loc = buffer.lastFix {
             userInfo["location"] = loc
         }
         if let payload = payload {
@@ -419,7 +420,7 @@ public final class BGFacade: NSObject {
 
     @objc private func onHeartbeatTick(_ timer: Timer) {
         var userInfo: [String: Any] = [:]
-        if let loc = lastReceivedLocation {
+        if let loc = buffer.lastFix {
             userInfo["location"] = loc
         }
         NotificationCenter.default.post(name: .BGHeartbeat, object: self, userInfo: userInfo)
@@ -465,7 +466,7 @@ public final class BGFacade: NSObject {
         }
 
         detector.tripActive = drivingTripActive
-        detector.lastLocation = lastReceivedLocation
+        detector.lastLocation = buffer.lastFix
     }
 
     // MARK: - Private: Provider factory
@@ -536,7 +537,7 @@ extension BGFacade: LocationProviderDelegate {
         if let max = _config?.maxAcceptedAccuracy, max > 0,
            let acc = location.accuracy, acc > max { return }
         stationaryLocation = nil
-        lastReceivedLocation = location
+        buffer.record(location, at: Date().timeIntervalSince1970)
         sensorFusion?.lastLocation = location
         PostLocationTask.shared.add(location)
         // Resilient geofence dwell: fire DWELL even if the per-region Timer was
