@@ -47,8 +47,8 @@ public final class BGFacade: NSObject {
         PostLocationTask.shared.attachBatterySnapshot = { [weak self] loc in
             self?.attachBatterySnapshotTo(loc)
         }
-        GeofenceManager.shared.eventListener = { [weak self] id, transition, location in
-            self?.onGeofenceTransition(id: id, transition: transition, location: location)
+        GeofenceManager.shared.eventListener = { [weak self] event, location in
+            self?.onGeofenceTransition(event, location: location)
         }
     }
 
@@ -362,14 +362,14 @@ public final class BGFacade: NSObject {
         GeofenceManager.shared.getAll().map { $0.toDictionary() }
     }
 
-    private func onGeofenceTransition(id: String, transition: GeofenceTransition, location: BGLocation?) {
+    private func onGeofenceTransition(_ event: GeoEvent, location: BGLocation?) {
         let notifName: Notification.Name
-        switch transition {
+        switch event.transition {
         case .enter: notifName = .BGGeofenceEnter
         case .exit:  notifName = .BGGeofenceExit
         case .dwell: notifName = .BGGeofenceDwell
         }
-        var info: [String: Any] = ["id": id, "action": transition.rawValue]
+        var info: [String: Any] = ["id": event.geofenceId, "action": event.transition.rawValue]
         if let loc = location { info["location"] = loc }
         NotificationCenter.default.post(name: notifName, object: self, userInfo: info)
     }
