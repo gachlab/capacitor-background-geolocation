@@ -24,7 +24,7 @@ sealed class ServiceEvent {
 
     // ── Trip lifecycle ────────────────────────────────────────────────────────
     data class TripStart(val loc: BGLocation) : ServiceEvent()
-    data class TripEnd(val loc: BGLocation, val distanceMeters: Double, val durationMs: Long, val score: TripScore?) : ServiceEvent()
+    data class TripEnd(val loc: BGLocation, val journey: com.gachlab.geolocation.domain.Journey) : ServiceEvent()
     data class IdleStart(val loc: BGLocation, val startedAt: Long) : ServiceEvent()
     data class IdleEnd(val loc: BGLocation, val durationMs: Long, val startedAt: Long) : ServiceEvent()
 

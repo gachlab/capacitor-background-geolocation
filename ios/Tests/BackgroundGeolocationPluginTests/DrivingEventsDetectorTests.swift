@@ -12,9 +12,9 @@ private final class RecordingDelegate: DrivingEventsDetectorDelegate {
     func detectorOnMoving(_ l: DLLocation)              { events.append("moving") }
     func detectorOnStopped(_ l: DLLocation)             { events.append("stopped") }
     func detectorOnTripStart(_ l: DLLocation)           { events.append("tripStart") }
-    func detectorOnTripEnd(_ l: DLLocation, distanceMeters: Double, durationMs: Int64, score: TripScore) {
-        events.append("tripEnd(dist=\(Int(distanceMeters))m,dur=\(durationMs)ms)")
-        lastScore = score
+    func detectorOnTripEnd(_ l: DLLocation, journey: Journey) {
+        events.append("tripEnd(dist=\(Int(journey.distanceMeters))m,dur=\(journey.durationMs)ms)")
+        lastScore = journey.score
     }
     func detectorOnSpeeding(_ l: DLLocation, speedKmh: Double, limitKmh: Double) {
         events.append("speeding(\(Int(speedKmh))kmh)")
@@ -47,10 +47,10 @@ final class DrivingEventsDetectorTests: XCTestCase {
         let d = DrivingEventsDetector()
         let rec = RecordingDelegate()
         d.delegate = rec
-        d.enabled = true
-        d.stoppedDurationSec = Self.stoppedSec
-        d.minTripDurationSec = 0
-        if speedLimitKmh > 0 { d.speedLimitKmh = speedLimitKmh }
+        d.config.enabled = true
+        d.config.stoppedDurationSec = Self.stoppedSec
+        d.config.minTripDurationSec = 0
+        if speedLimitKmh > 0 { d.config.speedLimitKmh = speedLimitKmh }
         return (d, rec)
     }
 
@@ -106,7 +106,7 @@ final class DrivingEventsDetectorTests: XCTestCase {
         let (det, _) = makeDetector()
         let rec = RecordingDelegate()
         det.delegate = rec
-        det.hardBrakeMps2 = 3.5
+        det.config.hardBrakeMps2 = 3.5
 
         // Put detector into tripActive state.
         det.feed(loc(speedMps: 20))   // moving + tripStart (minTripDurationSec = 0)
@@ -125,7 +125,7 @@ final class DrivingEventsDetectorTests: XCTestCase {
 
     func testTripEndMetrics() throws {
         let (det, rec) = makeDetector()
-        det.stoppedDurationSec = 0   // fire stopped immediately on speed == 0
+        det.config.stoppedDurationSec = 0   // fire stopped immediately on speed == 0
 
         // Fixes roughly 1 km apart north.
         det.feed(loc(lat: 0.000, lon: 0, speedMps: 15))
@@ -149,7 +149,7 @@ final class DrivingEventsDetectorTests: XCTestCase {
 
     func testStationaryNeverFiresTripStart() {
         let (det, rec) = makeDetector()
-        det.minMovingSpeedMps = 1.0
+        det.config.minMovingSpeedMps = 1.0
 
         for _ in 0..<10 {
             det.feed(loc(speedMps: 0))
@@ -165,7 +165,7 @@ final class DrivingEventsDetectorTests: XCTestCase {
         let det = DrivingEventsDetector()
         let rec = RecordingDelegate()
         det.delegate = rec
-        det.enabled = false    // explicitly disabled
+        det.config.enabled = false    // explicitly disabled
 
         det.feed(loc(speedMps: 30))
         det.feed(loc(speedMps: 30))
@@ -177,9 +177,9 @@ final class DrivingEventsDetectorTests: XCTestCase {
 
     func testCrashConfirmWindowFiresAfterWindow() {
         let (det, rec) = makeDetector()
-        det.crashImpactKmh = 10
-        det.crashWindowSec = 4.0
-        det.crashConfirmWindowSec = 0.1   // 100 ms for fast test
+        det.config.crashImpactKmh = 10
+        det.config.crashWindowSec = 4.0
+        det.config.crashConfirmWindowSec = 0.1   // 100 ms for fast test
 
         det.feed(loc(speedMps: 10))       // fast (36 km/h)
         Thread.sleep(forTimeInterval: 0.005)
@@ -196,9 +196,9 @@ final class DrivingEventsDetectorTests: XCTestCase {
 
     func testCrashConfirmWindowCancelledOnRecovery() {
         let (det, rec) = makeDetector()
-        det.crashImpactKmh = 10
-        det.crashWindowSec = 4.0
-        det.crashConfirmWindowSec = 0.5
+        det.config.crashImpactKmh = 10
+        det.config.crashWindowSec = 4.0
+        det.config.crashConfirmWindowSec = 0.5
 
         det.feed(loc(speedMps: 10))       // fast
         Thread.sleep(forTimeInterval: 0.005)
@@ -217,9 +217,9 @@ final class DrivingEventsDetectorTests: XCTestCase {
 
     func testPhoneUsageWhileDrivingFiresOnJitter() {
         let (det, rec) = makeDetector()
-        det.sensorFusion = false
-        det.phoneUsageWindowSec = 0.4    // 400 ms for fast test
-        det.phoneUsageCooldownSec = 60.0
+        det.config.sensorFusion = false
+        det.config.phoneUsageWindowSec = 0.4    // 400 ms for fast test
+        det.config.phoneUsageCooldownSec = 60.0
 
         // Enter trip-active state at ~20 km/h
         det.feed(loc(speedMps: 6))
@@ -241,11 +241,11 @@ final class DrivingEventsDetectorTests: XCTestCase {
     // #21 — phone usage must reach the aggregate trip score, not just fire the event.
     func testPhoneUsageReachesScore() {
         let (det, rec) = makeDetector()
-        det.sensorFusion = false
-        det.phoneUsageWindowSec = 0.4
-        det.phoneUsageCooldownSec = 0.0
-        det.sharpTurnDegPerSec = 100_000.0   // isolate: jitter must read as phone usage, not sharp turn
-        det.crashImpactKmh = 100_000.0
+        det.config.sensorFusion = false
+        det.config.phoneUsageWindowSec = 0.4
+        det.config.phoneUsageCooldownSec = 0.0
+        det.config.sharpTurnDegPerSec = 100_000.0   // isolate: jitter must read as phone usage, not sharp turn
+        det.config.crashImpactKmh = 100_000.0
 
         // Enter an active trip.
         det.feed(loc(speedMps: 6))
@@ -276,7 +276,7 @@ final class DrivingEventsDetectorTests: XCTestCase {
 
     func testExternalPhoneUsageReachesScore() {
         let (det, rec) = makeDetector()
-        det.sensorFusion = true   // GPS jitter path gated off; the sensor path feeds the score
+        det.config.sensorFusion = true   // GPS jitter path gated off; the sensor path feeds the score
 
         // Enter an active trip (minTripDurationSec == 0 → first fast fix starts it).
         det.feed(loc(speedMps: 6))
@@ -302,9 +302,9 @@ final class DrivingEventsDetectorTests: XCTestCase {
 
     func testPhoneUsageWhileDrivingSuppressedWhenSensorFusion() {
         let (det, rec) = makeDetector()
-        det.sensorFusion = true           // GPS path disabled
-        det.phoneUsageWindowSec = 0.3
-        det.phoneUsageCooldownSec = 60.0
+        det.config.sensorFusion = true           // GPS path disabled
+        det.config.phoneUsageWindowSec = 0.3
+        det.config.phoneUsageCooldownSec = 60.0
 
         det.feed(loc(speedMps: 6))
 

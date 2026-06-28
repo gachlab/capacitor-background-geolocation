@@ -7,6 +7,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.gachlab.geolocation.domain.GeoEvent
+import com.gachlab.geolocation.domain.GeofenceTransition
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingEvent
 
@@ -27,19 +29,25 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             return
         }
 
-        val transition = event.geofenceTransition
+        // Map the GMS transition constant to the pure domain enum at the boundary,
+        // keeping domain/ free of Play-services types.
+        val transition = when (event.geofenceTransition) {
+            Geofence.GEOFENCE_TRANSITION_ENTER -> GeofenceTransition.ENTER
+            Geofence.GEOFENCE_TRANSITION_EXIT  -> GeofenceTransition.EXIT
+            Geofence.GEOFENCE_TRANSITION_DWELL -> GeofenceTransition.DWELL
+            else -> null
+        }
         val rawLocation = event.triggeringLocation
         val triggerLocation = rawLocation?.let { BGLocation.fromLocation(it) }
 
         event.triggeringGeofences?.forEach { gf ->
-            val serviceEvent: ServiceEvent? = when (transition) {
-                Geofence.GEOFENCE_TRANSITION_ENTER ->
-                    ServiceEvent.GeofenceEnter(gf.requestId, triggerLocation)
-                Geofence.GEOFENCE_TRANSITION_EXIT  ->
-                    ServiceEvent.GeofenceExit(gf.requestId, triggerLocation)
-                Geofence.GEOFENCE_TRANSITION_DWELL ->
-                    ServiceEvent.GeofenceDwell(gf.requestId, triggerLocation)
-                else -> null
+            // GMS → domain GeoEvent at the boundary, then adapt to the ServiceEvent bus.
+            val geoEvent = transition?.let { GeoEvent(gf.requestId, it) }
+            val serviceEvent: ServiceEvent? = when (geoEvent?.transition) {
+                GeofenceTransition.ENTER -> ServiceEvent.GeofenceEnter(geoEvent.geofenceId, triggerLocation)
+                GeofenceTransition.EXIT  -> ServiceEvent.GeofenceExit(geoEvent.geofenceId, triggerLocation)
+                GeofenceTransition.DWELL -> ServiceEvent.GeofenceDwell(geoEvent.geofenceId, triggerLocation)
+                null -> null
             }
             serviceEvent?.let { GeofenceManager.dispatch(it) }
         }

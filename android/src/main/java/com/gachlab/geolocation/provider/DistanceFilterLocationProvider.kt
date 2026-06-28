@@ -21,7 +21,6 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
-import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.round
 
@@ -53,6 +52,15 @@ internal class DistanceFilterLocationProvider(context: Context) :
     private var scaledDistanceFilter = 0
     private var stationaryLocationPollingInterval = 0L
     private var isStarted = false
+
+    // Stationary-exit backstop (Doze-immune). Null until first armed. When the geofence
+    // mode is on, it is a composite of the native geofence (spatial) + activity
+    // recognition (motion) — either resumes tracking, the Transistorsoft robustness model.
+    private var exitBackstop: StationaryExitBackstop? = null
+    /** Seam so unit tests can inject a fake backstop instead of the GMS impls. */
+    internal var exitBackstopFactory: (Context) -> StationaryExitBackstop = { ctx ->
+        CompositeExitBackstop(listOf(GeofenceExitBackstop(ctx), ActivityExitBackstop(ctx)))
+    }
 
     // PendingIntents
     private lateinit var stationaryAlarmPI: PendingIntent
@@ -135,6 +143,8 @@ internal class DistanceFilterLocationProvider(context: Context) :
         if (!isStarted) return
         try {
             unsubscribeLocationUpdates()
+            exitBackstop?.disarm()
+            exitBackstop = null
             alarmManager.cancel(stationaryAlarmPI)
             alarmManager.cancel(stationaryLocationPollingPI)
         } catch (_: SecurityException) {
@@ -267,12 +277,27 @@ internal class DistanceFilterLocationProvider(context: Context) :
             stationaryLocation = location
             stationaryRadius = proxRadius
             Log.i(TAG, "enterStationary lat=${location.latitude} lon=${location.longitude}")
-            startPollingStationaryLocation(stationaryPollLazy())
+            if (geofenceExitMode()) armGeofenceBackstop(location)
+            else startPollingStationaryLocation(stationaryPollLazy())
         } catch (e: SecurityException) { handleSecurityException(e) }
+    }
+
+    /** "geofence" → native GMS exit-geofence (Doze-immune); otherwise AlarmManager polling. */
+    private fun geofenceExitMode(): Boolean =
+        mConfig?.stationaryExitMode == BGConfig.STATIONARY_EXIT_GEOFENCE
+
+    private fun armGeofenceBackstop(center: Location) {
+        val backstop = exitBackstop ?: exitBackstopFactory(mContext).also { exitBackstop = it }
+        Log.i(TAG, "Arming native geofence exit-backstop r=${stationaryRadius}m (Doze-immune)")
+        backstop.arm(center.latitude, center.longitude, stationaryRadius) {
+            // OS detected the device left the stationary region → resume the moving pace.
+            onExitStationaryRegion(stationaryLocation ?: center)
+        }
     }
 
     fun onExitStationaryRegion(location: Location) {
         try {
+            exitBackstop?.disarm()
             alarmManager.cancel(stationaryLocationPollingPI)
             setPace(true)
         } catch (e: SecurityException) { handleSecurityException(e) }
@@ -290,11 +315,14 @@ internal class DistanceFilterLocationProvider(context: Context) :
         if (isMoving) return
         val radius = (cfg.stationaryRadius ?: BGConfig.DEFAULT_STATIONARY_RADIUS).toFloat()
         val stLoc = stationaryLocation ?: return
-        val distance = abs(location.distanceTo(stLoc) - stLoc.accuracy - location.accuracy)
-        if (distance > radius) onExitStationaryRegion(location)
-        else if (distance > 0) startPollingStationaryLocation(stationaryPollFast())
-        else if (stationaryLocationPollingInterval != stationaryPollLazy())
-            startPollingStationaryLocation(stationaryPollLazy())
+        val distance = StationaryRegion.adjustedDistance(location.distanceTo(stLoc), stLoc.accuracy, location.accuracy)
+        when (StationaryRegion.decide(distance, radius)) {
+            StationaryRegion.Decision.EXIT -> onExitStationaryRegion(location)
+            StationaryRegion.Decision.POLL_FAST -> startPollingStationaryLocation(stationaryPollFast())
+            StationaryRegion.Decision.POLL_LAZY ->
+                if (stationaryLocationPollingInterval != stationaryPollLazy())
+                    startPollingStationaryLocation(stationaryPollLazy())
+        }
     }
 
     private fun unsubscribeLocationUpdates() {

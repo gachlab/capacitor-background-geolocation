@@ -68,6 +68,35 @@ document.addEventListener('DOMContentLoaded', () => {
       }),
     );
 
+  // Same provider as Configure but with the native geofence stationary-exit backstop
+  // enabled — used by the stationary-geofence E2E (needs Play Services / a GMS emulator).
+  document.getElementById('configure-gf-exit').onclick = () =>
+    safe('configure', () =>
+      BackgroundGeolocation.configure({
+        locationProvider: 2,
+        desiredAccuracy: 0,
+        stationaryRadius: 25,
+        stationaryExitMode: 'geofence',
+        distanceFilter: 0,
+        debug: false,
+        stopOnTerminate: false,
+        interval: 1000,
+        notificationsEnabled: true,
+        startForeground: true,
+        notificationTitle: 'GF-exit test',
+        notificationText: 'Location enabled',
+      }),
+    );
+
+  // changePace equivalent (Transistorsoft-style): force the movement state machine
+  // for manual on-device geofence-mode testing — mock-GPS (Lockito) does not trigger
+  // the stationary↔moving transition by itself, so drive it here. switchMode(1)=moving,
+  // switchMode(0)=stationary (acquire → enterStationary → arm the exit-geofence).
+  document.getElementById('pace-moving').onclick = () =>
+    safe('switchMode(moving)', () => BackgroundGeolocation.switchMode({ mode: 1 }));
+  document.getElementById('pace-stationary').onclick = () =>
+    safe('switchMode(stationary)', () => BackgroundGeolocation.switchMode({ mode: 0 }));
+
   document.getElementById('start').onclick = () => safe('start', () => BackgroundGeolocation.start());
   document.getElementById('stop').onclick = () => safe('stop', () => BackgroundGeolocation.stop());
   document.getElementById('status').onclick = () => safe('checkStatus', () => BackgroundGeolocation.checkStatus());

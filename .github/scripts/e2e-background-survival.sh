@@ -22,7 +22,10 @@ APK=$(find example-app/android/app/build/outputs/apk/debug -name "*.apk" | head 
 PACKAGE="com.gachlab.capacitor.backgroundgeolocation.example"
 ACTIVITY=".MainActivity"
 LOGCAT_OUT="/tmp/e2e-logcat.txt"
-DB="/data/data/${PACKAGE}/databases/cordova_bg_geolocation.db"
+# 2.0.0 renamed the DB from the legacy Cordova `cordova_bg_geolocation.db` to this.
+# (The old name silently queried a non-existent DB, so the test only "passed" via
+# stale rows left in a long-lived emulator's userdata — a fresh AVD exposed it.)
+DB="/data/data/${PACKAGE}/databases/gachlab_bg_geolocation.db"
 
 # ── install + permissions ─────────────────────────────────────────────────────
 
@@ -120,11 +123,11 @@ RAW=$(adb shell "run-as ${PACKAGE} sqlite3 ${DB} 'SELECT COUNT(*) FROM location'
 # Strip everything except digits (handles empty, error text, whitespace).
 COUNT=$(printf '%s' "${RAW}" | tr -dc '0-9')
 
-# Fallback: count lines tagged "LocationService" from our native service.
-# Only matches lines like "I LocationService: ..." — excludes Android system
-# services (LocationManagerService, GnssLocationProvider, etc.).
+# Fallback: count actual location events the plugin delivered (one per recorded
+# fix), which survives even if the DB path/tooling changes. This is a far stronger
+# proxy than counting lifecycle log lines (which are a fixed ~4 regardless of fixes).
 if [[ -z "$COUNT" || "$COUNT" == "0" ]]; then
-  RAW=$(grep -cE "[IDWEV] LocationService[: ]" "$LOGCAT_OUT" 2>/dev/null || true)
+  RAW=$(grep -cE "Notifying listeners for event location" "$LOGCAT_OUT" 2>/dev/null || true)
   COUNT=$(printf '%s' "${RAW}" | tr -dc '0-9')
 fi
 

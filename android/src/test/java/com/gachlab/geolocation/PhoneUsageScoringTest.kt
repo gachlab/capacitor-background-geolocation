@@ -3,6 +3,9 @@
 
 package com.gachlab.geolocation
 
+import com.gachlab.geolocation.domain.Journey
+import com.gachlab.geolocation.domain.TripConfig
+
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -26,7 +29,7 @@ class PhoneUsageScoringTest {
     private var finalScore: TripScore? = null
     private lateinit var detector: DrivingEventsDetector
 
-    private val cfg = DrivingEventsDetector.Config(
+    private val cfg = TripConfig(
         enabled              = true,
         speedLimitKmh        = 500.0,    // never speeding at ~36 km/h
         minMovingSpeedMps    = 1.0,
@@ -49,8 +52,8 @@ class PhoneUsageScoringTest {
         override fun onMoving(loc: BGLocation) {}
         override fun onStopped(loc: BGLocation) {}
         override fun onTripStart(loc: BGLocation) { events += "tripStart" }
-        override fun onTripEnd(loc: BGLocation, distanceMeters: Double, durationMs: Long, score: TripScore) {
-            events += "tripEnd"; finalScore = score
+        override fun onTripEnd(loc: BGLocation, journey: Journey) {
+            events += "tripEnd"; finalScore = journey.score
         }
         override fun onIdleStart(loc: BGLocation, startedAt: Long) {}
         override fun onIdleEnd(loc: BGLocation, durationMs: Long, startedAt: Long) {}

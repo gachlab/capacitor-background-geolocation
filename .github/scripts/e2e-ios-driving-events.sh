@@ -120,42 +120,41 @@ xcrun simctl privacy "${UDID}" grant location "${APP_BUNDLE_ID}" 2>/dev/null || 
 # ---------------------------------------------------------------------------
 # 3. Background GPS injection loop
 # ---------------------------------------------------------------------------
-# Inject a stationary fix first, then drive north with a large step so that
-# speed >> 90 km/h even when xcrun simctl takes 3-4 s per call (CI runners).
-# After 5 fast fixes → 6 near-stop micro-step fixes for the crash window,
-# then cycle repeats. Short cycle (5+6 fixes) keeps the crash phase reachable
-# within the 40 s test timeout on any runner.
+# Drive the simulated location with `simctl location start`, which makes the
+# *simulator* interpolate between waypoints and issue updates at a fixed interval on
+# its own — reliable regardless of host/simctl latency. This replaces the old loop of
+# one-shot `simctl location set` calls, which stalled on slow CI runners (3-4 s/call,
+# sometimes no fixes for 90 s+) and was the dominant E2E flake.
+#
+# Each cycle has two legs:
+#   • high-speed: 30 m/s (108 km/h) updates every 1 s → fires `speeding`.
+#   • near-stop:  0.5 m/s crawl → the 30 → 0.5 m/s drop across the leg boundary is
+#                 the sharp decel that fires `possibleCrash`; held a few seconds to
+#                 clear crashConfirmWindowSec.
+# The short cycle repeats, so many speeding/crash opportunities land within the test
+# windows on any runner — each test only needs one to register.
 GPS_PID=""
 
 inject_gps_loop() {
   local udid="$1"
-  local lat=37.3317
   local lon=-122.0307
-  local step=0.003   # ~333 m/fix; speed=333m/dt >> 90 km/h even at dt=4 s
-  local i=0
+  local a=37.3317        # high-leg start
+  local b=37.33386       # high-leg end (~240 m N of a ≈ 8 s at 30 m/s)
+  local c=37.333882      # near-stop end (~2 m past b)
 
-  # Stationary start
-  xcrun simctl location "${udid}" set "${lat},${lon}" 2>/dev/null || true
+  # Stationary start so speed begins defined.
+  xcrun simctl location "${udid}" set "${a},${lon}" 2>/dev/null || true
   sleep 1
 
   while true; do
-    lat=$(python3 -c "print(${lat} + ${step})")
-    xcrun simctl location "${udid}" set "${lat},${lon}" 2>/dev/null || true
-    sleep 0.5
-    i=$((i + 1))
-
-    # After 5 fast fixes: near-stop micro-step for possibleCrash window.
-    # step 0.0000045° ≈ 0.5 m/fix → speed < 1.5 m/s regardless of dt.
-    # Distinct positions prevent CoreLocation deduplication.
-    # 6 fixes; crash confirms after elapsed >= crashConfirmWindowSec (2 s).
-    if [ $i -eq 5 ]; then
-      for j in 1 2 3 4 5 6; do
-        lat=$(python3 -c "print(${lat} + 0.0000045)")
-        xcrun simctl location "${udid}" set "${lat},${lon}" 2>/dev/null || true
-        sleep 0.5
-      done
-      i=0
-    fi
+    # High-speed leg — sim-driven updates at 30 m/s.
+    xcrun simctl location "${udid}" start --speed=30 --interval=1 \
+      "${a},${lon}" "${b},${lon}" 2>/dev/null || true
+    sleep 8
+    # Near-stop leg — overrides with a ~0.5 m/s crawl; the boundary decel fires crash.
+    xcrun simctl location "${udid}" start --speed=0.5 --interval=1 \
+      "${b},${lon}" "${c},${lon}" 2>/dev/null || true
+    sleep 5
   done
 }
 
@@ -171,45 +170,57 @@ sleep 5   # let several fixes land and speed build up before the app starts
 # ---------------------------------------------------------------------------
 log "Running XCUITests (scheme=${SCHEME})…"
 RESULT_BUNDLE="/tmp/e2e-ios-results.xcresult"
-rm -rf "${RESULT_BUNDLE}"
 
-set +e
+# One XCUITest attempt. Succeeds only if both tests pass (run>0, failed==0).
 # Only the driving tests — the geofence tests share this AppUITests class but need a
 # stationary fix at the geofence center, which e2e-ios-geofencing.sh injects instead.
-xcodebuild test-without-building \
-  -project "${EXAMPLE_IOS}/App.xcodeproj" \
-  -scheme "${SCHEME}" \
-  -destination "id=${UDID}" \
-  -resultBundlePath "${RESULT_BUNDLE}" \
-  -only-testing:AppUITests/DrivingEventsE2ETests/testSpeedingEventFires \
-  -only-testing:AppUITests/DrivingEventsE2ETests/testPossibleCrashEventFires \
-  SIMULATOR_UDID="${UDID}" \
-  2>&1 | tee /tmp/e2e-ios-xcodebuild.log \
-       | grep -E "(Test Case|error:|XCTAssert|\\*\\* TEST|Executed)" || true
-XCODE_EXIT=$?
-set -e
+run_attempt() {
+  rm -rf "${RESULT_BUNDLE}"
+  set +e
+  xcodebuild test-without-building \
+    -project "${EXAMPLE_IOS}/App.xcodeproj" \
+    -scheme "${SCHEME}" \
+    -destination "id=${UDID}" \
+    -resultBundlePath "${RESULT_BUNDLE}" \
+    -only-testing:AppUITests/DrivingEventsE2ETests/testSpeedingEventFires \
+    -only-testing:AppUITests/DrivingEventsE2ETests/testPossibleCrashEventFires \
+    SIMULATOR_UDID="${UDID}" \
+    2>&1 | tee /tmp/e2e-ios-xcodebuild.log \
+         | grep -E "(Test Case|error:|XCTAssert|\\*\\* TEST|Executed)" || true
+  set -e
+  local run fail_n
+  run=$(grep -c "Test Case '.*' passed (" /tmp/e2e-ios-xcodebuild.log 2>/dev/null || true);  run=${run:-0}
+  fail_n=$(grep -c "Test Case '.*' failed (" /tmp/e2e-ios-xcodebuild.log 2>/dev/null || true); fail_n=${fail_n:-0}
+  [ "${fail_n}" -eq 0 ] && [ "${run}" -gt 0 ]
+}
+
+# UI E2E on a hosted simulator is intrinsically flaky for reasons unrelated to the
+# code under test: WebView cold-load (Configure button not yet rendered), system
+# permission dialogs, and GPS-injection timing. Retry the whole suite once — a fresh
+# app launch clears those transient glitches. The driving-event *detection* logic is
+# pinned by the JVM/Swift unit tests, so a retry here masks environment noise, not bugs.
+ATTEMPTS=2
+PASSED=0
+for attempt in $(seq 1 "${ATTEMPTS}"); do
+  log "XCUITest attempt ${attempt}/${ATTEMPTS}…"
+  if run_attempt; then PASSED=1; break; fi
+  if [ "${attempt}" -lt "${ATTEMPTS}" ]; then log "Attempt ${attempt} failed — retrying after transient failure…"; fi
+done
 
 # ---------------------------------------------------------------------------
-# 5. Parse results
+# 5. Report (from the last attempt's log)
 # ---------------------------------------------------------------------------
-TESTS_RUN=$(grep -c "Test Case '.*' passed (" /tmp/e2e-ios-xcodebuild.log 2>/dev/null || true); TESTS_RUN=${TESTS_RUN:-0}
-TESTS_FAIL=$(grep -c "Test Case '.*' failed (" /tmp/e2e-ios-xcodebuild.log 2>/dev/null || true); TESTS_FAIL=${TESTS_FAIL:-0}
-
-while IFS= read -r line; do
-  pass "${line}"
-done < <(grep "Test Case '.*' passed (" /tmp/e2e-ios-xcodebuild.log 2>/dev/null || true)
-
-while IFS= read -r line; do
-  fail "${line}"
-done < <(grep "Test Case '.*' failed (" /tmp/e2e-ios-xcodebuild.log 2>/dev/null || true)
+while IFS= read -r line; do pass "${line}"; done < <(grep "Test Case '.*' passed (" /tmp/e2e-ios-xcodebuild.log 2>/dev/null || true)
+while IFS= read -r line; do fail "${line}"; done < <(grep "Test Case '.*' failed (" /tmp/e2e-ios-xcodebuild.log 2>/dev/null || true)
 
 echo ""
 echo "────────────────────────────────────────"
-if [ "${XCODE_EXIT}" -eq 0 ] && [ "${FAIL}" -eq 0 ] && [ "${TESTS_RUN}" -gt 0 ]; then
-  echo "✓ Driving events iOS E2E PASSED (${TESTS_RUN}/${TESTS_RUN})"
+if [ "${PASSED}" -eq 1 ]; then
+  TESTS_RUN=$(grep -c "Test Case '.*' passed (" /tmp/e2e-ios-xcodebuild.log 2>/dev/null || true)
+  echo "✓ Driving events iOS E2E PASSED (${TESTS_RUN}/${TESTS_RUN}) after ${attempt} attempt(s)"
   exit 0
 else
-  echo "✗ Driving events iOS E2E FAILED (passed=${TESTS_RUN}, failed=${FAIL})"
+  echo "✗ Driving events iOS E2E FAILED after ${ATTEMPTS} attempts"
   echo "--- Last 40 lines of xcodebuild output ---"
   tail -40 /tmp/e2e-ios-xcodebuild.log || true
   exit 1

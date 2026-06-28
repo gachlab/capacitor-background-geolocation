@@ -3,6 +3,9 @@
 
 package com.gachlab.geolocation
 
+import com.gachlab.geolocation.domain.Journey
+import com.gachlab.geolocation.domain.TripConfig
+
 import com.gachlab.geolocation.fixtures.MockTripBuilder
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -18,7 +21,7 @@ class DrivingEventsDetectorTest {
     private var lastScore: TripScore? = null
     private lateinit var detector: DrivingEventsDetector
 
-    private val cfg = DrivingEventsDetector.Config(
+    private val cfg = TripConfig(
         enabled            = true,
         speedLimitKmh      = 120.0,
         minMovingSpeedMps  = 1.0,
@@ -36,9 +39,9 @@ class DrivingEventsDetectorTest {
         override fun onMoving(loc: BGLocation) { events += "moving" }
         override fun onStopped(loc: BGLocation) { events += "stopped" }
         override fun onTripStart(loc: BGLocation) { events += "tripStart" }
-        override fun onTripEnd(loc: BGLocation, distanceMeters: Double, durationMs: Long, score: TripScore) {
+        override fun onTripEnd(loc: BGLocation, journey: Journey) {
             events += "tripEnd"
-            lastScore = score
+            lastScore = journey.score
         }
         override fun onIdleStart(loc: BGLocation, startedAt: Long) { events += "idleStart" }
         override fun onIdleEnd(loc: BGLocation, durationMs: Long, startedAt: Long) { events += "idleEnd" }
@@ -132,7 +135,7 @@ class DrivingEventsDetectorTest {
 
     @Nested @DisplayName("idle detection")
     inner class IdleDetection {
-        private val idleCfg = DrivingEventsDetector.Config(
+        private val idleCfg = TripConfig(
             enabled             = true,
             minMovingSpeedMps   = 1.0,
             stoppedDurationMs   = 60_000L,

@@ -31,9 +31,8 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     /// 20 app-wide region slots minus one reserved for `BGStationaryRegion`.
     private static let maxUserGeofences = 19
 
-    // Invoked with (geofenceId, action, location?) on each transition.
-    // "action" is "ENTER", "EXIT", or "DWELL".
-    public var eventListener: ((String, String, BGLocation?) -> Void)?
+    // Invoked with the domain GeoEvent + the triggering platform location on each transition.
+    public var eventListener: ((GeoEvent, BGLocation?) -> Void)?
 
     private let locationManager = CLLocationManager()
     private var geofences: [String: BGGeofence] = [:]
@@ -141,7 +140,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     private func handleEntered(_ gf: BGGeofence) {
         guard !insideRegions.contains(gf.id) else { return }
         insideRegions.insert(gf.id)
-        if gf.notifyOnEntry { fire("ENTER", id: gf.id, location: nil) }
+        if gf.notifyOnEntry { fire(.enter, id: gf.id, location: nil) }
         if gf.notifyOnDwell {
             dwellEnterAt[gf.id] = Date()
             startDwellTimer(for: gf)
@@ -154,7 +153,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         dwellEnterAt.removeValue(forKey: gf.id)
         // Only a real boundary exit (we were inside) emits EXIT — an initial
         // `.outside` determination must not.
-        if wasInside && gf.notifyOnExit { fire("EXIT", id: gf.id, location: nil) }
+        if wasInside && gf.notifyOnExit { fire(.exit, id: gf.id, location: nil) }
     }
 
     // MARK: - Private helpers
@@ -214,11 +213,11 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
         guard dwellEnterAt[id] != nil else { return }
         dwellEnterAt.removeValue(forKey: id)
         cancelDwellTimer(for: id)
-        fire("DWELL", id: id, location: location)
+        fire(.dwell, id: id, location: location)
     }
 
-    private func fire(_ action: String, id: String, location: BGLocation?) {
-        eventListener?(id, action, location)
+    private func fire(_ transition: GeofenceTransition, id: String, location: BGLocation?) {
+        eventListener?(GeoEvent(geofenceId: id, transition: transition), location)
     }
 
     private func runOnMain(_ block: @escaping () -> Void) {

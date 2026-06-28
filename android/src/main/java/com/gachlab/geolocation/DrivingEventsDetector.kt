@@ -3,11 +3,12 @@
 
 package com.gachlab.geolocation
 
-import kotlin.math.abs
-import kotlin.math.asin
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
+import com.gachlab.geolocation.domain.GeoPoint
+import com.gachlab.geolocation.domain.Heading
+import com.gachlab.geolocation.domain.Journey
+import com.gachlab.geolocation.domain.Position
+import com.gachlab.geolocation.domain.Trip
+import com.gachlab.geolocation.domain.TripConfig
 
 /**
  * GPS-only driving events state machine.
@@ -19,7 +20,7 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         fun onMoving(loc: BGLocation)
         fun onStopped(loc: BGLocation)
         fun onTripStart(loc: BGLocation)
-        fun onTripEnd(loc: BGLocation, distanceMeters: Double, durationMs: Long, score: TripScore)
+        fun onTripEnd(loc: BGLocation, journey: Journey)
         fun onSpeeding(loc: BGLocation, speedKmh: Double, limitKmh: Double)
         fun onProviderChange(provider: String)
         fun onHardBrake(loc: BGLocation, decelMps2: Double)
@@ -31,46 +32,21 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         fun onPhoneUsageWhileDriving(loc: BGLocation)
     }
 
-    data class Config(
-        val enabled:             Boolean = false,
-        val speedLimitKmh:       Double  = 0.0,
-        val minMovingSpeedMps:   Double  = 1.0,
-        val stoppedDurationMs:   Long    = 60_000L,
-        val minTripSpeedMps:     Double  = 3.0,
-        val minTripDurationMs:   Long    = 30_000L,
-        val hardBrakeMps2:       Double  = 3.5,
-        val rapidAccelMps2:      Double  = 3.5,
-        val sharpTurnDegPerSec:  Double  = 30.0,
-        val crashImpactKmh:      Double  = 25.0,
-        val crashWindowMs:       Long    = 2_000L,
-        val idleThresholdMs:     Long    = 300_000L,
-        val idleEndThresholdMs:  Long    = 30_000L,
-        val scoringWeights:      ScoringWeights? = null,
-        val crashConfirmWindowMs: Long   = 0L,
-        val sensorFusion:        Boolean = false,
-        val phoneUsageWindowMs:  Long    = 4_000L,
-        val phoneUsageCooldownMs: Long   = 60_000L,
-    )
-
     private enum class MovingState { STATIONARY, MOVING, TRIP_ACTIVE }
 
-    @Volatile private var cfg = Config()
+    @Volatile private var cfg = TripConfig()
 
     private var movingState          = MovingState.STATIONARY
-    private var tripStartedAt        = 0L
-    private var tripDistanceMeters   = 0.0
+    private var activeTrip: Trip?    = null
     private var aboveTripSpeedSince  = 0L
     private var belowMovingSince     = 0L
     private var wasSpeeding          = false
     private var lastProvider: String? = null
-    private var prevLat              = 0.0
-    private var prevLon              = 0.0
-    private var hasPrev              = false
+    private var prevPoint: GeoPoint? = null
     private var prevSpeedMps         = 0.0
     private var prevSpeedAt          = 0L
-    private var prevBearingDeg       = 0.0
-    private var prevBearingAt        = 0L
-    private var hasPrevBearing       = false
+    private var prevHeading: Heading? = null
+    private var prevHeadingAt        = 0L
     private var lastHardBrakeAt      = 0L
     private var lastRapidAccelAt     = 0L
     private var lastSharpTurnAt      = 0L
@@ -78,7 +54,6 @@ internal class DrivingEventsDetector(private val listener: Listener) {
 
     // Scoring / idle state
     private var scoreCalc:            ScoreCalculator? = null
-    private var tripId:               String = ""
     private var idleStartedAt:        Long = 0L
     private var idleThresholdFired:   Boolean = false
     private var postIdleMovingAt:     Long = 0L
@@ -93,17 +68,17 @@ internal class DrivingEventsDetector(private val listener: Listener) {
     private var jitterCount:          Int  = 0
     private var lastPhoneUsageAt:     Long = 0L
 
-    @Synchronized fun setConfig(c: Config) { cfg = c }
+    @Synchronized fun setConfig(c: TripConfig) { cfg = c }
 
     @Synchronized fun reset() {
         movingState = MovingState.STATIONARY
-        tripStartedAt = 0L; tripDistanceMeters = 0.0
+        activeTrip = null
         aboveTripSpeedSince = 0L; belowMovingSince = 0L; wasSpeeding = false
-        lastProvider = null; hasPrev = false
+        lastProvider = null; prevPoint = null
         prevSpeedMps = 0.0; prevSpeedAt = 0L
-        prevBearingDeg = 0.0; prevBearingAt = 0L; hasPrevBearing = false
+        prevHeading = null; prevHeadingAt = 0L
         lastHardBrakeAt = 0L; lastRapidAccelAt = 0L; lastSharpTurnAt = 0L; lastCrashAt = 0L
-        scoreCalc = null; tripId = ""
+        scoreCalc = null
         idleStartedAt = 0L; idleThresholdFired = false; postIdleMovingAt = 0L
         pendingCrashLoc = null; pendingCrashDropKmh = 0.0; pendingCrashDetectedAt = 0L
         jitterWindowStart = 0L; jitterCount = 0; lastPhoneUsageAt = 0L
@@ -123,22 +98,28 @@ internal class DrivingEventsDetector(private val listener: Listener) {
 
     @Synchronized fun onLocation(loc: BGLocation) {
         if (!cfg.enabled) return
-        val now    = System.currentTimeMillis()
-        val speed: Double = if (loc.hasSpeed) loc.speed.toDouble() else 0.0
-        val curLat = loc.latitude
-        val curLon = loc.longitude
+        val now = System.currentTimeMillis()
+        val pos = Position(
+            point      = GeoPoint(loc.latitude, loc.longitude),
+            speedMps   = if (loc.hasSpeed) loc.speed.toDouble() else null,
+            bearingDeg = if (loc.hasBearing) loc.bearing.toDouble() else null,
+            provider   = loc.provider,
+        )
+        val speed: Double = pos.speedMpsOrZero
+        val curHeading: Heading? = pos.bearingDeg?.let { Heading(it) }
+        val priorHeading = prevHeading  // snapshot before this fix updates it below
 
         // Provider change
-        val provider = loc.provider
+        val provider = pos.provider
         if (provider != null && provider != lastProvider) {
             lastProvider = provider
             listener.onProviderChange(provider)
         }
 
         // Accumulate trip distance
-        if (hasPrev && movingState == MovingState.TRIP_ACTIVE)
-            tripDistanceMeters += haversineMeters(prevLat, prevLon, curLat, curLon)
-        prevLat = curLat; prevLon = curLon; hasPrev = true
+        if (movingState == MovingState.TRIP_ACTIVE)
+            prevPoint?.let { activeTrip = activeTrip?.plusDistance(it.distanceTo(pos.point)) }
+        prevPoint = pos.point
 
         // ── Moving / stopped state machine ────────────────────────────────────
         val nowMoving = speed >= cfg.minMovingSpeedMps
@@ -153,8 +134,7 @@ internal class DrivingEventsDetector(private val listener: Listener) {
                     if (aboveTripSpeedSince == 0L) aboveTripSpeedSince = now
                     if (now - aboveTripSpeedSince >= cfg.minTripDurationMs) {
                         movingState = MovingState.TRIP_ACTIVE
-                        tripStartedAt = now; tripDistanceMeters = 0.0
-                        tripId = now.toString()
+                        activeTrip = Trip.startedAt(now)
                         scoreCalc = ScoreCalculator(cfg.scoringWeights ?: ScoringWeights())
                         listener.onTripStart(loc)
                     }
@@ -168,10 +148,12 @@ internal class DrivingEventsDetector(private val listener: Listener) {
                 movingState = MovingState.STATIONARY
                 listener.onStopped(loc)
                 if (wasTripActive) {
-                    val score = scoreCalc?.compute(tripId, tripStartedAt, now, tripDistanceMeters)
-                        ?: ScoreCalculator().compute(tripId, tripStartedAt, now, tripDistanceMeters)
+                    val trip = activeTrip ?: Trip.startedAt(now)
+                    val score = scoreCalc?.compute(trip.id, trip.startedAtMs, now, trip.distanceMeters)
+                        ?: ScoreCalculator().compute(trip.id, trip.startedAtMs, now, trip.distanceMeters)
                     scoreCalc = null
-                    listener.onTripEnd(loc, tripDistanceMeters, now - tripStartedAt, score)
+                    activeTrip = null
+                    listener.onTripEnd(loc, Journey.completed(trip, now, score))
                 }
             }
         }
@@ -254,11 +236,10 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         }
 
         // ── Sharp turn (bearing change rate) ──────────────────────────────────
-        if (cfg.sharpTurnDegPerSec > 0 && loc.hasBearing && speed >= 5.0 && hasPrevBearing) {
-            val dtMs = now - prevBearingAt
+        if (cfg.sharpTurnDegPerSec > 0 && curHeading != null && speed >= 5.0 && priorHeading != null) {
+            val dtMs = now - prevHeadingAt
             if (dtMs in 1L..5_000L) {
-                var diff = abs(loc.bearing.toDouble() - prevBearingDeg)
-                if (diff > 180) diff = 360 - diff
+                val diff = curHeading.deltaTo(priorHeading)
                 val rate = diff * 1000.0 / dtMs
                 if (rate >= cfg.sharpTurnDegPerSec && now - lastSharpTurnAt >= COOLDOWN_MS) {
                     lastSharpTurnAt = now
@@ -269,12 +250,11 @@ internal class DrivingEventsDetector(private val listener: Listener) {
         }
         // ── Phone usage (GPS bearing jitter, disabled when sensorFusion=true) ──────
         if (!cfg.sensorFusion && cfg.phoneUsageWindowMs > 0
-                && movingState == MovingState.TRIP_ACTIVE && loc.hasBearing && hasPrevBearing
+                && movingState == MovingState.TRIP_ACTIVE && curHeading != null && priorHeading != null
                 && speed >= 1.39 && speed <= 22.2) {
-            val bearingDtMs = now - prevBearingAt
+            val bearingDtMs = now - prevHeadingAt
             if (bearingDtMs in 1L..5_000L) {
-                var bearingDiff = abs(loc.bearing.toDouble() - prevBearingDeg)
-                if (bearingDiff > 180) bearingDiff = 360 - bearingDiff
+                val bearingDiff = curHeading.deltaTo(priorHeading)
                 if (bearingDiff in 5.0..25.0) {
                     if (jitterWindowStart == 0L) jitterWindowStart = now
                     jitterCount++
@@ -290,8 +270,8 @@ internal class DrivingEventsDetector(private val listener: Listener) {
             }
         }
 
-        if (loc.hasBearing) {
-            prevBearingDeg = loc.bearing.toDouble(); prevBearingAt = now; hasPrevBearing = true
+        if (curHeading != null) {
+            prevHeading = curHeading; prevHeadingAt = now
         }
 
         // ── Pending crash confirmation ─────────────────────────────────────────
@@ -314,15 +294,5 @@ internal class DrivingEventsDetector(private val listener: Listener) {
 
     companion object {
         private const val COOLDOWN_MS = 4_000L
-        private const val R_METERS    = 6_371_000.0
-
-        private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-            val dLat = Math.toRadians(lat2 - lat1)
-            val dLon = Math.toRadians(lon2 - lon1)
-            val a = sin(dLat / 2).let { it * it } +
-                    cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
-                    sin(dLon / 2).let { it * it }
-            return 2 * R_METERS * asin(sqrt(a))
-        }
     }
 }

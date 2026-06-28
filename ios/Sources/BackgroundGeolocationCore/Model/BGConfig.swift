@@ -102,6 +102,24 @@ public final class BGConfig: NSObject, NSCopying {
         template                   = BGConfig.defaultTemplate()
     }
 
+    // MARK: - Domain
+
+    /// Resolve this (partial, optional) config into the pure domain `TrackingConfig`,
+    /// applying the same defaults `init(defaults:)` uses (one place instead of the
+    /// providers' scattered `?? default`). `maxAcceptedAccuracy` stays optional
+    /// (nil = no accuracy gate).
+    public func toTrackingConfig() -> TrackingConfig {
+        TrackingConfig(
+            stationaryRadius:            stationaryRadius ?? 50,
+            distanceFilter:              distanceFilter ?? 500,
+            desiredAccuracy:             desiredAccuracy ?? 100,
+            locationProvider:            locationProvider ?? BGLocationProvider.distanceFilter.rawValue,
+            activitiesInterval:          activitiesInterval ?? 10_000,
+            activityConfidenceThreshold: activityConfidenceThreshold ?? 50,
+            maxAcceptedAccuracy:         maxAcceptedAccuracy
+        )
+    }
+
     // MARK: - Factory
 
     public static func from(dictionary d: [String: Any]) -> BGConfig {

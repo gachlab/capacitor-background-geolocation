@@ -25,7 +25,7 @@ internal class PostLocationTask(
     private val locationDAO: LocationDAO,
     private val sessionDAO: SessionDAO,
     private val callbacks: Callbacks
-) {
+) : com.gachlab.geolocation.ports.LocationPublisher {
 
     interface Callbacks {
         fun onSyncRequested()
@@ -35,7 +35,7 @@ internal class PostLocationTask(
 
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
 
-    fun add(location: BGLocation) {
+    override fun add(location: BGLocation) {
         // 1. Mock policy
         when (config.mockLocationPolicy ?: BGConfig.DEFAULT_MOCK_LOCATION_POLICY) {
             "deny"  -> if (location.mockFlags != 0) {
@@ -132,7 +132,7 @@ internal class PostLocationTask(
         }
     }
 
-    fun shutdown() { executor.shutdown() }
+    override fun shutdown() { executor.shutdown() }
 
     companion object {
         private const val TAG = "PostLocationTask"

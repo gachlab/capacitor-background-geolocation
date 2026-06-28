@@ -15,9 +15,9 @@ private final class ScoreCapturingDelegate: DrivingEventsDetectorDelegate {
     func detectorOnMoving(_ l: DLLocation)    { events.append("moving") }
     func detectorOnStopped(_ l: DLLocation)   { events.append("stopped") }
     func detectorOnTripStart(_ l: DLLocation) { events.append("tripStart") }
-    func detectorOnTripEnd(_ l: DLLocation, distanceMeters: Double, durationMs: Int64, score: TripScore) {
+    func detectorOnTripEnd(_ l: DLLocation, journey: Journey) {
         events.append("tripEnd")
-        finalScore = score
+        finalScore = journey.score
     }
     func detectorOnSpeeding(_ l: DLLocation, speedKmh: Double, limitKmh: Double) { events.append("speeding") }
     func detectorOnProviderChange(provider: String) {}
@@ -42,14 +42,14 @@ final class TripLifecycleTests: XCTestCase {
         let det = DrivingEventsDetector()
         let rec = ScoreCapturingDelegate()
         det.delegate = rec
-        det.enabled = true
-        det.speedLimitKmh = 120
-        det.minTripDurationSec = 0
-        det.crashImpactKmh = 1_000        // disable crash so the brake reads as hardBrake only
+        det.config.enabled = true
+        det.config.speedLimitKmh = 120
+        det.config.minTripDurationSec = 0
+        det.config.crashImpactKmh = 1_000        // disable crash so the brake reads as hardBrake only
         // idleThreshold must be << stoppedDuration so idle fires DURING the trip.
-        det.stoppedDurationSec = 0.4
-        det.idleThresholdSec = 0.08
-        det.idleEndThresholdSec = 0.08
+        det.config.stoppedDurationSec = 0.4
+        det.config.idleThresholdSec = 0.08
+        det.config.idleEndThresholdSec = 0.08
 
         // 1) Start moving fast → moving + tripStart
         det.feed(fix(20))                 // 72 km/h

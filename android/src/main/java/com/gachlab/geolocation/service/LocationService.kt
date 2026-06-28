@@ -3,6 +3,8 @@
 
 package com.gachlab.geolocation.service
 
+import com.gachlab.geolocation.domain.TripConfig
+
 import android.app.Service
 import android.content.Intent
 import android.content.IntentFilter
@@ -18,6 +20,7 @@ import androidx.work.Data
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.gachlab.geolocation.BGConfig
+import com.gachlab.geolocation.buffer.PositionBuffer
 import com.gachlab.geolocation.BGLocation
 import com.gachlab.geolocation.BGLog
 import com.gachlab.geolocation.DrivingEventsDetector
@@ -29,6 +32,8 @@ import com.gachlab.geolocation.persistence.LocationDAO
 import com.gachlab.geolocation.persistence.SessionDAO
 import com.gachlab.geolocation.network.BackgroundSync
 import com.gachlab.geolocation.network.PostLocationTask
+import com.gachlab.geolocation.ports.ConfigRepository
+import com.gachlab.geolocation.ports.LocationPublisher
 import com.gachlab.geolocation.network.PrioritySyncManager
 import com.gachlab.geolocation.provider.AbstractLocationProvider
 import com.gachlab.geolocation.provider.ActivityLocationProvider
@@ -88,7 +93,7 @@ class LocationService : Service() {
 
     private var config: BGConfig? = null
     private var provider: AbstractLocationProvider? = null
-    private var postTask: PostLocationTask? = null
+    private var postTask: LocationPublisher? = null
     private var prioritySyncManager: PrioritySyncManager? = null
     private var drivingDetector: DrivingEventsDetector? = null
     private var sensorDetector: SensorFusionDetector? = null
@@ -96,12 +101,11 @@ class LocationService : Service() {
 
     @Volatile var isRunning = false
         private set
-    @Volatile private var lastLocationTime = 0L
-    @Volatile private var latestLocation: BGLocation? = null
+    private val buffer = PositionBuffer.shared
 
     private lateinit var locationDAO: LocationDAO
     private lateinit var sessionDAO: SessionDAO
-    private lateinit var configDAO: ConfigDAO
+    private lateinit var configDAO: ConfigRepository
     private lateinit var mainHandler: Handler
 
     private val watchdogRunnable = Runnable { checkWatchdog() }
@@ -112,6 +116,7 @@ class LocationService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance    = this
+        buffer.clear()   // fresh lifecycle starts with no cached fix (matches the old per-instance field)
         BGLog.init(applicationContext)
         locationDAO = LocationDAO(applicationContext)
         sessionDAO  = SessionDAO(applicationContext)
@@ -242,9 +247,8 @@ class LocationService : Service() {
     }
 
     private fun handleLocation(loc: BGLocation) {
-        lastLocationTime = System.currentTimeMillis()
-        val prev = latestLocation
-        latestLocation = loc
+        val prev = buffer.lastFix
+        buffer.record(loc, System.currentTimeMillis())
 
         // Emulators (`adb emu geo fix`) and some low-end chipsets report speed=0
         // with hasSpeed=true, or omit speed/bearing entirely. Derive both from
@@ -298,12 +302,12 @@ class LocationService : Service() {
             sd.sensorFusion        = opts.sensorFusion
             sd.phoneUsageWindowMs  = opts.phoneUsageWindowMs
             sd.phoneUsageCooldownMs = opts.phoneUsageCooldownMs
-            sd.lastLocation    = latestLocation
+            sd.lastLocation    = buffer.lastFix
             sd.start()
         } else {
             sensorDetector?.stop(); sensorDetector = null
         }
-        val detectorCfg = DrivingEventsDetector.Config(
+        val detectorCfg = TripConfig(
             enabled              = opts.enabled,
             speedLimitKmh        = opts.speedLimitKmh,
             minMovingSpeedMps    = opts.minMovingSpeedMps,
@@ -334,10 +338,10 @@ class LocationService : Service() {
             Log.i(TAG, "driving-event: tripStart"); sensorDetector?.tripActive = true
             fire(ServiceEvent.TripStart(loc))
         }
-        override fun onTripEnd(loc: BGLocation, distanceMeters: Double, durationMs: Long, score: com.gachlab.geolocation.TripScore) {
-            Log.i(TAG, "driving-event: tripEnd dist=${distanceMeters.toInt()}m dur=${durationMs}ms")
+        override fun onTripEnd(loc: BGLocation, journey: com.gachlab.geolocation.domain.Journey) {
+            Log.i(TAG, "driving-event: tripEnd dist=${journey.distanceMeters.toInt()}m dur=${journey.durationMs}ms")
             sensorDetector?.tripActive = false
-            fire(ServiceEvent.TripEnd(loc, distanceMeters, durationMs, score))
+            fire(ServiceEvent.TripEnd(loc, journey))
         }
         override fun onIdleStart(loc: BGLocation, startedAt: Long) =
             fire(ServiceEvent.IdleStart(loc, startedAt))
@@ -369,13 +373,13 @@ class LocationService : Service() {
      *  phone usage mirrors iOS (sensorFusion only) — emits the event, like its GPS twin. */
     private val sensorCrashListener = object : SensorFusionDetector.Listener {
         override fun onCrash(impactG: Double, location: BGLocation?) {
-            val loc = location ?: latestLocation ?: return
+            val loc = location ?: buffer.lastFix ?: return
             Log.i(TAG, "sensor-event: possibleCrash impactG=${"%.1f".format(impactG)}")
             loc.addDrivingEvent("possibleCrash")
             fire(ServiceEvent.PossibleCrash(loc, impactG, "sensor"))
         }
         override fun onPhoneUsageWhileDriving(location: BGLocation?) {
-            val loc = location ?: latestLocation ?: return
+            val loc = location ?: buffer.lastFix ?: return
             Log.i(TAG, "sensor-event: phoneUsageWhileDriving")
             loc.addDrivingEvent("phoneUsageWhileDriving")
             // Feed the trip score (the GPS jitter path is gated off under sensorFusion,
@@ -396,8 +400,9 @@ class LocationService : Service() {
         val cfg = config ?: return
         if (!isRunning) return
         val interval = cfg.watchdogIntervalMs ?: 60_000L
-        val elapsed  = System.currentTimeMillis() - lastLocationTime
-        if (lastLocationTime > 0 && elapsed > interval) {
+        val ts       = buffer.lastFixAtMs   // snapshot once: a concurrent record() between
+        val elapsed  = System.currentTimeMillis() - ts  // the two reads could pass a stale elapsed
+        if (ts > 0 && elapsed > interval) {
             val p = provider
             if (p != null && p.isStarted()) {
                 Log.i(TAG, "Watchdog: no update in ${elapsed / 1000}s — restarting provider")
@@ -419,7 +424,7 @@ class LocationService : Service() {
     private fun fireHeartbeat() {
         val cfg = config ?: return
         val interval = cfg.heartbeatInterval?.toLong()?.takeIf { it > 0 } ?: return
-        fire(ServiceEvent.Heartbeat(latestLocation))
+        fire(ServiceEvent.Heartbeat(buffer.lastFix))
         mainHandler.postDelayed(heartbeatRunnable, interval)
     }
 
@@ -506,7 +511,7 @@ class LocationService : Service() {
                 Pair("sos", org.json.JSONObject().apply {
                     put("type", "sos")
                     put("timestamp", System.currentTimeMillis())
-                    latestLocation?.let { put("location", locationToCoords(it)) }
+                    buffer.lastFix?.let { put("location", locationToCoords(it)) }
                     event.payload?.let { p -> p.keys().forEach { k -> put(k, p.get(k)) } }
                 })
             event is ServiceEvent.HardBrake && "hardBrake" in allowed ->

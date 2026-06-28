@@ -16,7 +16,7 @@ protocol DrivingEventsDetectorDelegate: AnyObject {
     func detectorOnMoving(_ location: DLLocation)
     func detectorOnStopped(_ location: DLLocation)
     func detectorOnTripStart(_ location: DLLocation)
-    func detectorOnTripEnd(_ location: DLLocation, distanceMeters: Double, durationMs: Int64, score: TripScore)
+    func detectorOnTripEnd(_ location: DLLocation, journey: Journey)
     func detectorOnSpeeding(_ location: DLLocation, speedKmh: Double, limitKmh: Double)
     func detectorOnProviderChange(provider: String)
     func detectorOnHardBrake(_ location: DLLocation, decelMps2: Double)
@@ -34,24 +34,9 @@ final class DrivingEventsDetector {
 
     // ── Config ────────────────────────────────────────────────────────────────
 
-    var enabled             = false
-    var speedLimitKmh       = 0.0
-    var minMovingSpeedMps   = 1.0
-    var stoppedDurationSec  = 60.0
-    var minTripSpeedMps     = 3.0
-    var minTripDurationSec  = 30.0
-    var hardBrakeMps2       = 3.5
-    var rapidAccelMps2      = 3.5
-    var sharpTurnDegPerSec  = 30.0
-    var crashImpactKmh        = 25.0
-    var crashWindowSec        = 2.0
-    var crashConfirmWindowSec = 0.0
-    var sensorFusion          = false
-    var phoneUsageWindowSec   = 4.0
-    var phoneUsageCooldownSec = 60.0
-    var idleThresholdSec      = 300.0
-    var idleEndThresholdSec   = 30.0
-    var scoringWeights: ScoringWeights?
+    /// Trip / driving-event detection policy (domain value object). The plugin mutates
+    /// it field-by-field from the JS config; the engine reads it.
+    var config = TripConfig()
 
     weak var delegate: DrivingEventsDetectorDelegate?
 
@@ -62,10 +47,8 @@ final class DrivingEventsDetector {
     // ── Private state ─────────────────────────────────────────────────────────
 
     private var isMoving            = false
-    private var tripStartedAt       = 0.0
-    private var tripDistanceMeters  = 0.0
-    private var hasPrev             = false
-    private var prevLat             = 0.0, prevLon = 0.0
+    private var activeTrip: Trip?
+    private var prevPoint: GeoPoint?
     private var aboveTripSpeedSince = 0.0
     private var belowMovingSince    = 0.0
     private var wasSpeeding         = false
@@ -73,9 +56,8 @@ final class DrivingEventsDetector {
 
     private var prevSpeedMps    = 0.0
     private var prevSpeedAt     = 0.0
-    private var prevBearing     = 0.0
-    private var hasPrevBearing  = false
-    private var prevBearingAt   = 0.0
+    private var prevHeading: Heading?
+    private var prevHeadingAt   = 0.0
 
     private var lastHardBrakeAt  = 0.0
     private var lastRapidAccelAt = 0.0
@@ -84,7 +66,6 @@ final class DrivingEventsDetector {
 
     // Scoring / idle state
     private var scoreCalc:           ScoreCalculator?
-    private var tripId               = ""
     private var idleStartedAt        = 0.0
     private var idleThresholdFired   = false
     private var postIdleMovingAt     = 0.0
@@ -106,23 +87,21 @@ final class DrivingEventsDetector {
     func reset() {
         isMoving            = false
         tripActive          = false
-        tripStartedAt       = 0
-        tripDistanceMeters  = 0
-        hasPrev             = false
+        activeTrip          = nil
+        prevPoint           = nil
         aboveTripSpeedSince = 0
         belowMovingSince    = 0
         wasSpeeding         = false
         lastProvider        = nil
         prevSpeedMps        = 0
         prevSpeedAt         = 0
-        prevBearing         = 0
-        hasPrevBearing      = false
-        prevBearingAt       = 0
+        prevHeading         = nil
+        prevHeadingAt       = 0
         lastHardBrakeAt     = 0
         lastRapidAccelAt    = 0
         lastSharpTurnAt     = 0
         lastCrashAt         = 0
-        scoreCalc = nil; tripId = ""
+        scoreCalc = nil
         idleStartedAt = 0; idleThresholdFired = false; postIdleMovingAt = 0
         pendingCrashLoc = nil; pendingCrashDropKmh = 0; pendingCrashDetectedAt = 0
         jitterWindowStart = 0; jitterCount = 0; lastPhoneUsageAt = 0
@@ -130,47 +109,52 @@ final class DrivingEventsDetector {
 
     /// Records a phone-usage penalty originating from the EXTERNAL sensor-fusion
     /// detector, which lives outside this GPS detector but shares its trip-scoped
-    /// `scoreCalc`. The GPS bearing-jitter path is gated on `!sensorFusion`, so the two
+    /// `scoreCalc`. The GPS bearing-jitter path is gated on `!config.sensorFusion`, so the two
     /// are mutually exclusive and never double-count. No-op outside an active trip.
     func recordExternalPhoneUsage(_ location: DLLocation?) {
-        guard enabled, tripActive else { return }
+        guard config.enabled, tripActive else { return }
         let loc = location ?? DLLocation(latitude: 0, longitude: 0, speed: -1, bearing: nil, provider: nil)
         scoreCalc?.recordPhoneUsage(loc, ts: Date().timeIntervalSince1970)
     }
 
     func feed(_ location: DLLocation) {
-        guard enabled else { return }
-        let now   = Date().timeIntervalSince1970
-        let speed = max(0, location.speed < 0 ? 0 : location.speed)
+        guard config.enabled else { return }
+        let now = Date().timeIntervalSince1970
+        let pos = Position(
+            point: GeoPoint(latitude: location.latitude, longitude: location.longitude),
+            speedMps: location.speed < 0 ? nil : location.speed,
+            bearingDeg: location.bearing,
+            provider: location.provider
+        )
+        let speed = pos.speedMpsOrZero
+        let curHeading = pos.bearingDeg.map { Heading(degrees: $0) }
+        let priorHeading = prevHeading  // snapshot before this fix updates it below
 
         // Provider change
-        if let p = location.provider, p != lastProvider {
+        if let p = pos.provider, p != lastProvider {
             lastProvider = p
             delegate?.detectorOnProviderChange(provider: p)
         }
 
         // Distance accumulator
-        let curLat = location.latitude, curLon = location.longitude
-        if hasPrev && tripActive {
-            tripDistanceMeters += haversineMeters(lat1: prevLat, lon1: prevLon, lat2: curLat, lon2: curLon)
+        if tripActive, let prev = prevPoint {
+            activeTrip = activeTrip?.plusDistance(prev.distanceTo(pos.point))
         }
-        prevLat = curLat; prevLon = curLon; hasPrev = true
+        prevPoint = pos.point
 
         // Moving / stopped state machine
-        let nowMoving = speed >= minMovingSpeedMps
+        let nowMoving = speed >= config.minMovingSpeedMps
         if nowMoving {
             belowMovingSince = 0
             if !isMoving { isMoving = true; delegate?.detectorOnMoving(location) }
 
             if !tripActive {
-                if speed >= minTripSpeedMps {
+                if speed >= config.minTripSpeedMps {
                     if aboveTripSpeedSince == 0 { aboveTripSpeedSince = now }
-                    if now - aboveTripSpeedSince >= minTripDurationSec {
-                        tripActive         = true
-                        tripStartedAt      = now
-                        tripDistanceMeters = 0
-                        tripId    = String(Int64(now * 1000))
-                        scoreCalc = ScoreCalculator(weights: scoringWeights ?? ScoringWeights())
+                    if now - aboveTripSpeedSince >= config.minTripDurationSec {
+                        tripActive = true
+                        activeTrip = Trip.startedAt(now)
+                        scoreCalc  = ScoreCalculator(weights: config.scoringWeights ?? ScoringWeights())
                         delegate?.detectorOnTripStart(location)
                     }
                 } else {
@@ -180,19 +164,20 @@ final class DrivingEventsDetector {
         } else {
             aboveTripSpeedSince = 0
             if belowMovingSince == 0 { belowMovingSince = now }
-            if isMoving && (now - belowMovingSince) >= stoppedDurationSec {
+            if isMoving && (now - belowMovingSince) >= config.stoppedDurationSec {
                 isMoving = false
                 delegate?.detectorOnStopped(location)
                 if tripActive {
-                    let durMs = Int64((now - tripStartedAt) * 1000)
-                    let dist  = tripDistanceMeters
-                    let score = scoreCalc?.compute(tripId: tripId, startedAt: tripStartedAt,
+                    let trip  = activeTrip ?? Trip.startedAt(now)
+                    let dist  = trip.distanceMeters
+                    let score = scoreCalc?.compute(tripId: trip.id, startedAt: trip.startedAt,
                                                    endedAt: now, distanceMeters: dist)
-                               ?? ScoreCalculator().compute(tripId: tripId, startedAt: tripStartedAt,
+                               ?? ScoreCalculator().compute(tripId: trip.id, startedAt: trip.startedAt,
                                                             endedAt: now, distanceMeters: dist)
                     tripActive = false
                     scoreCalc  = nil
-                    delegate?.detectorOnTripEnd(location, distanceMeters: dist, durationMs: durMs, score: score)
+                    activeTrip = nil
+                    delegate?.detectorOnTripEnd(location, journey: Journey.completed(trip, endedAt: now, score: score))
                 }
             }
         }
@@ -201,7 +186,7 @@ final class DrivingEventsDetector {
         if tripActive {
             if !nowMoving {
                 if idleStartedAt == 0 { idleStartedAt = now }
-                if !idleThresholdFired && (now - idleStartedAt) >= idleThresholdSec {
+                if !idleThresholdFired && (now - idleStartedAt) >= config.idleThresholdSec {
                     idleThresholdFired = true
                     postIdleMovingAt = 0
                     scoreCalc?.recordIdleStart()
@@ -210,7 +195,7 @@ final class DrivingEventsDetector {
             } else {
                 if idleThresholdFired {
                     if postIdleMovingAt == 0 { postIdleMovingAt = now }
-                    if (now - postIdleMovingAt) >= idleEndThresholdSec {
+                    if (now - postIdleMovingAt) >= config.idleEndThresholdSec {
                         let durationMs = Int64((now - idleStartedAt) * 1000)
                         scoreCalc?.recordIdleEnd(durationMs)
                         delegate?.detectorOnIdleEnd(location, durationMs: durationMs, startedAt: idleStartedAt)
@@ -225,13 +210,13 @@ final class DrivingEventsDetector {
         }
 
         // Speeding
-        if speedLimitKmh > 0 {
+        if config.speedLimitKmh > 0 {
             let kmh = speed * 3.6
-            if kmh > speedLimitKmh {
+            if kmh > config.speedLimitKmh {
                 if !wasSpeeding {
                     wasSpeeding = true
                     scoreCalc?.recordSpeeding(location, ts: now)
-                    delegate?.detectorOnSpeeding(location, speedKmh: kmh, limitKmh: speedLimitKmh)
+                    delegate?.detectorOnSpeeding(location, speedKmh: kmh, limitKmh: config.speedLimitKmh)
                 }
             } else {
                 wasSpeeding = false
@@ -244,23 +229,23 @@ final class DrivingEventsDetector {
             if dt > 0 && dt <= 5.0 {
                 let accel = (speed - prevSpeedMps) / dt
 
-                if hardBrakeMps2 > 0 && accel <= -hardBrakeMps2 && (now - lastHardBrakeAt) >= Self.cooldown {
+                if config.hardBrakeMps2 > 0 && accel <= -config.hardBrakeMps2 && (now - lastHardBrakeAt) >= Self.cooldown {
                     lastHardBrakeAt = now
                     scoreCalc?.recordHardBrake(location, ts: now)
                     delegate?.detectorOnHardBrake(location, decelMps2: accel)
                 }
-                if rapidAccelMps2 > 0 && accel >= rapidAccelMps2 && (now - lastRapidAccelAt) >= Self.cooldown {
+                if config.rapidAccelMps2 > 0 && accel >= config.rapidAccelMps2 && (now - lastRapidAccelAt) >= Self.cooldown {
                     lastRapidAccelAt = now
                     scoreCalc?.recordRapidAccel(location, ts: now)
                     delegate?.detectorOnRapidAcceleration(location, accelMps2: accel)
                 }
-                if crashImpactKmh > 0 && dt <= crashWindowSec {
+                if config.crashImpactKmh > 0 && dt <= config.crashWindowSec {
                     let dropKmh = (prevSpeedMps - speed) * 3.6
-                    if dropKmh >= crashImpactKmh && speed < 1.5
-                        && prevSpeedMps * 3.6 >= crashImpactKmh
+                    if dropKmh >= config.crashImpactKmh && speed < 1.5
+                        && prevSpeedMps * 3.6 >= config.crashImpactKmh
                         && (now - lastCrashAt) >= Self.cooldown
                         && pendingCrashLoc == nil {
-                        if crashConfirmWindowSec <= 0 {
+                        if config.crashConfirmWindowSec <= 0 {
                             lastCrashAt = now
                             delegate?.detectorOnPossibleCrash(location, dropKmh: dropKmh)
                         } else {
@@ -273,16 +258,15 @@ final class DrivingEventsDetector {
             }
         }
 
-        // Sharp turn + phone usage (both computed before updating prevBearing)
-        if let bearing = location.bearing {
-            if hasPrevBearing {
-                var diff = abs(bearing - prevBearing)
-                if diff > 180 { diff = 360 - diff }
-                let bearingDt = now - prevBearingAt
+        // Sharp turn + phone usage (both computed before updating prevHeading)
+        if let curHeading = curHeading {
+            if let priorHeading = priorHeading {
+                let diff = curHeading.deltaTo(priorHeading)
+                let bearingDt = now - prevHeadingAt
 
-                if sharpTurnDegPerSec > 0 && speed >= 5.0 && bearingDt > 0 && bearingDt <= 5.0 {
+                if config.sharpTurnDegPerSec > 0 && speed >= 5.0 && bearingDt > 0 && bearingDt <= 5.0 {
                     let rate = diff / bearingDt
-                    if rate >= sharpTurnDegPerSec && (now - lastSharpTurnAt) >= Self.cooldown {
+                    if rate >= config.sharpTurnDegPerSec && (now - lastSharpTurnAt) >= Self.cooldown {
                         lastSharpTurnAt = now
                         scoreCalc?.recordSharpTurn(location, ts: now)
                         delegate?.detectorOnSharpTurn(location, degPerSec: rate)
@@ -290,14 +274,14 @@ final class DrivingEventsDetector {
                 }
 
                 // ── Phone usage (GPS bearing jitter) ──────────────────────────
-                if !sensorFusion && phoneUsageWindowSec > 0 && tripActive
+                if !config.sensorFusion && config.phoneUsageWindowSec > 0 && tripActive
                         && speed >= 1.39 && speed <= 22.2
                         && bearingDt > 0 && bearingDt <= 5.0 && diff >= 5.0 && diff <= 25.0 {
                     if jitterWindowStart == 0 { jitterWindowStart = now }
                     jitterCount += 1
                 }
-                if jitterWindowStart > 0 && (now - jitterWindowStart) >= phoneUsageWindowSec {
-                    if jitterCount >= 3 && (now - lastPhoneUsageAt) >= phoneUsageCooldownSec {
+                if jitterWindowStart > 0 && (now - jitterWindowStart) >= config.phoneUsageWindowSec {
+                    if jitterCount >= 3 && (now - lastPhoneUsageAt) >= config.phoneUsageCooldownSec {
                         lastPhoneUsageAt = now
                         scoreCalc?.recordPhoneUsage(location, ts: now)
                         delegate?.detectorOnPhoneUsageWhileDriving(location)
@@ -305,14 +289,14 @@ final class DrivingEventsDetector {
                     jitterWindowStart = 0; jitterCount = 0
                 }
             }
-            prevBearing = bearing; prevBearingAt = now; hasPrevBearing = true
+            prevHeading = curHeading; prevHeadingAt = now
         }
 
         // ── Pending crash confirmation ─────────────────────────────────────────
         if let pLoc = pendingCrashLoc {
             if speed > 2.0 {
                 pendingCrashLoc = nil; pendingCrashDropKmh = 0; pendingCrashDetectedAt = 0
-            } else if (now - pendingCrashDetectedAt) >= crashConfirmWindowSec {
+            } else if (now - pendingCrashDetectedAt) >= config.crashConfirmWindowSec {
                 lastCrashAt = now
                 pendingCrashLoc = nil
                 delegate?.detectorOnPossibleCrash(pLoc, dropKmh: pendingCrashDropKmh)
@@ -321,16 +305,5 @@ final class DrivingEventsDetector {
         }
 
         prevSpeedMps = speed; prevSpeedAt = now
-    }
-
-    // ── Private helpers ───────────────────────────────────────────────────────
-
-    private func haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double) -> Double {
-        let r    = 6_371_000.0
-        let dLat = (lat2 - lat1) * .pi / 180
-        let dLon = (lon2 - lon1) * .pi / 180
-        let a    = sin(dLat/2) * sin(dLat/2)
-                 + cos(lat1 * .pi / 180) * cos(lat2 * .pi / 180) * sin(dLon/2) * sin(dLon/2)
-        return 2 * r * asin(sqrt(a))
     }
 }

@@ -58,10 +58,12 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         CAPPluginMethod(name: "removeGeofences", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getGeofences", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "removeAllListeners", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getTripScore", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "getTripScore", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getCapabilities", returnType: CAPPluginReturnPromise)
     ]
 
-    private static let pluginVersion = "1.5.0"
+    // Keep in sync with package.json `version`. Enforced by version-sync.test.ts.
+    private static let pluginVersion = "2.0.0"
 
     private var facade: BGFacade?
     private var currentConfig: BGConfig?
@@ -150,28 +152,28 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
     private func configureDrivingDetector(from opts: [String: Any]) {
         guard let de = opts["drivingEvents"] as? [String: Any] else {
-            drivingDetector.enabled = false
+            drivingDetector.config.enabled = false
             drivingDetector.reset()
             return
         }
-        drivingDetector.enabled = (de["enabled"] as? Bool) ?? false
-        if let v = (de["speedLimit"]         as? NSNumber)?.doubleValue { drivingDetector.speedLimitKmh      = v }
-        if let v = (de["minMovingSpeed"]     as? NSNumber)?.doubleValue { drivingDetector.minMovingSpeedMps  = v }
-        if let v = (de["stoppedDuration"]    as? NSNumber)?.doubleValue { drivingDetector.stoppedDurationSec = v }
-        if let v = (de["minTripSpeed"]       as? NSNumber)?.doubleValue { drivingDetector.minTripSpeedMps    = v }
-        if let v = (de["minTripDuration"]    as? NSNumber)?.doubleValue { drivingDetector.minTripDurationSec = v }
-        if let v = (de["hardBrakeMps2"]      as? NSNumber)?.doubleValue { drivingDetector.hardBrakeMps2      = v }
-        if let v = (de["rapidAccelMps2"]     as? NSNumber)?.doubleValue { drivingDetector.rapidAccelMps2     = v }
-        if let v = (de["sharpTurnDegPerSec"] as? NSNumber)?.doubleValue { drivingDetector.sharpTurnDegPerSec = v }
-        if let v = (de["crashImpactKmh"]     as? NSNumber)?.doubleValue { drivingDetector.crashImpactKmh     = v }
-        if let v = (de["crashWindowMs"]      as? NSNumber)?.doubleValue { drivingDetector.crashWindowSec     = v / 1000.0 }
-        if let v = (de["crashConfirmWindowMs"] as? NSNumber)?.doubleValue { drivingDetector.crashConfirmWindowSec = v / 1000.0 }
-        if let v = de["sensorFusion"]        as? Bool                    { drivingDetector.sensorFusion          = v }
-        if let v = (de["phoneUsageWindowMs"]  as? NSNumber)?.doubleValue { drivingDetector.phoneUsageWindowSec   = v / 1000.0 }
-        if let v = (de["phoneUsageCooldownMs"] as? NSNumber)?.doubleValue { drivingDetector.phoneUsageCooldownSec = v / 1000.0 }
+        drivingDetector.config.enabled = (de["enabled"] as? Bool) ?? false
+        if let v = (de["speedLimit"]         as? NSNumber)?.doubleValue { drivingDetector.config.speedLimitKmh      = v }
+        if let v = (de["minMovingSpeed"]     as? NSNumber)?.doubleValue { drivingDetector.config.minMovingSpeedMps  = v }
+        if let v = (de["stoppedDuration"]    as? NSNumber)?.doubleValue { drivingDetector.config.stoppedDurationSec = v }
+        if let v = (de["minTripSpeed"]       as? NSNumber)?.doubleValue { drivingDetector.config.minTripSpeedMps    = v }
+        if let v = (de["minTripDuration"]    as? NSNumber)?.doubleValue { drivingDetector.config.minTripDurationSec = v }
+        if let v = (de["hardBrakeMps2"]      as? NSNumber)?.doubleValue { drivingDetector.config.hardBrakeMps2      = v }
+        if let v = (de["rapidAccelMps2"]     as? NSNumber)?.doubleValue { drivingDetector.config.rapidAccelMps2     = v }
+        if let v = (de["sharpTurnDegPerSec"] as? NSNumber)?.doubleValue { drivingDetector.config.sharpTurnDegPerSec = v }
+        if let v = (de["crashImpactKmh"]     as? NSNumber)?.doubleValue { drivingDetector.config.crashImpactKmh     = v }
+        if let v = (de["crashWindowMs"]      as? NSNumber)?.doubleValue { drivingDetector.config.crashWindowSec     = v / 1000.0 }
+        if let v = (de["crashConfirmWindowMs"] as? NSNumber)?.doubleValue { drivingDetector.config.crashConfirmWindowSec = v / 1000.0 }
+        if let v = de["sensorFusion"]        as? Bool                    { drivingDetector.config.sensorFusion          = v }
+        if let v = (de["phoneUsageWindowMs"]  as? NSNumber)?.doubleValue { drivingDetector.config.phoneUsageWindowSec   = v / 1000.0 }
+        if let v = (de["phoneUsageCooldownMs"] as? NSNumber)?.doubleValue { drivingDetector.config.phoneUsageCooldownSec = v / 1000.0 }
         // v1.4 idle + scoring
-        if let v = (de["idleThresholdMs"]    as? NSNumber)?.doubleValue { drivingDetector.idleThresholdSec    = v / 1000.0 }
-        if let v = (de["idleEndThresholdMs"] as? NSNumber)?.doubleValue { drivingDetector.idleEndThresholdSec = v / 1000.0 }
+        if let v = (de["idleThresholdMs"]    as? NSNumber)?.doubleValue { drivingDetector.config.idleThresholdSec    = v / 1000.0 }
+        if let v = (de["idleEndThresholdMs"] as? NSNumber)?.doubleValue { drivingDetector.config.idleEndThresholdSec = v / 1000.0 }
         if let sw = de["scoring"] as? [String: Any] {
             var weights = ScoringWeights()
             if let v = (sw["speedingWeight"]    as? NSNumber)?.intValue { weights.speeding    = v }
@@ -179,9 +181,9 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
             if let v = (sw["rapidAccelWeight"]  as? NSNumber)?.intValue { weights.rapidAccel  = v }
             if let v = (sw["sharpTurnWeight"]   as? NSNumber)?.intValue { weights.sharpTurn   = v }
             if let v = (sw["phoneUsageWeight"]  as? NSNumber)?.intValue { weights.phoneUsage  = v }
-            drivingDetector.scoringWeights = weights.isValid ? weights : nil
+            drivingDetector.config.scoringWeights = weights.isValid ? weights : nil
         } else {
-            drivingDetector.scoringWeights = nil
+            drivingDetector.config.scoringWeights = nil
         }
         drivingDetector.reset()
     }
@@ -345,6 +347,23 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         call.resolve(["version": Self.pluginVersion])
     }
 
+    /// The iOS die's `misa`: full native hart — background tracking, motion
+    /// activity (`CMMotionActivity`), region geofencing (19 user slots, one
+    /// reserved for the stationary region), sensor fusion, and native
+    /// driver-intelligence. OEM settings screens are Android-only (`false`).
+    @objc func getCapabilities(_ call: CAPPluginCall) {
+        call.resolve([
+            "platform": "ios",
+            "backgroundTracking": true,
+            "activityRecognition": true,
+            "geofencing": true,
+            "maxGeofences": 19,
+            "sensorFusion": true,
+            "driverIntelligence": true,
+            "oemSettings": false
+        ])
+    }
+
     @objc func switchMode(_ call: CAPPluginCall) {
         guard let facade = facade else { call.reject("facade not initialized"); return }
         let raw = call.getInt("mode") ?? 1
@@ -400,8 +419,9 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     }
 
     @objc func triggerSOS(_ call: CAPPluginCall) {
-        let payload = call.getObject("payload")
-        facade?.triggerSOS(payload)
+        // The JS contract passes the payload as the bare call args (web spreads it at
+        // top level), not under a "payload" key — read the whole options dict.
+        facade?.triggerSOS(call.options as? [String: Any])
         call.resolve()
     }
 
@@ -795,9 +815,12 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     }
 
     @objc private func onSOSN(_ note: Notification) {
+        // BGFacade flattens the user payload into userInfo at top level (matching web's
+        // `{...payload, location}` and Android's flattening), so copy those keys through;
+        // `location` is handled separately below.
         var p: [String: Any] = [:]
-        if let userPayload = note.userInfo?["payload"] as? [String: Any] {
-            for (k, v) in userPayload { p[k] = v }
+        if let info = note.userInfo as? [String: Any] {
+            for (k, v) in info where k != "location" { p[k] = v }
         }
         if let loc = note.userInfo?["location"] as? BGLocation {
             p["location"] = loc.toDictionaryWithId()
@@ -921,14 +944,14 @@ extension BackgroundGeolocationPlugin {
         postDrivingNote(.BGTripStart)
     }
 
-    func detectorOnTripEnd(_ location: DLLocation, distanceMeters: Double, durationMs: Int64, score: TripScore) {
+    func detectorOnTripEnd(_ location: DLLocation, journey: Journey) {
         facade?.drivingTripActive = false
-        lastTripScore = score
+        lastTripScore = journey.score
         var info: [String: Any] = [:]
         if let loc = lastBGLocation { info["location"] = loc }
-        info["distance"]   = distanceMeters
-        info["durationMs"] = NSNumber(value: durationMs)
-        info["score"]      = score
+        info["distance"]   = journey.distanceMeters
+        info["durationMs"] = NSNumber(value: journey.durationMs)
+        info["score"]      = journey.score
         NotificationCenter.default.post(name: .BGTripEnd, object: nil, userInfo: info)
     }
 

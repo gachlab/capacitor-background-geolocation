@@ -6,6 +6,7 @@ package com.gachlab.geolocation
 import android.os.Bundle
 import android.os.Parcel
 import android.os.Parcelable
+import com.gachlab.geolocation.domain.TrackingConfig
 import org.json.JSONException
 import org.json.JSONObject
 import java.util.Locale
@@ -98,6 +99,13 @@ class BGConfig() : Parcelable {
     var stationaryTimeout: Int?     = null  // ms
     var stationaryPollInterval: Int? = null // ms
     var stationaryPollFast: Int?    = null  // ms
+    /**
+     * How the engine detects leaving the stationary region: `"polling"` (default —
+     * AlarmManager + fused poll) or `"geofence"` (a native GMS exit-geofence, Doze-immune,
+     * zero app CPU while parked). `"geofence"` requires Google Play Services; the engine
+     * falls back to polling where GMS is unavailable.
+     */
+    var stationaryExitMode: String? = null
 
     // ── Provider hardening (v4.5.2) ───────────────────────────────────────────
     var activityConfidenceThreshold: Int? = null
@@ -111,6 +119,28 @@ class BGConfig() : Parcelable {
 
     /** True when syncEnabled is not explicitly false and syncUrl is non-empty. */
     val isSyncEnabled: Boolean get() = syncEnabled != false && hasValidSyncUrl
+
+    /**
+     * Resolve this (partial, nullable) config into the pure domain [TrackingConfig],
+     * applying the same `DEFAULT_*` fallbacks the providers use today — one place
+     * instead of scattered `?: DEFAULT_X`. [maxAcceptedAccuracy] stays nullable
+     * (null = no accuracy gate).
+     */
+    fun toTrackingConfig(): TrackingConfig = TrackingConfig(
+        stationaryRadius            = stationaryRadius            ?: DEFAULT_STATIONARY_RADIUS,
+        distanceFilter              = distanceFilter              ?: DEFAULT_DISTANCE_FILTER,
+        desiredAccuracy             = desiredAccuracy             ?: DEFAULT_DESIRED_ACCURACY,
+        locationProvider            = locationProvider            ?: DEFAULT_LOCATION_PROVIDER,
+        interval                    = interval                    ?: DEFAULT_INTERVAL,
+        fastestInterval             = fastestInterval             ?: DEFAULT_FASTEST_INTERVAL,
+        activitiesInterval          = activitiesInterval          ?: DEFAULT_ACTIVITIES_INTERVAL,
+        stationaryTimeout           = stationaryTimeout           ?: DEFAULT_STATIONARY_TIMEOUT,
+        stationaryPollInterval      = stationaryPollInterval      ?: DEFAULT_STATIONARY_POLL_INTERVAL,
+        stationaryPollFast          = stationaryPollFast          ?: DEFAULT_STATIONARY_POLL_FAST,
+        stationaryExitMode          = stationaryExitMode          ?: DEFAULT_STATIONARY_EXIT_MODE,
+        activityConfidenceThreshold = activityConfidenceThreshold ?: DEFAULT_ACTIVITY_CONFIDENCE_THRESHOLD,
+        maxAcceptedAccuracy         = maxAcceptedAccuracy,
+    )
 
     // ── Driver-insight options ────────────────────────────────────────────────
 
@@ -235,6 +265,7 @@ class BGConfig() : Parcelable {
         // v4.4+
         dest.writeValue(includeBattery)
         dest.writeString(wakeLockMode)
+        dest.writeString(stationaryExitMode)
         dest.writeValue(stationaryTimeout)
         dest.writeValue(stationaryPollInterval)
         dest.writeValue(stationaryPollFast)
@@ -290,6 +321,16 @@ class BGConfig() : Parcelable {
         const val DEFAULT_STATIONARY_TIMEOUT           = 5 * 60 * 1000
         const val DEFAULT_STATIONARY_POLL_INTERVAL     = 3 * 60 * 1000
         const val DEFAULT_STATIONARY_POLL_FAST         = 60 * 1000
+        const val STATIONARY_EXIT_POLLING              = "polling"
+        const val STATIONARY_EXIT_GEOFENCE             = "geofence"
+        // Default stays "polling": geofence-only is fragile — on enterStationary the
+        // provider unsubscribes from updates and waits solely for the OS EXIT
+        // transition, so if that transition is delayed/never fires (emulator, or small
+        // movements within the radius) the device is stuck stationary (the E2E caught
+        // this: background-survival got 3 fixes vs ≥5). The native geofence needs a
+        // polling/significant-changes safety net before it can default on; until then
+        // it is opt-in via stationaryExitMode = "geofence".
+        const val DEFAULT_STATIONARY_EXIT_MODE         = STATIONARY_EXIT_POLLING
         const val DEFAULT_ACTIVITY_CONFIDENCE_THRESHOLD = 50
         const val DEFAULT_HTTP_METHOD                  = "POST"
         const val DEFAULT_SYNC_HTTP_METHOD             = "POST"
@@ -349,6 +390,7 @@ class BGConfig() : Parcelable {
             stationaryTimeout          = DEFAULT_STATIONARY_TIMEOUT
             stationaryPollInterval     = DEFAULT_STATIONARY_POLL_INTERVAL
             stationaryPollFast         = DEFAULT_STATIONARY_POLL_FAST
+            stationaryExitMode         = DEFAULT_STATIONARY_EXIT_MODE
             activityConfidenceThreshold = DEFAULT_ACTIVITY_CONFIDENCE_THRESHOLD
             maxAcceptedAccuracy        = null
         }
@@ -409,6 +451,7 @@ class BGConfig() : Parcelable {
             result.drivingEvents               = b.drivingEvents
             result.includeBattery              = b.includeBattery
             result.wakeLockMode                = b.wakeLockMode
+            result.stationaryExitMode          = b.stationaryExitMode
             result.stationaryTimeout           = b.stationaryTimeout
             result.stationaryPollInterval      = b.stationaryPollInterval
             result.stationaryPollFast          = b.stationaryPollFast
@@ -466,6 +509,7 @@ class BGConfig() : Parcelable {
             o.drivingEvents?.let               { result.drivingEvents               = it }
             o.includeBattery?.let              { result.includeBattery              = it }
             o.wakeLockMode?.let                { result.wakeLockMode                = it }
+            o.stationaryExitMode?.let          { result.stationaryExitMode          = it.lowercase(Locale.US) }
             o.stationaryTimeout?.let           { result.stationaryTimeout           = it }
             o.stationaryPollInterval?.let      { result.stationaryPollInterval      = it }
             o.stationaryPollFast?.let          { result.stationaryPollFast          = it }
@@ -561,6 +605,7 @@ class BGConfig() : Parcelable {
                 }
                 c.includeBattery              = parcel.readValue(null) as? Boolean
                 c.wakeLockMode                = parcel.readString()
+                c.stationaryExitMode          = parcel.readString()
                 c.stationaryTimeout           = parcel.readValue(null) as? Int
                 c.stationaryPollInterval      = parcel.readValue(null) as? Int
                 c.stationaryPollFast          = parcel.readValue(null) as? Int

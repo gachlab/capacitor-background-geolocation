@@ -28,7 +28,10 @@ public final class BGFacade: NSObject {
     private var operationMode: BGOperationalMode = .foreground
     private var _config: BGConfig?
     private var stationaryLocation: BGLocation?
-    private var lastReceivedLocation: BGLocation?
+    private let buffer = PositionBuffer.shared
+    // Hub → ports (Fase 3): depend on abstractions; composition root binds the adapters.
+    private let publisher: LocationPublisher = PostLocationTask.shared
+    private let configRepo: ConfigRepository = ConfigDAO.shared
     private var heartbeatTimer: Timer?
     private var locationProvider: LocationProvider?
     private var sensorFusion: SensorFusionDetector?
@@ -43,27 +46,28 @@ public final class BGFacade: NSObject {
 
     public override init() {
         super.init()
-        PostLocationTask.shared.delegate = self
-        PostLocationTask.shared.attachBatterySnapshot = { [weak self] loc in
+        buffer.clear()   // fresh hub lifecycle starts with no cached fix
+        publisher.delegate = self
+        publisher.attachBatterySnapshot = { [weak self] loc in
             self?.attachBatterySnapshotTo(loc)
         }
-        GeofenceManager.shared.eventListener = { [weak self] id, action, location in
-            self?.onGeofenceTransition(id: id, action: action, location: location)
+        GeofenceManager.shared.eventListener = { [weak self] event, location in
+            self?.onGeofenceTransition(event, location: location)
         }
     }
 
     // MARK: - Configure
 
     public func configure(_ config: BGConfig) throws {
-        let existing = ConfigDAO.shared.retrieve()
+        let existing = configRepo.retrieve()
         let previousHeartbeatInterval = _config?.heartbeatInterval
         let previousProviderType = _config?.locationProvider
         let previousDrivingEvents = _config?.drivingEvents
 
         let merged = BGConfig.merge(BGConfig.merge(BGConfig(defaults: ()), with: existing), with: config)
         _config = merged
-        ConfigDAO.shared.persist(merged)
-        PostLocationTask.shared.config = merged
+        configRepo.persist(merged)
+        publisher.config = merged
 
         if merged.isDebugging {
             runOnMain {
@@ -121,8 +125,8 @@ public final class BGFacade: NSObject {
 
         let config = getConfig()
         _config = config
-        PostLocationTask.shared.config = config
-        PostLocationTask.shared.start()
+        publisher.config = config
+        publisher.start()
 
         let providerType = config.locationProvider ?? BGLocationProvider.distanceFilter.rawValue
         let provider = try getProvider(providerType)
@@ -148,7 +152,7 @@ public final class BGFacade: NSObject {
         cancelHeartbeat()
         sensorFusion?.tripActive = false
         sensorFusion?.stop()
-        PostLocationTask.shared.stop()
+        publisher.stop()
 
         if let provider = locationProvider {
             runOnMain { try? provider.onStop() }
@@ -290,7 +294,7 @@ public final class BGFacade: NSObject {
 
     public func getConfig() -> BGConfig {
         if let c = _config { return c }
-        let c = BGConfig.merge(BGConfig(defaults: ()), with: ConfigDAO.shared.retrieve())
+        let c = BGConfig.merge(BGConfig(defaults: ()), with: configRepo.retrieve())
         _config = c
         return c
     }
@@ -305,7 +309,7 @@ public final class BGFacade: NSObject {
 
     public func forceSync() {
         guard getConfig().isSyncEnabled else { return }
-        PostLocationTask.shared.sync()
+        publisher.sync()
     }
 
     public func clearSync() {
@@ -338,7 +342,7 @@ public final class BGFacade: NSObject {
 
     public func triggerSOS(_ payload: [String: Any]? = nil) {
         var userInfo: [String: Any] = [:]
-        if let loc = lastReceivedLocation {
+        if let loc = buffer.lastFix {
             userInfo["location"] = loc
         }
         if let payload = payload {
@@ -362,14 +366,14 @@ public final class BGFacade: NSObject {
         GeofenceManager.shared.getAll().map { $0.toDictionary() }
     }
 
-    private func onGeofenceTransition(id: String, action: String, location: BGLocation?) {
+    private func onGeofenceTransition(_ event: GeoEvent, location: BGLocation?) {
         let notifName: Notification.Name
-        switch action {
-        case "ENTER": notifName = .BGGeofenceEnter
-        case "EXIT":  notifName = .BGGeofenceExit
-        default:      notifName = .BGGeofenceDwell
+        switch event.transition {
+        case .enter: notifName = .BGGeofenceEnter
+        case .exit:  notifName = .BGGeofenceExit
+        case .dwell: notifName = .BGGeofenceDwell
         }
-        var info: [String: Any] = ["id": id, "action": action]
+        var info: [String: Any] = ["id": event.geofenceId, "action": event.transition.rawValue]
         if let loc = location { info["location"] = loc }
         NotificationCenter.default.post(name: notifName, object: self, userInfo: info)
     }
@@ -419,7 +423,7 @@ public final class BGFacade: NSObject {
 
     @objc private func onHeartbeatTick(_ timer: Timer) {
         var userInfo: [String: Any] = [:]
-        if let loc = lastReceivedLocation {
+        if let loc = buffer.lastFix {
             userInfo["location"] = loc
         }
         NotificationCenter.default.post(name: .BGHeartbeat, object: self, userInfo: userInfo)
@@ -465,7 +469,7 @@ public final class BGFacade: NSObject {
         }
 
         detector.tripActive = drivingTripActive
-        detector.lastLocation = lastReceivedLocation
+        detector.lastLocation = buffer.lastFix
     }
 
     // MARK: - Private: Provider factory
@@ -536,9 +540,9 @@ extension BGFacade: LocationProviderDelegate {
         if let max = _config?.maxAcceptedAccuracy, max > 0,
            let acc = location.accuracy, acc > max { return }
         stationaryLocation = nil
-        lastReceivedLocation = location
+        buffer.record(location, at: Date().timeIntervalSince1970 * 1000) // ms, parity with Android
         sensorFusion?.lastLocation = location
-        PostLocationTask.shared.add(location)
+        publisher.add(location)
         // Resilient geofence dwell: fire DWELL even if the per-region Timer was
         // suspended/coalesced while the app was backgrounded.
         GeofenceManager.shared.evaluateDwell(now: location.time ?? Date(), location: location)
@@ -549,7 +553,7 @@ extension BGFacade: LocationProviderDelegate {
         if let max = _config?.maxAcceptedAccuracy, max > 0,
            let acc = location.accuracy, acc > max { return }
         stationaryLocation = location
-        PostLocationTask.shared.add(location)
+        publisher.add(location)
         delegate?.onStationaryChanged(location)
     }
 

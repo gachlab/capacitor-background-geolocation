@@ -12,6 +12,7 @@ import type { PermissionState } from '@capacitor/core';
 import type {
   BackgroundGeolocationError,
   BackgroundGeolocationPlugin,
+  Capabilities,
   ConfigureOptions,
   CurrentLocationOptions,
   Diagnostics,
@@ -24,20 +25,12 @@ import type {
   TripScore,
 } from './definitions';
 import { AuthorizationStatus } from './definitions';
+import { GeoPoint } from './domain/geo-point';
+import { GeoEvent } from './domain/geo-event';
+import { GeofenceTransition } from './domain/geofence-transition';
 
 interface BrowserPermissions {
   query?: (descriptor: { name: string }) => Promise<{ state: PermissionState }>;
-}
-
-/** Great-circle distance in metres between two lat/lon points (haversine). */
-function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const r = 6_371_000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return 2 * r * Math.asin(Math.sqrt(a));
 }
 
 export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeolocationPlugin {
@@ -231,7 +224,27 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   }
 
   async getPluginVersion(): Promise<{ version: string }> {
-    return { version: '1.5.0' };
+    // Keep in sync with package.json `version`. Enforced by version-sync.test.ts.
+    return { version: '2.0.0' };
+  }
+
+  /**
+   * The web die's `misa`: it implements the base ISA (location, geofencing in JS)
+   * but **not** the always-on background extension or native driver-intelligence —
+   * a browser tab has no AOP island. Report that honestly so consumers degrade
+   * gracefully instead of expecting background tracking that cannot exist.
+   */
+  async getCapabilities(): Promise<Capabilities> {
+    return {
+      platform: 'web',
+      backgroundTracking: false,
+      activityRecognition: false,
+      geofencing: true,
+      maxGeofences: -1,
+      sensorFusion: false,
+      driverIntelligence: false,
+      oemSettings: false,
+    };
   }
 
   // ---------------- Permissions ----------------
@@ -379,7 +392,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   private handleGeofenceEntered(gf: Geofence, loc: Location): void {
     if (this.insideGeofences.has(gf.id)) return;
     this.insideGeofences.add(gf.id);
-    if (gf.notifyOnEntry) this.notifyListeners('geofenceEnter', { id: gf.id, action: 'ENTER', location: loc });
+    if (gf.notifyOnEntry) this.emitGeoEvent(new GeoEvent(gf.id, GeofenceTransition.ENTER), loc);
     if (gf.notifyOnDwell) {
       this.dwellEnterAt.set(gf.id, loc.time);
       // Fast path for a stationary device that may stop emitting fixes; the per-fix
@@ -394,8 +407,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     const wasInside = this.insideGeofences.delete(gf.id);
     this.clearDwell(gf.id);
     // EXIT only on a real boundary crossing (we were inside).
-    if (wasInside && gf.notifyOnExit)
-      this.notifyListeners('geofenceExit', { id: gf.id, action: 'EXIT', location: loc });
+    if (wasInside && gf.notifyOnExit) this.emitGeoEvent(new GeoEvent(gf.id, GeofenceTransition.EXIT), loc);
   }
 
   private evaluateDwell(gf: Geofence, loc: Location): void {
@@ -408,7 +420,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   private fireDwellIfPending(id: string, loc: Location): void {
     if (!this.dwellEnterAt.has(id)) return;
     this.clearDwell(id);
-    this.notifyListeners('geofenceDwell', { id, action: 'DWELL', location: loc });
+    this.emitGeoEvent(new GeoEvent(id, GeofenceTransition.DWELL), loc);
   }
 
   private clearDwell(id: string): void {
@@ -420,8 +432,22 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     }
   }
 
+  /** Map a domain GeoEvent to its listener name + payload (single emission path). */
+  private emitGeoEvent(event: GeoEvent, location: Location): void {
+    const eventName =
+      event.transition === GeofenceTransition.ENTER
+        ? 'geofenceEnter'
+        : event.transition === GeofenceTransition.EXIT
+          ? 'geofenceExit'
+          : 'geofenceDwell';
+    this.notifyListeners(eventName, { id: event.geofenceId, action: event.transition, location });
+  }
+
   private isInside(gf: Geofence, loc: Location): boolean {
-    return distanceMeters(gf.latitude, gf.longitude, loc.latitude, loc.longitude) <= (gf.radius ?? 200);
+    return (
+      new GeoPoint(gf.latitude, gf.longitude).distanceTo(new GeoPoint(loc.latitude, loc.longitude)) <=
+      (gf.radius ?? 200)
+    );
   }
 
   // ---------------- Driver intelligence ----------------
