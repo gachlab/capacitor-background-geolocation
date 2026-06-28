@@ -9,7 +9,7 @@ public protocol PostLocationTaskDelegate: AnyObject {
     func postLocationTaskHttpAuthorizationUpdates(_ task: PostLocationTask)
 }
 
-public final class PostLocationTask {
+public final class PostLocationTask: LocationPublisher {
 
     public static let shared = PostLocationTask()
 

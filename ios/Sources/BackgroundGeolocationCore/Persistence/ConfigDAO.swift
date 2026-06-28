@@ -4,7 +4,7 @@
 import Foundation
 import SQLite3
 
-final class ConfigDAO {
+final class ConfigDAO: ConfigRepository {
     static let shared = ConfigDAO()
 
     private var db: OpaquePointer? { SQLiteHelper.shared.db }
