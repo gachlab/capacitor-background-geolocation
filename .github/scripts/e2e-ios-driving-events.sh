@@ -120,43 +120,41 @@ xcrun simctl privacy "${UDID}" grant location "${APP_BUNDLE_ID}" 2>/dev/null || 
 # ---------------------------------------------------------------------------
 # 3. Background GPS injection loop
 # ---------------------------------------------------------------------------
-# Inject a stationary fix first, then drive north with a large step so that
-# speed >> 90 km/h even when xcrun simctl takes 3-4 s per call (CI runners).
-# After 4 fast fixes → 6 near-stop micro-step fixes for the crash window,
-# then cycle repeats. The short cycle (4+6 fixes) makes the decel/crash phase
-# recur often, so multiple possibleCrash opportunities land within the test
-# window (120 s) on any runner — the test only needs one to register.
+# Drive the simulated location with `simctl location start`, which makes the
+# *simulator* interpolate between waypoints and issue updates at a fixed interval on
+# its own — reliable regardless of host/simctl latency. This replaces the old loop of
+# one-shot `simctl location set` calls, which stalled on slow CI runners (3-4 s/call,
+# sometimes no fixes for 90 s+) and was the dominant E2E flake.
+#
+# Each cycle has two legs:
+#   • high-speed: 30 m/s (108 km/h) updates every 1 s → fires `speeding`.
+#   • near-stop:  0.5 m/s crawl → the 30 → 0.5 m/s drop across the leg boundary is
+#                 the sharp decel that fires `possibleCrash`; held a few seconds to
+#                 clear crashConfirmWindowSec.
+# The short cycle repeats, so many speeding/crash opportunities land within the test
+# windows on any runner — each test only needs one to register.
 GPS_PID=""
 
 inject_gps_loop() {
   local udid="$1"
-  local lat=37.3317
   local lon=-122.0307
-  local step=0.003   # ~333 m/fix; speed=333m/dt >> 90 km/h even at dt=4 s
-  local i=0
+  local a=37.3317        # high-leg start
+  local b=37.33386       # high-leg end (~240 m N of a ≈ 8 s at 30 m/s)
+  local c=37.333882      # near-stop end (~2 m past b)
 
-  # Stationary start
-  xcrun simctl location "${udid}" set "${lat},${lon}" 2>/dev/null || true
+  # Stationary start so speed begins defined.
+  xcrun simctl location "${udid}" set "${a},${lon}" 2>/dev/null || true
   sleep 1
 
   while true; do
-    lat=$(python3 -c "print(${lat} + ${step})")
-    xcrun simctl location "${udid}" set "${lat},${lon}" 2>/dev/null || true
-    sleep 0.5
-    i=$((i + 1))
-
-    # After 4 fast fixes: near-stop micro-step for possibleCrash window.
-    # step 0.0000045° ≈ 0.5 m/fix → speed < 1.5 m/s regardless of dt.
-    # Distinct positions prevent CoreLocation deduplication.
-    # 6 fixes; crash confirms after elapsed >= crashConfirmWindowSec (2 s).
-    if [ $i -eq 4 ]; then
-      for j in 1 2 3 4 5 6; do
-        lat=$(python3 -c "print(${lat} + 0.0000045)")
-        xcrun simctl location "${udid}" set "${lat},${lon}" 2>/dev/null || true
-        sleep 0.5
-      done
-      i=0
-    fi
+    # High-speed leg — sim-driven updates at 30 m/s.
+    xcrun simctl location "${udid}" start --speed=30 --interval=1 \
+      "${a},${lon}" "${b},${lon}" 2>/dev/null || true
+    sleep 8
+    # Near-stop leg — overrides with a ~0.5 m/s crawl; the boundary decel fires crash.
+    xcrun simctl location "${udid}" start --speed=0.5 --interval=1 \
+      "${b},${lon}" "${c},${lon}" 2>/dev/null || true
+    sleep 5
   done
 }
 
