@@ -7,6 +7,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.gachlab.geolocation.domain.GeoEvent
 import com.gachlab.geolocation.domain.GeofenceTransition
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingEvent
@@ -40,10 +41,12 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         val triggerLocation = rawLocation?.let { BGLocation.fromLocation(it) }
 
         event.triggeringGeofences?.forEach { gf ->
-            val serviceEvent: ServiceEvent? = when (transition) {
-                GeofenceTransition.ENTER -> ServiceEvent.GeofenceEnter(gf.requestId, triggerLocation)
-                GeofenceTransition.EXIT  -> ServiceEvent.GeofenceExit(gf.requestId, triggerLocation)
-                GeofenceTransition.DWELL -> ServiceEvent.GeofenceDwell(gf.requestId, triggerLocation)
+            // GMS → domain GeoEvent at the boundary, then adapt to the ServiceEvent bus.
+            val geoEvent = transition?.let { GeoEvent(gf.requestId, it) }
+            val serviceEvent: ServiceEvent? = when (geoEvent?.transition) {
+                GeofenceTransition.ENTER -> ServiceEvent.GeofenceEnter(geoEvent.geofenceId, triggerLocation)
+                GeofenceTransition.EXIT  -> ServiceEvent.GeofenceExit(geoEvent.geofenceId, triggerLocation)
+                GeofenceTransition.DWELL -> ServiceEvent.GeofenceDwell(geoEvent.geofenceId, triggerLocation)
                 null -> null
             }
             serviceEvent?.let { GeofenceManager.dispatch(it) }
