@@ -28,6 +28,12 @@ export class TrackingApi {
   /**
    * Set the shared, plugin-level base config — the tier every feature inherits. Call
    * once at startup; calling again patches (deep-merge) the existing base.
+   *
+   * The native side REPLACES its config with the resolved base on every call (so a field
+   * you drop reverts to default — one source of truth). This base lives in memory and does
+   * NOT survive a page reload / process restart, so **re-send the full base on each app
+   * start**. A partial `configure()` after a restart resolves against an empty base, not the
+   * previously-persisted config — it would reset omitted fields (e.g. `transport.baseUrl`).
    */
   async configure(base: BaseConfig): Promise<void> {
     this.base = mergeConfig(this.base, base);
