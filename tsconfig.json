@@ -21,28 +21,5 @@
     "strictNullChecks": true,
     "target": "es2017"
   },
-  "files": [
-    "src/index.ts",
-    "src/definitions.ts",
-    "src/web.ts",
-    "src/definitions/values.ts",
-    "src/definitions/config.ts",
-    "src/definitions/events.ts",
-    "src/definitions/wire.ts",
-    "src/definitions/roles.ts",
-    "src/sdk/stream.ts",
-    "src/sdk/errors.ts",
-    "src/sdk/config-mapper.ts",
-    "src/sdk/tracking.ts",
-    "src/sdk/locations.ts",
-    "src/sdk/sync.ts",
-    "src/sdk/geofences.ts",
-    "src/sdk/permissions.ts",
-    "src/sdk/recordings.ts",
-    "src/sdk/diagnostics.ts",
-    "src/sdk/driver.ts",
-    "src/sdk/logs.ts",
-    "src/sdk/platform.ts",
-    "src/sdk/background-geolocation.ts"
-  ]
+  "files": ["src/index.ts", "src/web.ts"]
 }
