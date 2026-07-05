@@ -113,7 +113,7 @@ class BackgroundGeolocationPlugin : Plugin() {
             })
             is ServiceEvent.Heartbeat         -> notify("heartbeat",  event.loc?.toJS() ?: JSObject())
             is ServiceEvent.Error             -> notifyListeners("error",
-                JSObject().apply { put("message", event.message) })
+                JSObject().apply { put("code", event.code); put("message", event.message) })
             is ServiceEvent.Activity          -> notifyListeners("activity",
                 event.data?.let { try { JSObject.fromJSONObject(it) } catch (_: Exception) { JSObject() } } ?: JSObject())
             is ServiceEvent.ProviderChange    -> notifyListeners("providerChange",

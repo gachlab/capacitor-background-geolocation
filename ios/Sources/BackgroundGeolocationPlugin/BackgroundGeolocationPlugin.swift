@@ -724,11 +724,27 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         notifyListeners("httpAuthorization", data: [:])
     }
 
+    /// v3 clean output: map an error to the `LocationErrorCode` string union.
+    private static func errorCodeString(_ error: Error) -> String {
+        switch error {
+        case BGError.permissionDenied:
+            return "permissionDenied"
+        case BGError.timeout:
+            return "timeout"
+        case BGError.serviceError(let code, _):
+            return code == .permissionDenied ? "permissionDenied" : "unavailable"
+        default:
+            if let clErr = error as? CLError, clErr.code == .denied { return "permissionDenied" }
+            return "unavailable"
+        }
+    }
+
     public func onError(_ error: Error) {
+        let code = Self.errorCodeString(error)
         let nsErr = error as NSError
-        BGLog.shared.e("Error \(nsErr.code): \(nsErr.localizedDescription)")
+        BGLog.shared.e("Error \(code): \(nsErr.localizedDescription)")
         notifyListeners("error", data: [
-            "code": nsErr.code,
+            "code": code,
             "message": nsErr.localizedDescription
         ])
     }

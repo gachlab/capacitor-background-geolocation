@@ -69,7 +69,7 @@ internal abstract class AbstractLocationProvider(protected val mContext: Context
 
     protected fun handleSecurityException(e: SecurityException) {
         Log.e(TAG, "SecurityException: ${e.message}")
-        mDelegate?.onError(BGException("Location permission denied: ${e.message}", e))
+        mDelegate?.onError(BGException("Location permission denied: ${e.message}", e, code = "permissionDenied"))
     }
 
     protected fun hasMockLocationsEnabled(): Boolean {
@@ -111,5 +111,12 @@ internal abstract class AbstractLocationProvider(protected val mContext: Context
     }
 }
 
-/** Lightweight exception type for provider errors (replaces PluginException). */
-class BGException(message: String, cause: Throwable? = null) : Exception(message, cause)
+/**
+ * Lightweight exception type for provider errors (replaces PluginException). `code` is the
+ * v3 `LocationErrorCode` string emitted on the `error` event; defaults to `unavailable`.
+ */
+class BGException(
+    message: String,
+    cause: Throwable? = null,
+    val code: String = "unavailable",
+) : Exception(message, cause)

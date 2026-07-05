@@ -47,7 +47,7 @@ sealed class ServiceEvent {
 
     // ── System events ─────────────────────────────────────────────────────────
     data class Heartbeat(val loc: BGLocation?) : ServiceEvent()
-    data class Error(val message: String) : ServiceEvent()
+    data class Error(val message: String, val code: String = "unavailable") : ServiceEvent()
     data class ProviderChange(val provider: String) : ServiceEvent()
     data class Activity(val data: JSONObject?) : ServiceEvent()
     data class Sos(val locationId: Long?, val payload: JSONObject? = null) : ServiceEvent()

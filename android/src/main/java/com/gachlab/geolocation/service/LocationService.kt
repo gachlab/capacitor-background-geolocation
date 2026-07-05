@@ -243,7 +243,7 @@ class LocationService : Service() {
     private val providerDelegate = object : AbstractLocationProvider.Delegate {
         override fun onLocation(location: BGLocation) = handleLocation(location)
         override fun onStationary(location: BGLocation, radius: Float) = handleStationary(location, radius)
-        override fun onError(error: BGException) = fire(ServiceEvent.Error(error.message ?: ""))
+        override fun onError(error: BGException) = fire(ServiceEvent.Error(error.message ?: "", error.code))
     }
 
     private fun handleLocation(loc: BGLocation) {
