@@ -1,41 +1,48 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 gachlab
 //
-// Browser fallback for @gachlab/capacitor-background-geolocation.
-// Uses navigator.geolocation. Tracking runs only while the page is alive.
-// Locations, sessions, and the sync queue are kept in memory for the lifetime
-// of the page — no IndexedDB persistence across reloads.
+// Browser "hart" for @gachlab/capacitor-background-geolocation (v3).
+// Implements the native contract (BackgroundGeolocationNative) using
+// navigator.geolocation. Tracking runs only while the page is alive; locations,
+// sessions and the sync queue are kept in memory (no persistence across reloads).
+// Emits CLEAN output shapes (authorization string, lowercase geofence action, string
+// error codes) — the facade passes them straight through.
 
 import { WebPlugin } from '@capacitor/core';
-import type { PermissionState } from '@capacitor/core';
 
+import type { BackgroundGeolocationNative, NativeCurrentOptions, PermissionState } from './definitions/roles';
 import type {
-  BackgroundGeolocationError,
-  BackgroundGeolocationPlugin,
   Capabilities,
-  ConfigureOptions,
-  CurrentLocationOptions,
   Diagnostics,
   Geofence,
   Location,
+  LocationError,
   LogEntry,
+  LogLevel,
   PermissionRequestResult,
   ServiceStatus,
   StationaryLocation,
   TripScore,
-} from './definitions';
-import { AuthorizationStatus } from './definitions';
-import { GeoPoint } from './domain/geo-point';
+} from './definitions/values';
+import type { NativeConfig } from './definitions/wire';
 import { GeoEvent } from './domain/geo-event';
+import { GeoPoint } from './domain/geo-point';
 import { GeofenceTransition } from './domain/geofence-transition';
 
 interface BrowserPermissions {
   query?: (descriptor: { name: string }) => Promise<{ state: PermissionState }>;
 }
 
-export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeolocationPlugin {
+/** Map a domain transition to its clean listener name + lowercase action. */
+const GEO_EVENT: Record<GeofenceTransition, { name: string; action: 'enter' | 'exit' | 'dwell' }> = {
+  [GeofenceTransition.ENTER]: { name: 'geofenceEnter', action: 'enter' },
+  [GeofenceTransition.EXIT]: { name: 'geofenceExit', action: 'exit' },
+  [GeofenceTransition.DWELL]: { name: 'geofenceDwell', action: 'dwell' },
+};
+
+export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeolocationNative {
   private watchId: number | null = null;
-  private config: ConfigureOptions = {};
+  private config: NativeConfig = {};
   private lastLocation: Location | null = null;
 
   // In-memory stores (cleared on page reload — foreground only)
@@ -46,8 +53,8 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
 
   // ---------------- Tracking control ----------------
 
-  async configure(options: ConfigureOptions): Promise<void> {
-    this.config = { ...this.config, ...options };
+  async configure(config: NativeConfig): Promise<void> {
+    this.config = { ...this.config, ...config };
   }
 
   async start(): Promise<void> {
@@ -68,7 +75,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
         this.notifyListeners('error', this.toError(err));
       },
       {
-        enableHighAccuracy: this.config.desiredAccuracy !== 'LOW',
+        enableHighAccuracy: (this.config.desiredAccuracy ?? 100) <= 100,
         maximumAge: 0,
         timeout: 30_000,
       },
@@ -92,13 +99,13 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     return {
       isRunning: this.watchId !== null,
       locationServicesEnabled: 'geolocation' in navigator,
-      authorization: AuthorizationStatus.AUTHORIZED_FOREGROUND,
+      authorization: 'authorizedForeground',
     };
   }
 
   // ---------------- Locations ----------------
 
-  getCurrentLocation(options?: CurrentLocationOptions): Promise<Location> {
+  getCurrentLocation(options?: NativeCurrentOptions): Promise<Location> {
     if (!('geolocation' in navigator)) {
       throw this.unavailable('Geolocation API is not available in this browser.');
     }
@@ -113,6 +120,10 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
         },
       );
     });
+  }
+
+  async cancelCurrentLocation(): Promise<void> {
+    /* web one-shots settle on their own; there is no pending request to cancel */
   }
 
   async getStationaryLocation(): Promise<StationaryLocation | null> {
@@ -150,7 +161,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     try {
       const resp = await fetch(url, {
         method: (this.config.syncHttpMethod ?? this.config.httpMethod ?? 'POST').toUpperCase(),
-        headers: { 'Content-Type': 'application/json', ...(this.config.httpHeaders ?? {}) },
+        headers: { 'Content-Type': 'application/json', ...(this.config.headers ?? {}) },
         body: JSON.stringify(batch),
       });
       if (!resp.ok) this.syncQueue.unshift(...batch);
@@ -168,7 +179,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     return { count: this.syncQueue.length };
   }
 
-  // ---------------- Sessions ----------------
+  // ---------------- Sessions (recordings) ----------------
 
   async startSession(): Promise<void> {
     this.sessionLocations = [];
@@ -229,10 +240,9 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   }
 
   /**
-   * The web die's `misa`: it implements the base ISA (location, geofencing in JS)
-   * but **not** the always-on background extension or native driver-intelligence —
-   * a browser tab has no AOP island. Report that honestly so consumers degrade
-   * gracefully instead of expecting background tracking that cannot exist.
+   * The web die's `misa`: it implements the base ISA (location, geofencing in JS) but
+   * NOT the always-on background extension or native driver-intelligence. Static
+   * platform facts — permission state lives in getDiagnostics/checkStatus.
    */
   async getCapabilities(): Promise<Capabilities> {
     return {
@@ -321,8 +331,8 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   // ---------------- Geofencing ----------------
   // The browser has no native geofencing API, so we run a JS engine: every location
   // fix is tested against each registered region (haversine). Mirrors native
-  // semantics — initial ENTER when registering already-inside, EXIT only after a
-  // real entry, a single DWELL per dwell, and `geofenceError` on invalid input.
+  // semantics — initial enter when registering already-inside, exit only after a real
+  // entry, a single dwell per dwell, and `geofenceError` on invalid input.
 
   private geofences = new Map<string, Geofence>();
   private insideGeofences = new Set<string>();
@@ -334,7 +344,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
       const gf = this.normalizeGeofence(raw);
       if (!gf) continue; // invalid → geofenceError already emitted
       this.geofences.set(gf.id, gf);
-      // Initial ENTER when already inside (parity with iOS requestState / Android
+      // Initial enter when already inside (parity with iOS requestState / Android
       // INITIAL_TRIGGER_ENTER).
       if (this.lastLocation && this.isInside(gf, this.lastLocation)) {
         this.handleGeofenceEntered(gf, this.lastLocation);
@@ -375,7 +385,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
       notifyOnEntry: gf.notifyOnEntry ?? true,
       notifyOnExit: gf.notifyOnExit ?? false,
       notifyOnDwell: gf.notifyOnDwell ?? false,
-      loiteringDelay: gf.loiteringDelay ?? 30_000,
+      loiteringDelayMs: gf.loiteringDelayMs ?? 30_000,
     };
   }
 
@@ -395,9 +405,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     if (gf.notifyOnEntry) this.emitGeoEvent(new GeoEvent(gf.id, GeofenceTransition.ENTER), loc);
     if (gf.notifyOnDwell) {
       this.dwellEnterAt.set(gf.id, loc.time);
-      // Fast path for a stationary device that may stop emitting fixes; the per-fix
-      // evaluateDwell is the resilient path. Whichever fires first wins (fireDwellIfPending).
-      const timer = setTimeout(() => this.fireDwellIfPending(gf.id, loc), gf.loiteringDelay ?? 30_000);
+      const timer = setTimeout(() => this.fireDwellIfPending(gf.id, loc), gf.loiteringDelayMs ?? 30_000);
       (timer as { unref?: () => void }).unref?.();
       this.dwellTimers.set(gf.id, timer);
     }
@@ -406,17 +414,16 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   private handleGeofenceExited(gf: Geofence, loc: Location): void {
     const wasInside = this.insideGeofences.delete(gf.id);
     this.clearDwell(gf.id);
-    // EXIT only on a real boundary crossing (we were inside).
     if (wasInside && gf.notifyOnExit) this.emitGeoEvent(new GeoEvent(gf.id, GeofenceTransition.EXIT), loc);
   }
 
   private evaluateDwell(gf: Geofence, loc: Location): void {
     const enterAt = this.dwellEnterAt.get(gf.id);
     if (enterAt === undefined) return;
-    if (loc.time - enterAt >= (gf.loiteringDelay ?? 30_000)) this.fireDwellIfPending(gf.id, loc);
+    if (loc.time - enterAt >= (gf.loiteringDelayMs ?? 30_000)) this.fireDwellIfPending(gf.id, loc);
   }
 
-  /** Fire DWELL at most once per dwell — `dwellEnterAt` presence is the guard. */
+  /** Fire dwell at most once per dwell — `dwellEnterAt` presence is the guard. */
   private fireDwellIfPending(id: string, loc: Location): void {
     if (!this.dwellEnterAt.has(id)) return;
     this.clearDwell(id);
@@ -432,15 +439,10 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     }
   }
 
-  /** Map a domain GeoEvent to its listener name + payload (single emission path). */
+  /** Map a domain GeoEvent to its clean listener name + payload (single emission path). */
   private emitGeoEvent(event: GeoEvent, location: Location): void {
-    const eventName =
-      event.transition === GeofenceTransition.ENTER
-        ? 'geofenceEnter'
-        : event.transition === GeofenceTransition.EXIT
-          ? 'geofenceExit'
-          : 'geofenceDwell';
-    this.notifyListeners(eventName, { id: event.geofenceId, action: event.transition, location });
+    const { name, action } = GEO_EVENT[event.transition];
+    this.notifyListeners(name, { id: event.geofenceId, action, location });
   }
 
   private isInside(gf: Geofence, loc: Location): boolean {
@@ -458,11 +460,13 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
 
   // ---------------- Config & logs ----------------
 
-  async getConfig(): Promise<ConfigureOptions> {
+  async getConfig(): Promise<NativeConfig> {
     return { ...this.config };
   }
 
-  async getLogEntries(_options: { limit: number; fromId?: number }): Promise<{ entries: LogEntry[] }> {
+  async getLogEntries(_options: { limit: number; fromId?: number; minLevel?: LogLevel }): Promise<{
+    entries: LogEntry[];
+  }> {
     return { entries: [] };
   }
 
@@ -487,7 +491,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     try {
       const resp = await fetch(url, {
         method: (this.config.httpMethod ?? 'POST').toUpperCase(),
-        headers: { 'Content-Type': 'application/json', ...(this.config.httpHeaders ?? {}) },
+        headers: { 'Content-Type': 'application/json', ...(this.config.headers ?? {}) },
         body: JSON.stringify(loc),
       });
       if (!resp.ok) this.syncQueue.push(loc);
@@ -501,7 +505,6 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     return {
       id: pos.timestamp,
       provider: 'gps',
-      locationProvider: 0,
       time: pos.timestamp,
       latitude: c.latitude,
       longitude: c.longitude,
@@ -512,7 +515,8 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     };
   }
 
-  private toError(err: GeolocationPositionError): BackgroundGeolocationError {
-    return { code: err.code, message: err.message };
+  private toError(err: GeolocationPositionError): LocationError {
+    const code = err.code === 1 ? 'permissionDenied' : err.code === 3 ? 'timeout' : 'unavailable';
+    return { code, message: err.message };
   }
 } /* c8 ignore next */
