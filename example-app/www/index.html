@@ -62,8 +62,8 @@
       <button id="notifperm">requestNotification</button>
     </div>
     <div id="log"></div>
-    <!-- The plugin's IIFE build (dist/plugin.js, copied by scripts/copy-plugin.mjs)
-         exposes the v3 facade as window.capacitorBackgroundGeolocation. -->
+    <!-- The v3 facade bundled with @capacitor/core by scripts/copy-plugin.mjs (esbuild)
+         exposes the facade as window.capacitorBackgroundGeolocation. -->
     <script src="./bg-plugin.js"></script>
     <script src="./main.js"></script>
   </body>
