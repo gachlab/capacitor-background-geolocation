@@ -196,7 +196,10 @@ class BackgroundGeolocationPlugin : Plugin() {
     @PluginMethod
     fun getCurrentLocation(call: PluginCall) {
         val timeout = call.getLong("timeout") ?: 20_000L
-        bridge.execute {
+        // Dedicated thread, NOT bridge.execute: the blocking wait must not hold the shared
+        // Capacitor executor, or it head-of-line-blocks every other plugin call (including
+        // cancelCurrentLocation, which would then never run until this one times out).
+        Thread({
             val loc = facade.getCurrentLocation(timeout)
             bridge.activity.runOnUiThread {
                 if (loc != null) {
@@ -204,7 +207,13 @@ class BackgroundGeolocationPlugin : Plugin() {
                     catch (e: Exception) { call.reject("JSON error: ${e.message}", "400") }
                 } else call.reject("Timeout waiting for location", "408")
             }
-        }
+        }, "bg-getCurrentLocation").start()
+    }
+
+    @PluginMethod
+    fun cancelCurrentLocation(call: PluginCall) {
+        facade.cancelCurrentLocation()
+        call.resolve()
     }
 
     @PluginMethod

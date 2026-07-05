@@ -244,6 +244,20 @@ public final class BGFacade: NSObject {
 
     // MARK: - One-shot current location
 
+    // Cancel handle for the in-flight getCurrentLocation() one-shot (set while waiting).
+    private var oneShotCancel: (() -> Void)?
+    private let oneShotLock = NSLock()
+
+    /**
+     Cancel any in-flight [getCurrentLocation] one-shot — stops the CLLocationManager
+     one-shot and wakes the waiter with no fix so the plugin resolves the pending call
+     immediately (the JS caller already aborted).
+     */
+    public func cancelCurrentLocation() {
+        oneShotLock.lock(); let cancel = oneShotCancel; oneShotCancel = nil; oneShotLock.unlock()
+        cancel?()
+    }
+
     public func getCurrentLocation(
         timeout: Int32,
         maximumAge: Int,
@@ -271,11 +285,16 @@ public final class BGFacade: NSObject {
             }
         )
 
+        oneShotLock.lock()
+        oneShotCancel = { helper.cancel(); resultLocation = nil; resultError = nil; semaphore.signal() }
+        oneShotLock.unlock()
+
         runOnMain { helper.start() }
 
         let timeoutSeconds = timeout > 0 ? DispatchTime.now() + .milliseconds(Int(timeout)) : DispatchTime.distantFuture
         let waitResult = semaphore.wait(timeout: timeoutSeconds)
 
+        oneShotLock.lock(); oneShotCancel = nil; oneShotLock.unlock()
         helper.cancel()
 
         if waitResult == .timedOut {

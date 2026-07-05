@@ -101,6 +101,14 @@ class BGFacade(private val context: Context) {
         return ref.get()
     }
 
+    /**
+     * Cancel any in-flight [getCurrentLocation] one-shot — wakes the waiter with no fix so
+     * the plugin resolves the pending call immediately (the JS caller already aborted).
+     */
+    fun cancelCurrentLocation() {
+        pendingLocation?.let { cb -> pendingLocation = null; cb(null) }
+    }
+
     // ── Location reads ────────────────────────────────────────────────────────
 
     fun getAllLocations()             = locationDAO.getAllLocations()
