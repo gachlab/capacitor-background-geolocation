@@ -1092,14 +1092,22 @@ export interface BackgroundGeolocationPlugin {
   /**
    * Return logged plugin events (useful for diagnostics).
    *
+   * Entries come back **newest-first** (descending `id`), capped at `limit`. Backed by
+   * the native SQLite `logs` table; on **web** there is no log store, so this always
+   * resolves to `{ entries: [] }`.
+   *
    * @since 1.0.0
    */
   getLogEntries(options: {
     /** Maximum entries to return. */
     limit: number;
-    /** Only entries with `id > fromId`. */
+    /**
+     * Page backwards into history: return only entries **older** than this id
+     * (`id < fromId`). Pass the smallest `id` from the previous page to fetch the
+     * next older batch. Omit (or `0`) to start from the newest entry.
+     */
     fromId?: number;
-    /** Minimum severity to include. */
+    /** Minimum severity to include. Defaults to `DEBUG` (returns everything). */
     minLevel?: LogLevel;
   }): Promise<{ entries: LogEntry[] }>;
 
@@ -1233,6 +1241,12 @@ export interface BackgroundGeolocationPlugin {
    * Periodic tick with the latest known location. Receives a {@link Location}
    * once the native service has at least one fix. Early ticks (before any GPS
    * fix) deliver an empty object — guard with `if ('latitude' in event)`.
+   *
+   * The delivered fix is the last one cached, **not necessarily a fresh one**: after
+   * a long GPS gap (tunnel, denied permission, dozing device) the same location repeats
+   * on every tick until a newer fix arrives. Both platforms behave identically — the
+   * heartbeat never suppresses a stale fix. If freshness matters, check `event.time`
+   * against `Date.now()` in your handler.
    *
    * @since 1.0.0
    */
