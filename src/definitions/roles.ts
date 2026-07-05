@@ -52,9 +52,15 @@ export interface Trackable {
   checkStatus(): Promise<ServiceStatus>;
 }
 
-/** The five overlapping getters the facade consolidates into `bg.locations.query()`. */
+/** The native location surface. The facade renames these into all()/pending()/stationary(). */
 export interface LocationStore {
   getCurrentLocation(options?: NativeCurrentOptions): Promise<Location>;
+  /**
+   * Cancel any in-flight one-shot `getCurrentLocation` request — stops the native GPS
+   * work so an AbortSignal is honest, not just caller-side. NEW native method in v3
+   * (small: cancel the pending CLLocationManager / FusedLocationClient one-shot).
+   */
+  cancelCurrentLocation(): Promise<void>;
   getStationaryLocation(): Promise<StationaryLocation | null>;
   getLocations(): Promise<{ locations: Location[] }>;
   getValidLocations(): Promise<{ locations: Location[] }>;

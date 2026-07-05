@@ -2,19 +2,18 @@
 // Copyright (c) 2026 gachlab
 //
 // v3 SDK · Locations sub-API (Fase 2) — the exemplar.
-// Shows the three facade patterns: on() → Subscription, current() with AbortSignal,
-// and query() consolidating the five overlapping native getters into one intent-
-// revealing call. All adaptation lives here; the natives keep their existing methods.
+// Facade patterns: on() → typed Subscription, current() with an AbortSignal that
+// genuinely STOPS the native GPS one-shot, and named/precisely-typed read methods
+// (all / pending / stationary) instead of a stringly-typed query(). All adaptation
+// lives here; the natives keep their existing methods.
 
 import type { CurrentLocationOptions } from '../definitions/config';
 import type { BackgroundGeolocationNative, NativeCurrentOptions } from '../definitions/roles';
-import type { Accuracy, Location } from '../definitions/values';
-import { rejectOnAbort, subscribe, type Subscription } from './stream';
+import type { Accuracy, Location, StationaryLocation } from '../definitions/values';
+import { abortError, rejectOnAbort, subscribe, type Subscription } from './stream';
 
-/** Which store `query()` reads. Sessions live in `bg.recordings`, not here. */
-export interface LocationQuery {
-  /** @default 'all' */
-  scope?: 'all' | 'valid' | 'stationary';
+/** Options for reading the pending (not-yet-uploaded) queue. */
+export interface PendingQuery {
   /** Delete the returned rows after reading (replaces the `…AndDelete` native getter). */
   consume?: boolean;
 }
@@ -32,15 +31,16 @@ export class LocationsApi {
 
   /**
    * Subscribe to live fixes. Multi-subscriber and removable — the honest primitive
-   * for a hot GPS stream.
+   * for a hot GPS stream. Returns a `Subscription<Location>`.
    */
-  on(listener: (location: Location) => void): Subscription {
+  on(listener: (location: Location) => void): Subscription<Location> {
     return subscribe<Location>((cb) => this.native.addListener('location', cb), listener);
   }
 
   /**
-   * One-shot fix. `signal` cancels the caller's wait (it does NOT stop the native GPS
-   * work already in flight — honest about what AbortSignal can and can't do here).
+   * One-shot fix. When `signal` fires, the caller's wait rejects with an `AbortError`
+   * AND the native GPS one-shot is cancelled (via `cancelCurrentLocation`) — so the
+   * signal actually stops the work, not just the promise.
    */
   async current(options: CurrentLocationOptions = {}): Promise<Location> {
     const nativeOptions: NativeCurrentOptions = {
@@ -48,31 +48,46 @@ export class LocationsApi {
       maximumAge: options.maximumAge,
       enableHighAccuracy: options.accuracy === undefined ? undefined : HIGH_ACCURACY[options.accuracy],
     };
-    const request = this.native.getCurrentLocation(nativeOptions);
-    if (options.signal === undefined) {
-      return request;
+
+    const signal = options.signal;
+    if (signal === undefined) {
+      return this.native.getCurrentLocation(nativeOptions);
     }
-    return Promise.race([request, rejectOnAbort(options.signal)]);
+    if (signal.aborted) {
+      throw abortError();
+    }
+
+    const request = this.native.getCurrentLocation(nativeOptions);
+    const onAbort = (): void => {
+      void this.native.cancelCurrentLocation();
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    try {
+      return await Promise.race([request, rejectOnAbort(signal)]);
+    } finally {
+      signal.removeEventListener('abort', onAbort);
+    }
+  }
+
+  /** All stored locations. */
+  async all(): Promise<Location[]> {
+    return (await this.native.getLocations()).locations;
   }
 
   /**
-   * Read stored locations. One intent-revealing call replaces getLocations,
-   * getValidLocations, getValidLocationsAndDelete and getStationaryLocation — reading
-   * and deleting are no longer fused into a method name.
+   * Locations stored locally that have not yet been uploaded. Pass `{ consume: true }`
+   * to delete them as they are read (read and delete stay explicit, not fused).
    */
-  async query(query: LocationQuery = {}): Promise<Location[]> {
-    const scope = query.scope ?? 'all';
-    if (scope === 'stationary') {
-      const stationary = await this.native.getStationaryLocation();
-      return stationary === null ? [] : [stationary];
-    }
-    if (scope === 'valid') {
-      const result = query.consume
-        ? await this.native.getValidLocationsAndDelete()
-        : await this.native.getValidLocations();
-      return result.locations;
-    }
-    return (await this.native.getLocations()).locations;
+  async pending(options: PendingQuery = {}): Promise<Location[]> {
+    const result = options.consume
+      ? await this.native.getValidLocationsAndDelete()
+      : await this.native.getValidLocations();
+    return result.locations;
+  }
+
+  /** The last stationary location, or `null`. Typed with its `radius`. */
+  stationary(): Promise<StationaryLocation | null> {
+    return this.native.getStationaryLocation();
   }
 
   /** Delete one stored location by DB id. */
