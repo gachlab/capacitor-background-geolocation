@@ -128,18 +128,18 @@ class BackgroundGeolocationPlugin : Plugin() {
             is ServiceEvent.ServiceRestarted  -> notifyListeners("serviceRestarted",
                 JSObject().apply { put("reason", event.reason) })
             is ServiceEvent.GeofenceEnter     -> notifyListeners("geofenceEnter",
-                JSObject().apply { put("id", event.geofenceId); put("action", "ENTER")
+                JSObject().apply { put("id", event.geofenceId); put("action", "enter")
                     event.loc?.let { put("location", it.toJSONObjectWithId()) } })
             is ServiceEvent.GeofenceExit      -> notifyListeners("geofenceExit",
-                JSObject().apply { put("id", event.geofenceId); put("action", "EXIT")
+                JSObject().apply { put("id", event.geofenceId); put("action", "exit")
                     event.loc?.let { put("location", it.toJSONObjectWithId()) } })
             is ServiceEvent.GeofenceDwell     -> notifyListeners("geofenceDwell",
-                JSObject().apply { put("id", event.geofenceId); put("action", "DWELL")
+                JSObject().apply { put("id", event.geofenceId); put("action", "dwell")
                     event.loc?.let { put("location", it.toJSONObjectWithId()) } })
             is ServiceEvent.GeofenceError     -> notifyListeners("geofenceError",
                 JSObject().apply { event.geofenceId?.let { put("id", it) }; put("message", event.message) })
-            ServiceEvent.AbortRequested       -> notifyListeners("abort_requested",    JSObject())
-            ServiceEvent.HttpAuthorization    -> notifyListeners("http_authorization", JSObject())
+            ServiceEvent.AbortRequested       -> notifyListeners("abortRequested",     JSObject())
+            ServiceEvent.HttpAuthorization    -> notifyListeners("httpAuthorization",  JSObject())
             is ServiceEvent.PrioritySyncSuccess -> notifyListeners("prioritySyncSuccess", JSObject().apply {
                 put("eventType",     event.eventType)
                 put("attemptNumber", event.attemptNumber)
@@ -301,8 +301,8 @@ class BackgroundGeolocationPlugin : Plugin() {
             call.resolve(JSObject().apply {
                 put("isRunning",              facade.isRunning)
                 put("locationServicesEnabled", locEnabled)
-                // AuthorizationStatus contract enum is 0/1/2 (was an invalid 3 here).
-                put("authorization",          AuthorizationStatusMapper.status(foreground, background))
+                // v3 clean output: AuthorizationStatus string union.
+                put("authorization",          AuthorizationStatusMapper.text(foreground, background))
                 put("hasPermissions",         foreground)
             })
         } catch (e: Exception) { call.reject(e.message, "500", e) }
@@ -601,7 +601,7 @@ class BackgroundGeolocationPlugin : Plugin() {
                          hasPermission(ctx, Manifest.permission.ACCESS_COARSE_LOCATION)
         val background = if (Build.VERSION.SDK_INT >= 29)
             hasPermission(ctx, "android.permission.ACCESS_BACKGROUND_LOCATION") else true
-        val status = AuthorizationStatusMapper.status(foreground, background)
+        val status = AuthorizationStatusMapper.text(foreground, background)
         BGLog.i("Authorization changed: $status")
         notify("authorization", JSObject().apply { put("status", status) })
     }

@@ -41,4 +41,13 @@ class AuthorizationStatusMapperTest {
         assertEquals(1, AuthorizationStatusMapper.AUTHORIZED)
         assertEquals(2, AuthorizationStatusMapper.AUTHORIZED_FOREGROUND)
     }
+
+    @Test
+    @DisplayName("text() is the v3 clean AuthorizationStatus string union")
+    fun cleanText() {
+        assertEquals("notAuthorized", AuthorizationStatusMapper.text(foregroundGranted = false, backgroundGranted = false))
+        assertEquals("notAuthorized", AuthorizationStatusMapper.text(foregroundGranted = false, backgroundGranted = true))
+        assertEquals("authorized", AuthorizationStatusMapper.text(foregroundGranted = true, backgroundGranted = true))
+        assertEquals("authorizedForeground", AuthorizationStatusMapper.text(foregroundGranted = true, backgroundGranted = false))
+    }
 }

@@ -5,14 +5,14 @@ package com.gachlab.geolocation
 
 /**
  * Maps Android runtime location-permission state to the cross-platform
- * `AuthorizationStatus` contract (see `src/definitions.ts`):
+ * `AuthorizationStatus` contract (v3 `AuthorizationStatus` string union):
  *
- *  - 0 = NOT_AUTHORIZED         (no foreground location permission)
- *  - 1 = AUTHORIZED            (foreground + background — iOS "authorizedAlways")
- *  - 2 = AUTHORIZED_FOREGROUND (foreground only    — iOS "authorizedWhenInUse")
+ *  - "notAuthorized"        (no foreground location permission)
+ *  - "authorized"           (foreground + background — iOS "authorizedAlways")
+ *  - "authorizedForeground" (foreground only         — iOS "authorizedWhenInUse")
  *
- * Kept as a pure function so it is unit-testable on the JVM without the Android
- * framework.
+ * `status()` keeps the internal 0/1/2 ordering; `text()` is the clean output the v3
+ * bridge emits. Pure functions, unit-testable on the JVM without the Android framework.
  */
 internal object AuthorizationStatusMapper {
 
@@ -25,4 +25,12 @@ internal object AuthorizationStatusMapper {
         backgroundGranted  -> AUTHORIZED
         else               -> AUTHORIZED_FOREGROUND
     }
+
+    /** v3 clean output: the `AuthorizationStatus` string emitted over the bridge. */
+    fun text(foregroundGranted: Boolean, backgroundGranted: Boolean): String =
+        when (status(foregroundGranted, backgroundGranted)) {
+            AUTHORIZED            -> "authorized"
+            AUTHORIZED_FOREGROUND -> "authorizedForeground"
+            else                  -> "notAuthorized"
+        }
 }
