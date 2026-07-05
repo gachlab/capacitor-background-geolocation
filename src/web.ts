@@ -157,6 +157,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   async forceSync(): Promise<void> {
     const url = this.config.syncUrl ?? this.config.url;
     if (!url || this.syncQueue.length === 0) return;
+    this.notifyListeners('syncStart', {});
     const batch = this.syncQueue.splice(0);
     try {
       const resp = await fetch(url, {
@@ -164,10 +165,15 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
         headers: { 'Content-Type': 'application/json', ...(this.config.headers ?? {}) },
         body: JSON.stringify(batch),
       });
-      if (!resp.ok) this.syncQueue.unshift(...batch);
-      else this.notifyListeners('syncSuccess', { sent: batch.length });
-    } catch {
+      if (!resp.ok) {
+        this.syncQueue.unshift(...batch);
+        this.notifyListeners('syncError', { httpStatus: resp.status ?? 0, message: `sync failed (${resp.status ?? 0})` });
+      } else {
+        this.notifyListeners('syncSuccess', { sent: batch.length });
+      }
+    } catch (err) {
       this.syncQueue.unshift(...batch);
+      this.notifyListeners('syncError', { httpStatus: -1, message: err instanceof Error ? err.message : 'sync failed' });
     }
   }
 

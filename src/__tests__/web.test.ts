@@ -4,8 +4,7 @@
 import assert from 'node:assert/strict';
 import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 
-import { AccuracyValue, AuthorizationStatus, LocationProviderValue } from '../definitions.js';
-import type { ConfigureOptions } from '../definitions.js';
+import type { NativeConfig } from '../definitions/wire.js';
 import { BackgroundGeolocationWeb } from '../web.js';
 
 // ─── Mock browser globals ─────────────────────────────────────────────────────
@@ -112,18 +111,18 @@ describe('BackgroundGeolocationWeb', () => {
 
   describe('configure() / getConfig()', () => {
     it('stores options and returns them unchanged', async () => {
-      await plugin.configure({ distanceFilter: 50, desiredAccuracy: 'HIGH' });
+      await plugin.configure({ distanceFilter: 50, desiredAccuracy: 0 });
       const cfg = await plugin.getConfig();
       assert.equal(cfg.distanceFilter, 50);
-      assert.equal(cfg.desiredAccuracy, 'HIGH');
+      assert.equal(cfg.desiredAccuracy, 0);
     });
 
     it('merges successive configure() calls', async () => {
       await plugin.configure({ distanceFilter: 100 });
-      await plugin.configure({ desiredAccuracy: 'LOW' });
+      await plugin.configure({ desiredAccuracy: 1000 });
       const cfg = await plugin.getConfig();
       assert.equal(cfg.distanceFilter, 100);
-      assert.equal(cfg.desiredAccuracy, 'LOW');
+      assert.equal(cfg.desiredAccuracy, 1000);
     });
 
     it('getConfig() returns a copy — mutations do not affect internal state', async () => {
@@ -152,14 +151,14 @@ describe('BackgroundGeolocationWeb', () => {
     });
 
     it('uses high accuracy when desiredAccuracy is not LOW', async () => {
-      await plugin.configure({ desiredAccuracy: 'HIGH' });
+      await plugin.configure({ desiredAccuracy: 0 });
       await plugin.start();
       const opts = mockGeo.watchPosition.mock.calls[0].arguments[2] as PositionOptions;
       assert.equal(opts.enableHighAccuracy, true);
     });
 
     it('uses low accuracy when desiredAccuracy is LOW', async () => {
-      await plugin.configure({ desiredAccuracy: 'LOW' });
+      await plugin.configure({ desiredAccuracy: 1000 });
       await plugin.start();
       const opts = mockGeo.watchPosition.mock.calls[0].arguments[2] as PositionOptions;
       assert.equal(opts.enableHighAccuracy, false);
@@ -174,11 +173,11 @@ describe('BackgroundGeolocationWeb', () => {
     });
 
     it('emits error event when watchPosition reports an error', async () => {
-      const errs = collect<{ code: number }>(plugin, 'error');
+      const errs = collect<{ code: string }>(plugin, 'error');
       await plugin.start();
       onWatchError?.(makeGeoError(2, 'Position unavailable'));
       assert.equal(errs.length, 1);
-      assert.equal(errs[0].code, 2);
+      assert.equal(errs[0].code, 'unavailable');
     });
   });
 
@@ -212,8 +211,8 @@ describe('BackgroundGeolocationWeb', () => {
     it('rejects with mapped error code on failure', async () => {
       const promise = plugin.getCurrentLocation();
       onCurrentError?.(makeGeoError(2, 'Position unavailable'));
-      await assert.rejects(promise, (err: { code: number }) => {
-        assert.equal(err.code, 2);
+      await assert.rejects(promise, (err: { code: string }) => {
+        assert.equal(err.code, 'unavailable');
         return true;
       });
     });
@@ -506,14 +505,14 @@ describe('BackgroundGeolocationWeb', () => {
     let savedFetch: typeof globalThis.fetch;
     let fetchMock: ReturnType<typeof mock.fn>;
 
-    function setFetch(impl: (...args: unknown[]) => Promise<{ ok: boolean }>): void {
+    function setFetch(impl: (...args: unknown[]) => Promise<{ ok: boolean; status?: number }>): void {
       fetchMock = mock.fn(impl);
       globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
     }
 
     // Drive one location through the public watch flow so the private
     // postLocation() fires; flush() lets the fire-and-forget POST settle.
-    async function postOnce(p: BackgroundGeolocationWeb, options: ConfigureOptions = {}): Promise<void> {
+    async function postOnce(p: BackgroundGeolocationWeb, options: NativeConfig = {}): Promise<void> {
       await p.configure({ url: 'https://x.test/loc', ...options });
       await p.start();
       onWatchSuccess?.(makePosition());
@@ -530,7 +529,7 @@ describe('BackgroundGeolocationWeb', () => {
 
     it('postLocation POSTs each fix; nothing queued when the server accepts it', async () => {
       setFetch(async () => ({ ok: true }));
-      await postOnce(plugin, { httpMethod: 'PUT', httpHeaders: { 'X-Tenant': 'gachlab' } });
+      await postOnce(plugin, { httpMethod: 'PUT', headers: { 'X-Tenant': 'gachlab' } });
       assert.equal(fetchMock.mock.callCount(), 1);
       const [, init] = fetchMock.mock.calls[0].arguments as [string, RequestInit];
       assert.equal(init.method, 'PUT');
@@ -577,6 +576,18 @@ describe('BackgroundGeolocationWeb', () => {
       });
       await plugin.forceSync();
       assert.equal((await plugin.getPendingSyncCount()).count, 1);
+    });
+
+    it('forceSync emits syncStart then syncError on an HTTP failure', async () => {
+      setFetch(async () => ({ ok: false, status: 500 }));
+      await postOnce(plugin); // url set, fails → 1 queued
+      const starts = collect(plugin, 'syncStart');
+      const errors = collect<{ httpStatus: number }>(plugin, 'syncError');
+      setFetch(async () => ({ ok: false, status: 500 }));
+      await plugin.forceSync();
+      assert.equal(starts.length, 1);
+      assert.equal(errors.length, 1);
+      assert.equal(errors[0].httpStatus, 500);
     });
 
     it('forceSync targets syncUrl (and syncHttpMethod) in preference to url', async () => {
@@ -686,7 +697,7 @@ describe('BackgroundGeolocationWeb', () => {
       await assert.rejects(
         () => promise,
         (err: unknown) => {
-          assert.equal((err as { code: number }).code, 2);
+          assert.equal((err as { code: string }).code, 'unavailable');
           return true;
         },
       );
@@ -1009,7 +1020,7 @@ describe('BackgroundGeolocationWeb', () => {
       });
       assert.equal(enters.length, 1);
       assert.equal(enters[0].id, 'depot');
-      assert.equal(enters[0].action, 'ENTER');
+      assert.equal(enters[0].action, 'enter');
     });
 
     it('fires ENTER on a boundary crossing, not while still outside', async () => {
@@ -1037,7 +1048,7 @@ describe('BackgroundGeolocationWeb', () => {
       onWatchSuccess?.(geoFix(CENTER.latitude, CENTER.longitude)); // ENTER
       onWatchSuccess?.(geoFix(20.5, -99.0)); // leave → EXIT
       assert.equal(exits.length, 1);
-      assert.equal(exits[0].action, 'EXIT');
+      assert.equal(exits[0].action, 'exit');
     });
 
     it('fires a single DWELL after the loitering delay', async () => {
@@ -1051,7 +1062,7 @@ describe('BackgroundGeolocationWeb', () => {
             longitude: CENTER.longitude,
             radius: 200,
             notifyOnDwell: true,
-            loiteringDelay: 1000,
+            loiteringDelayMs: 1000,
           },
         ],
       });
@@ -1126,28 +1137,5 @@ describe('BackgroundGeolocationWeb', () => {
       await plugin.addGeofences({ geofences: [gf] }); // already inside → entered guard returns
       assert.equal(enters.length, 1);
     });
-  });
-});
-
-// ── definitions constants ─────────────────────────────────────────────────────
-
-describe('definitions constants', () => {
-  it('LocationProviderValue has correct numeric mappings', () => {
-    assert.equal(LocationProviderValue.DISTANCE_FILTER, 0);
-    assert.equal(LocationProviderValue.ACTIVITY_PROVIDER, 1);
-    assert.equal(LocationProviderValue.RAW_PROVIDER, 2);
-  });
-
-  it('AccuracyValue has correct meter mappings', () => {
-    assert.equal(AccuracyValue.HIGH, 0);
-    assert.equal(AccuracyValue.MEDIUM, 100);
-    assert.equal(AccuracyValue.LOW, 1000);
-    assert.equal(AccuracyValue.PASSIVE, 10000);
-  });
-
-  it('AuthorizationStatus has correct numeric values', () => {
-    assert.equal(AuthorizationStatus.NOT_AUTHORIZED, 0);
-    assert.equal(AuthorizationStatus.AUTHORIZED, 1);
-    assert.equal(AuthorizationStatus.AUTHORIZED_FOREGROUND, 2);
   });
 });
