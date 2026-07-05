@@ -34,6 +34,8 @@ export interface TransportConfig {
   headers?: Record<string, string>;
   /** Default HTTP method. @default 'POST' */
   method?: HttpMethod;
+  /** How live locations are POSTed — one request per fix, or batched. @default 'batch' */
+  mode?: DeliveryMode;
   /** Placeholder values for URL/body templating. */
   queryParams?: Record<string, string | number>;
   /** Body template applied to each location. */

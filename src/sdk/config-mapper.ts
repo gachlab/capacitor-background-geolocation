@@ -87,6 +87,7 @@ export function toFlatConfig(cfg: BaseConfig): NativeConfig {
     if (t.baseUrl !== undefined) out.url = t.baseUrl;
     if (t.headers !== undefined) out.headers = t.headers;
     if (t.method !== undefined) out.httpMethod = t.method;
+    if (t.mode !== undefined) out.httpMode = t.mode;
     if (t.queryParams !== undefined) out.queryParams = t.queryParams;
     if (t.bodyTemplate !== undefined) out.postTemplate = t.bodyTemplate;
   }
