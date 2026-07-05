@@ -29,6 +29,8 @@
     "src/definitions/config.ts",
     "src/definitions/events.ts",
     "src/definitions/wire.ts",
-    "src/definitions/roles.ts"
+    "src/definitions/roles.ts",
+    "src/sdk/stream.ts",
+    "src/sdk/locations.ts"
   ]
 }
