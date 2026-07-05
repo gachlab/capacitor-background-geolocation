@@ -44,6 +44,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   private watchId: number | null = null;
   private config: NativeConfig = {};
   private lastLocation: Location | null = null;
+  private syncing = false; // guards against overlapping forceSync() flushes
 
   // In-memory stores (cleared on page reload — foreground only)
   private locations: Location[] = [];
@@ -94,6 +95,8 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
       this.watchId = null;
       this.notifyListeners('stop', {});
     }
+    // Flush any batched-but-unsent fixes so a short session (< threshold) doesn't strand them.
+    if (this.syncQueue.length > 0) await this.forceSync().catch(() => {});
   }
 
   async switchMode(_options: { mode: 0 | 1 }): Promise<void> {
@@ -165,7 +168,8 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
 
   async forceSync(): Promise<void> {
     const url = this.config.syncUrl ?? this.config.url;
-    if (!url || this.syncQueue.length === 0) return;
+    if (!url || this.syncQueue.length === 0 || this.syncing) return;
+    this.syncing = true;
     this.notifyListeners('syncStart', {});
     const batch = this.syncQueue.splice(0);
     try {
@@ -183,6 +187,8 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     } catch (err) {
       this.syncQueue.unshift(...batch);
       this.notifyListeners('syncError', { httpStatus: -1, message: err instanceof Error ? err.message : 'sync failed' });
+    } finally {
+      this.syncing = false;
     }
   }
 
