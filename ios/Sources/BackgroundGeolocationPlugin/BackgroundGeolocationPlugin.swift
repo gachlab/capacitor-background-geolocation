@@ -18,6 +18,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         CAPPluginMethod(name: "start", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getCurrentLocation", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "cancelCurrentLocation", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getStationaryLocation", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getLocations", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getValidLocations", returnType: CAPPluginReturnPromise),
@@ -223,6 +224,11 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
             let nsErr = error as NSError
             call.reject(nsErr.localizedDescription, String(nsErr.code))
         }
+    }
+
+    @objc func cancelCurrentLocation(_ call: CAPPluginCall) {
+        facade?.cancelCurrentLocation()
+        call.resolve()
     }
 
     @objc func getStationaryLocation(_ call: CAPPluginCall) {
