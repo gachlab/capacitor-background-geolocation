@@ -39,4 +39,4 @@ export type { PendingQuery } from './sdk/locations';
 export type { SyncEvents } from './sdk/sync';
 export type { GeofenceEvents } from './sdk/geofences';
 export type { DriverEvents } from './sdk/driver';
-export type { LogPageOptions } from './sdk/logs';
+export type { LogPageOptions, LogStreamOptions } from './sdk/logs';

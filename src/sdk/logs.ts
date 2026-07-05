@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 gachlab
 //
-// v3 SDK · Logs sub-API (Fase 2).
-// `page()` reads one newest-first batch. The `stream()` async-generator that hides the
-// fromId paging entirely arrives with the ES2018+ target bump (Fase 3/4) — async
-// generators require es2018, and today's target is es2017.
+// v3 SDK · Logs sub-API (Fase 2 · stream added Fase 3).
+// `page()` reads one newest-first batch; `stream()` is the async-generator that hides
+// the fromId paging entirely (unlocked by the ES2018 target bump — async generators).
 
 import type { BackgroundGeolocationNative } from '../definitions/roles';
 import type { LogEntry, LogLevel } from '../definitions/values';
@@ -13,6 +12,15 @@ export interface LogPageOptions {
   /** Max entries to return. @default 100 */
   limit?: number;
   /** Page backwards: only entries older than this id (`id < fromId`). */
+  fromId?: number;
+  /** Minimum severity to include. @default 'debug' */
+  minLevel?: LogLevel;
+}
+
+export interface LogStreamOptions {
+  /** Entries fetched per underlying `getLogEntries` call. @default 100 */
+  batchSize?: number;
+  /** Start paging older than this id (`id < fromId`). Omit to start from newest. */
   fromId?: number;
   /** Minimum severity to include. @default 'debug' */
   minLevel?: LogLevel;
@@ -32,5 +40,29 @@ export class LogsApi {
       minLevel: options.minLevel,
     });
     return result.entries;
+  }
+
+  /**
+   * Stream all log entries newest-first, paging transparently — the generator fetches
+   * the next older batch on demand, so a caller just `for await`s without touching
+   * `fromId`. Ends when the store is exhausted. On web this yields nothing.
+   *
+   * @example
+   * for await (const entry of bg.logs.stream({ minLevel: 'warn' })) {
+   *   if (entry.timestamp < cutoff) break; // stops paging — no further native calls
+   *   report(entry);
+   * }
+   */
+  async *stream(options: LogStreamOptions = {}): AsyncGenerator<LogEntry, void, void> {
+    const batchSize = options.batchSize ?? 100;
+    let fromId = options.fromId;
+    for (;;) {
+      const entries = await this.page({ limit: batchSize, fromId, minLevel: options.minLevel });
+      for (const entry of entries) yield entry;
+      // A short page means the store is exhausted; the newest-first page ends on the
+      // smallest id, so that id seeds the next (older) page.
+      if (entries.length < batchSize) return;
+      fromId = entries[entries.length - 1].id;
+    }
   }
 }
