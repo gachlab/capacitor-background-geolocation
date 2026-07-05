@@ -246,18 +246,19 @@ public final class BGFacade: NSObject {
 
     // MARK: - One-shot current location
 
-    // Cancel handle for the in-flight getCurrentLocation() one-shot (set while waiting).
-    private var oneShotCancel: (() -> Void)?
+    // Cancel handles for in-flight getCurrentLocation() one-shots — one per concurrent call,
+    // so overlapping calls don't clobber each other's slot.
+    private var oneShotCancels: [UUID: () -> Void] = [:]
     private let oneShotLock = NSLock()
 
     /**
-     Cancel any in-flight [getCurrentLocation] one-shot — stops the CLLocationManager
-     one-shot and wakes the waiter with no fix so the plugin resolves the pending call
+     Cancel every in-flight [getCurrentLocation] one-shot — stops the CLLocationManager
+     one-shot and wakes the waiters with no fix so the plugin resolves the pending calls
      immediately (the JS caller already aborted).
      */
     public func cancelCurrentLocation() {
-        oneShotLock.lock(); let cancel = oneShotCancel; oneShotCancel = nil; oneShotLock.unlock()
-        cancel?()
+        oneShotLock.lock(); let cancels = Array(oneShotCancels.values); oneShotCancels.removeAll(); oneShotLock.unlock()
+        cancels.forEach { $0() }
     }
 
     public func getCurrentLocation(
@@ -273,10 +274,14 @@ public final class BGFacade: NSObject {
             }
         }
 
-        // One-shot CLLocationManager via semaphore
+        // One-shot CLLocationManager via semaphore. `resultLocation`/`resultError` are written
+        // ONLY by onResult (before its signal → visible after wait); cancel flips `cancelled`
+        // under the lock instead of racing those vars.
         let semaphore = DispatchSemaphore(value: 0)
         var resultLocation: CLLocation?
         var resultError: Error?
+        var cancelled = false
+        let id = UUID()
 
         let helper = OneShotLocationHelper(
             enableHighAccuracy: enableHighAccuracy,
@@ -288,7 +293,10 @@ public final class BGFacade: NSObject {
         )
 
         oneShotLock.lock()
-        oneShotCancel = { helper.cancel(); resultLocation = nil; resultError = nil; semaphore.signal() }
+        oneShotCancels[id] = { [oneShotLock] in
+            oneShotLock.lock(); cancelled = true; oneShotLock.unlock()
+            helper.cancel(); semaphore.signal()
+        }
         oneShotLock.unlock()
 
         runOnMain { helper.start() }
@@ -296,10 +304,10 @@ public final class BGFacade: NSObject {
         let timeoutSeconds = timeout > 0 ? DispatchTime.now() + .milliseconds(Int(timeout)) : DispatchTime.distantFuture
         let waitResult = semaphore.wait(timeout: timeoutSeconds)
 
-        oneShotLock.lock(); oneShotCancel = nil; oneShotLock.unlock()
+        oneShotLock.lock(); oneShotCancels[id] = nil; let wasCancelled = cancelled; oneShotLock.unlock()
         helper.cancel()
 
-        if waitResult == .timedOut {
+        if wasCancelled || waitResult == .timedOut {
             throw BGError.timeout
         }
         if let err = resultError {

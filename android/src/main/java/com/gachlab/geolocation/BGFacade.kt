@@ -42,8 +42,17 @@ class BGFacade(private val context: Context) {
 
     private var pluginListener: ((ServiceEvent) -> Unit)? = null
 
-    // One pending getCurrentLocation() callback at a time.
-    @Volatile private var pendingLocation: ((BGLocation?) -> Unit)? = null
+    // In-flight getCurrentLocation() waiters — one callback per concurrent call. A fix (or
+    // cancel) drains them atomically, so overlapping one-shots don't clobber each other's slot.
+    private val pendingLock = Any()
+    private val pendingLocations = mutableListOf<(BGLocation?) -> Unit>()
+
+    private fun addPending(cb: (BGLocation?) -> Unit) = synchronized(pendingLock) { pendingLocations.add(cb) }
+    private fun removePending(cb: (BGLocation?) -> Unit) = synchronized(pendingLock) { pendingLocations.remove(cb) }
+    /** Atomically take and clear all waiters — each callback is handed to exactly one caller. */
+    private fun drainPending(): List<(BGLocation?) -> Unit> = synchronized(pendingLock) {
+        val copy = pendingLocations.toList(); pendingLocations.clear(); copy
+    }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -55,8 +64,7 @@ class BGFacade(private val context: Context) {
 
     fun destroy() {
         pluginListener = null
-        pendingLocation?.invoke(null)
-        pendingLocation = null
+        drainPending().forEach { it(null) }
         GeofenceManager.destroy()
         // Only clear the static listener if it's still ours.
         if (LocationService.eventListener === ::dispatch) {
@@ -92,24 +100,28 @@ class BGFacade(private val context: Context) {
 
     /**
      * Block the calling thread (max [timeout] ms) until the next location fix arrives.
-     * Must be called from a background thread — BackgroundGeolocationPlugin uses
-     * bridge.execute {} for this purpose.
+     * Must be called from a background thread — the plugin runs it on its oneShotExecutor,
+     * never the shared Capacitor executor. Concurrent calls are safe (one waiter each).
      */
     fun getCurrentLocation(timeout: Long = 20_000L): BGLocation? {
         val latch = CountDownLatch(1)
         val ref   = AtomicReference<BGLocation?>()
-        pendingLocation = { loc -> ref.set(loc); latch.countDown() }
-        latch.await(timeout, TimeUnit.MILLISECONDS)
-        pendingLocation = null
+        val cb: (BGLocation?) -> Unit = { loc -> ref.set(loc); latch.countDown() }
+        addPending(cb)
+        try {
+            latch.await(timeout, TimeUnit.MILLISECONDS)
+        } finally {
+            removePending(cb) // no-op if a fix/cancel already drained it
+        }
         return ref.get()
     }
 
     /**
-     * Cancel any in-flight [getCurrentLocation] one-shot — wakes the waiter with no fix so
-     * the plugin resolves the pending call immediately (the JS caller already aborted).
+     * Cancel every in-flight [getCurrentLocation] one-shot — wakes the waiters with no fix so
+     * the plugin resolves the pending calls immediately (the JS caller already aborted).
      */
     fun cancelCurrentLocation() {
-        pendingLocation?.let { cb -> pendingLocation = null; cb(null) }
+        drainPending().forEach { it(null) }
     }
 
     // ── Location reads ────────────────────────────────────────────────────────
@@ -184,15 +196,15 @@ class BGFacade(private val context: Context) {
         // Track service liveness.
         when (event) {
             is ServiceEvent.ServiceStarted -> isRunning = true
-            is ServiceEvent.ServiceStopped -> isRunning = false
+            is ServiceEvent.ServiceStopped -> { isRunning = false; lastLocation = null } // drop sticky fix from the ended session
             is ServiceEvent.TripEnd        -> lastScore = event.journey.score
             is ServiceEvent.Stationary     -> { lastStationary = event.loc; lastStationaryRadius = event.radius }
             else -> Unit
         }
-        // Satisfy any pending getCurrentLocation() call + cache for sticky replay.
+        // Satisfy any pending getCurrentLocation() calls + cache for sticky replay.
         if (event is ServiceEvent.Location) {
             lastLocation = event.loc
-            pendingLocation?.let { cb -> pendingLocation = null; cb(event.loc) }
+            drainPending().forEach { it(event.loc) }
         }
         pluginListener?.invoke(event)
     }

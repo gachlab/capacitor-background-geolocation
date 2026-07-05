@@ -44,6 +44,11 @@ class BackgroundGeolocationPlugin : Plugin() {
 
     private lateinit var facade: BGFacade
     private val taskCounter = AtomicInteger(0)
+    // Blocking one-shot work (getCurrentLocation) runs here, NOT on Capacitor's shared
+    // single-threaded executor, so it can't head-of-line-block other plugin calls. A cached
+    // pool reuses idle threads instead of spawning (and leaking) one per call.
+    private val oneShotExecutor: java.util.concurrent.ExecutorService =
+        java.util.concurrent.Executors.newCachedThreadPool()
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -196,18 +201,21 @@ class BackgroundGeolocationPlugin : Plugin() {
     @PluginMethod
     fun getCurrentLocation(call: PluginCall) {
         val timeout = call.getLong("timeout") ?: 20_000L
-        // Dedicated thread, NOT bridge.execute: the blocking wait must not hold the shared
-        // Capacitor executor, or it head-of-line-blocks every other plugin call (including
-        // cancelCurrentLocation, which would then never run until this one times out).
-        Thread({
-            val loc = facade.getCurrentLocation(timeout)
-            bridge.activity.runOnUiThread {
+        // On oneShotExecutor (not bridge.execute) so the blocking wait doesn't HOL-block
+        // other plugin calls incl. cancelCurrentLocation. try/catch so a throw can't take
+        // down the process; call.resolve/reject are safe off the main thread.
+        oneShotExecutor.execute {
+            try {
+                val loc = facade.getCurrentLocation(timeout)
                 if (loc != null) {
-                    try { call.resolve(JSObject.fromJSONObject(loc.toJSONObjectWithId())) }
-                    catch (e: Exception) { call.reject("JSON error: ${e.message}", "400") }
-                } else call.reject("Timeout waiting for location", "408")
+                    call.resolve(JSObject.fromJSONObject(loc.toJSONObjectWithId()))
+                } else {
+                    call.reject("Timeout waiting for location", "408")
+                }
+            } catch (e: Exception) {
+                call.reject("getCurrentLocation failed: ${e.message}", "500", e)
             }
-        }, "bg-getCurrentLocation").start()
+        }
     }
 
     @PluginMethod

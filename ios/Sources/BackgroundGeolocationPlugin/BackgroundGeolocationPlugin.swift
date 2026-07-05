@@ -217,13 +217,17 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         let timeout = call.getInt("timeout") ?? Int(Int32.max)
         let maximumAge = call.getInt("maximumAge") ?? Int.max
         let highAccuracy = call.getBool("enableHighAccuracy") ?? false
-        do {
-            let location = try facade.getCurrentLocation(
-                timeout: Int32(timeout), maximumAge: maximumAge, enableHighAccuracy: highAccuracy)
-            call.resolve(location.toDictionary())
-        } catch {
-            let nsErr = error as NSError
-            call.reject(nsErr.localizedDescription, String(nsErr.code))
+        // Off the serial bridge queue so the blocking wait doesn't head-of-line-block other
+        // plugin calls — cancelCurrentLocation must be able to run to release this wait.
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let location = try facade.getCurrentLocation(
+                    timeout: Int32(timeout), maximumAge: maximumAge, enableHighAccuracy: highAccuracy)
+                call.resolve(location.toDictionary())
+            } catch {
+                let nsErr = error as NSError
+                call.reject(nsErr.localizedDescription, String(nsErr.code))
+            }
         }
     }
 
