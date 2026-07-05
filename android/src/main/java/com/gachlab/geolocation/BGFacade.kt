@@ -46,6 +46,13 @@ class BGFacade(private val context: Context) {
     // cancel) drains them atomically, so overlapping one-shots don't clobber each other's slot.
     private val pendingLock = Any()
     private val pendingLocations = mutableListOf<(BGLocation?) -> Unit>()
+    // Bumped on cancel. A one-shot captures the generation on the bridge thread BEFORE its
+    // blocking wait is dispatched; if a cancel bumps it before the waiter registers, the
+    // waiter aborts immediately instead of parking — closes the cancel-before-register race.
+    private var cancelGeneration = 0
+
+    /** Read the cancel generation synchronously (call on the bridge thread before dispatching a wait). */
+    fun currentCancelGeneration(): Int = synchronized(pendingLock) { cancelGeneration }
 
     private fun addPending(cb: (BGLocation?) -> Unit) = synchronized(pendingLock) { pendingLocations.add(cb) }
     private fun removePending(cb: (BGLocation?) -> Unit) = synchronized(pendingLock) { pendingLocations.remove(cb) }
@@ -99,15 +106,20 @@ class BGFacade(private val context: Context) {
     }
 
     /**
-     * Block the calling thread (max [timeout] ms) until the next location fix arrives.
-     * Must be called from a background thread — the plugin runs it on its oneShotExecutor,
-     * never the shared Capacitor executor. Concurrent calls are safe (one waiter each).
+     * Block the calling thread (max [timeout] ms) until the next location fix arrives, or null.
+     * Must be called from a background thread — the plugin runs it on its oneShotExecutor.
+     * [sinceGeneration] is the cancel generation captured on the bridge thread before dispatch:
+     * if a cancel bumped it in the meantime, this returns null immediately instead of parking.
+     * Concurrent calls are safe (one waiter each).
      */
-    fun getCurrentLocation(timeout: Long = 20_000L): BGLocation? {
+    fun getCurrentLocation(timeout: Long = 20_000L, sinceGeneration: Int = currentCancelGeneration()): BGLocation? {
         val latch = CountDownLatch(1)
         val ref   = AtomicReference<BGLocation?>()
         val cb: (BGLocation?) -> Unit = { loc -> ref.set(loc); latch.countDown() }
-        addPending(cb)
+        synchronized(pendingLock) {
+            if (cancelGeneration != sinceGeneration) return null // cancelled before we could register
+            pendingLocations.add(cb)
+        }
         try {
             latch.await(timeout, TimeUnit.MILLISECONDS)
         } finally {
@@ -118,10 +130,15 @@ class BGFacade(private val context: Context) {
 
     /**
      * Cancel every in-flight [getCurrentLocation] one-shot — wakes the waiters with no fix so
-     * the plugin resolves the pending calls immediately (the JS caller already aborted).
+     * the plugin resolves the pending calls immediately (the JS caller already aborted). Also
+     * bumps the cancel generation so a one-shot still dispatching (not yet registered) aborts.
      */
     fun cancelCurrentLocation() {
-        drainPending().forEach { it(null) }
+        val cbs = synchronized(pendingLock) {
+            cancelGeneration++
+            val copy = pendingLocations.toList(); pendingLocations.clear(); copy
+        }
+        cbs.forEach { it(null) }
     }
 
     // ── Location reads ────────────────────────────────────────────────────────

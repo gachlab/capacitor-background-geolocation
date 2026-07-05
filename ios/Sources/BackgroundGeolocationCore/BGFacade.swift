@@ -250,21 +250,35 @@ public final class BGFacade: NSObject {
     // so overlapping calls don't clobber each other's slot.
     private var oneShotCancels: [UUID: () -> Void] = [:]
     private let oneShotLock = NSLock()
+    // Bumped on cancel. A one-shot captures the generation on the bridge queue BEFORE its
+    // blocking wait is dispatched; if a cancel bumps it before the waiter registers, the
+    // waiter aborts immediately instead of parking — closes the cancel-before-register race.
+    private var cancelGeneration = 0
+
+    /// Read the cancel generation synchronously (call on the bridge queue before dispatching a wait).
+    public func currentCancelGeneration() -> Int {
+        oneShotLock.lock(); defer { oneShotLock.unlock() }; return cancelGeneration
+    }
 
     /**
      Cancel every in-flight [getCurrentLocation] one-shot — stops the CLLocationManager
      one-shot and wakes the waiters with no fix so the plugin resolves the pending calls
-     immediately (the JS caller already aborted).
+     immediately (the JS caller already aborted). Also bumps the cancel generation so a
+     one-shot still dispatching (not yet registered) aborts.
      */
     public func cancelCurrentLocation() {
-        oneShotLock.lock(); let cancels = Array(oneShotCancels.values); oneShotCancels.removeAll(); oneShotLock.unlock()
+        oneShotLock.lock()
+        cancelGeneration += 1
+        let cancels = Array(oneShotCancels.values); oneShotCancels.removeAll()
+        oneShotLock.unlock()
         cancels.forEach { $0() }
     }
 
     public func getCurrentLocation(
         timeout: Int32,
         maximumAge: Int,
-        enableHighAccuracy: Bool
+        enableHighAccuracy: Bool,
+        sinceGeneration: Int
     ) throws -> BGLocation {
         // Check if the BGLocationManager already has a fresh enough fix
         if let clLoc = BGLocationManager.shared.currentLocation {
@@ -293,6 +307,10 @@ public final class BGFacade: NSObject {
         )
 
         oneShotLock.lock()
+        if cancelGeneration != sinceGeneration { // cancelled before we could register
+            oneShotLock.unlock()
+            throw BGError.timeout
+        }
         oneShotCancels[id] = { [oneShotLock] in
             oneShotLock.lock(); cancelled = true; oneShotLock.unlock()
             helper.cancel(); semaphore.signal()

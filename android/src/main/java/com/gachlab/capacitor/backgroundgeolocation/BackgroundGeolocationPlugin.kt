@@ -70,7 +70,8 @@ class BackgroundGeolocationPlugin : Plugin() {
     }
 
     override fun handleOnDestroy() {
-        facade.destroy()
+        facade.destroy() // wakes any in-flight one-shot waiters with null
+        oneShotExecutor.shutdown()
         super.handleOnDestroy()
     }
 
@@ -201,17 +202,18 @@ class BackgroundGeolocationPlugin : Plugin() {
     @PluginMethod
     fun getCurrentLocation(call: PluginCall) {
         val timeout = call.getLong("timeout") ?: 20_000L
+        // Capture the cancel generation SYNCHRONOUSLY on the bridge thread so a cancel that
+        // arrives before the (offloaded) waiter registers still aborts it — see BGFacade.
+        val generation = facade.currentCancelGeneration()
         // On oneShotExecutor (not bridge.execute) so the blocking wait doesn't HOL-block
         // other plugin calls incl. cancelCurrentLocation. try/catch so a throw can't take
         // down the process; call.resolve/reject are safe off the main thread.
         oneShotExecutor.execute {
             try {
-                val loc = facade.getCurrentLocation(timeout)
-                if (loc != null) {
-                    call.resolve(JSObject.fromJSONObject(loc.toJSONObjectWithId()))
-                } else {
-                    call.reject("Timeout waiting for location", "408")
-                }
+                val loc = facade.getCurrentLocation(timeout, generation)
+                if (loc == null) { call.reject("Timeout waiting for location", "408"); return@execute }
+                try { call.resolve(JSObject.fromJSONObject(loc.toJSONObjectWithId())) }
+                catch (e: Exception) { call.reject("JSON error: ${e.message}", "400") }
             } catch (e: Exception) {
                 call.reject("getCurrentLocation failed: ${e.message}", "500", e)
             }

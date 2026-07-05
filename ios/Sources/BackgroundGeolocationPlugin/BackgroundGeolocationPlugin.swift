@@ -214,15 +214,20 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
     @objc func getCurrentLocation(_ call: CAPPluginCall) {
         guard let facade = facade else { call.reject("facade not initialized"); return }
-        let timeout = call.getInt("timeout") ?? Int(Int32.max)
+        // Bounded default (was Int32.max ≈ 24 days): a dropped wait must not park a thread forever.
+        let timeout = call.getInt("timeout") ?? 30_000
         let maximumAge = call.getInt("maximumAge") ?? Int.max
         let highAccuracy = call.getBool("enableHighAccuracy") ?? false
+        // Capture the cancel generation SYNCHRONOUSLY on the bridge queue so a cancel arriving
+        // before the (offloaded) waiter registers still aborts it — see BGFacade.
+        let generation = facade.currentCancelGeneration()
         // Off the serial bridge queue so the blocking wait doesn't head-of-line-block other
         // plugin calls — cancelCurrentLocation must be able to run to release this wait.
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 let location = try facade.getCurrentLocation(
-                    timeout: Int32(timeout), maximumAge: maximumAge, enableHighAccuracy: highAccuracy)
+                    timeout: Int32(timeout), maximumAge: maximumAge,
+                    enableHighAccuracy: highAccuracy, sinceGeneration: generation)
                 call.resolve(location.toDictionary())
             } catch {
                 let nsErr = error as NSError
