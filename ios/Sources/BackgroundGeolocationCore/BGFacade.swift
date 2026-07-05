@@ -59,12 +59,14 @@ public final class BGFacade: NSObject {
     // MARK: - Configure
 
     public func configure(_ config: BGConfig) throws {
-        let existing = configRepo.retrieve()
         let previousHeartbeatInterval = _config?.heartbeatInterval
         let previousProviderType = _config?.locationProvider
         let previousDrivingEvents = _config?.drivingEvents
 
-        let merged = BGConfig.merge(BGConfig.merge(BGConfig(defaults: ()), with: existing), with: config)
+        // v3: the facade sends the FULLY-RESOLVED config (single source of truth), so apply
+        // it over DEFAULTS (replace), not merged onto the previously-stored config — a field
+        // the facade drops must revert to default, not go stale.
+        let merged = BGConfig.merge(BGConfig(defaults: ()), with: config)
         _config = merged
         configRepo.persist(merged)
         publisher.config = merged

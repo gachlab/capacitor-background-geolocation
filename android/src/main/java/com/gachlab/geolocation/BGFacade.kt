@@ -66,11 +66,13 @@ class BGFacade(private val context: Context) {
     // ── Plugin API ────────────────────────────────────────────────────────────
 
     fun configure(newConfig: BGConfig) {
-        val stored = configDAO.retrieveConfig() ?: BGConfig.getDefault()
-        val merged = BGConfig.merge(stored, newConfig)
-        configDAO.persistConfig(merged)
+        // v3: the facade sends the FULLY-RESOLVED config, so it is the single source of
+        // truth — apply it over DEFAULTS (replace), not merged onto the previously-stored
+        // config, so a field the facade drops reverts to default instead of going stale.
+        val resolved = BGConfig.merge(BGConfig.getDefault(), newConfig)
+        configDAO.persistConfig(resolved)
         // Hot-reload if running; otherwise next start() picks up the persisted config.
-        startedService()?.configure(merged)
+        startedService()?.configure(resolved)
     }
 
     fun start() {
