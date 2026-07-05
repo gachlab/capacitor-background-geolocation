@@ -33,6 +33,7 @@ class BGFacade(private val context: Context) {
     /** Last stationary fix and its radius, updated from ServiceEvent.Stationary. */
     @Volatile private var lastStationary: BGLocation? = null
     @Volatile private var lastStationaryRadius: Float = 0f
+    @Volatile private var lastLocation: BGLocation? = null
 
     private val configDAO   = ConfigDAO(context.applicationContext)
     private val locationDAO = LocationDAO(context.applicationContext)
@@ -120,6 +121,9 @@ class BGFacade(private val context: Context) {
     fun deleteAllLocations()         = locationDAO.markAllDeleted()
     fun getPendingSyncCount()        = locationDAO.getSyncPendingCount(System.currentTimeMillis())
 
+    /** Last known fix (for sticky replay on subscribe), or null if none observed yet. */
+    fun getLastLocation(): BGLocation? = lastLocation
+
     // ── Config reads ──────────────────────────────────────────────────────────
 
     fun getConfig(): BGConfig = configDAO.retrieveConfig() ?: BGConfig.getDefault()
@@ -185,8 +189,9 @@ class BGFacade(private val context: Context) {
             is ServiceEvent.Stationary     -> { lastStationary = event.loc; lastStationaryRadius = event.radius }
             else -> Unit
         }
-        // Satisfy any pending getCurrentLocation() call.
+        // Satisfy any pending getCurrentLocation() call + cache for sticky replay.
         if (event is ServiceEvent.Location) {
+            lastLocation = event.loc
             pendingLocation?.let { cb -> pendingLocation = null; cb(event.loc) }
         }
         pluginListener?.invoke(event)

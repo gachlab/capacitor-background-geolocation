@@ -130,6 +130,10 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     return null;
   }
 
+  async getLastLocation(): Promise<Location | null> {
+    return this.lastLocation;
+  }
+
   async getLocations(): Promise<{ locations: Location[] }> {
     return { locations: [...this.locations] };
   }

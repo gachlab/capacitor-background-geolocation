@@ -34,7 +34,13 @@ export class LocationsApi {
    * for a hot GPS stream. Returns a `Subscription<Location>`.
    */
   on(listener: (location: Location) => void): Subscription<Location> {
-    return subscribe<Location>((cb) => this.native.addListener('location', cb), listener);
+    const sub = subscribe<Location>((cb) => this.native.addListener('location', cb), listener);
+    // Sticky: replay the last known fix to the new subscriber (if any), so a late
+    // subscriber is not blind until the next GPS update arrives.
+    void this.native.getLastLocation().then((loc) => {
+      if (loc) listener(loc);
+    });
+    return sub;
   }
 
   /**

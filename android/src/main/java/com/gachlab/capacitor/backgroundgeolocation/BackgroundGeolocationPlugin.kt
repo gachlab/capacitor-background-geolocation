@@ -217,6 +217,14 @@ class BackgroundGeolocationPlugin : Plugin() {
     }
 
     @PluginMethod
+    fun getLastLocation(call: PluginCall) {
+        val loc = facade.getLastLocation()
+        if (loc == null) { call.resolve(); return }
+        try { call.resolve(JSObject.fromJSONObject(loc.toJSONObjectWithId())) }
+        catch (e: Exception) { call.reject("JSON error: ${e.message}", "400") }
+    }
+
+    @PluginMethod
     fun getStationaryLocation(call: PluginCall) {
         val stationary = facade.getStationaryLocation()
         if (stationary == null) {

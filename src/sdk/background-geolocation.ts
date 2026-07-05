@@ -85,7 +85,15 @@ export class BackgroundGeolocation {
    * Domain events live on their sub-API (`locations.on`, `geofences.on`, …).
    */
   on<E extends GeolocationEventName>(event: E, listener: GeolocationEventListener<E>): Subscription {
-    return listen(this.native, event, listener as (payload: unknown) => void);
+    const sub = listen(this.native, event, listener as (payload: unknown) => void);
+    // Sticky: a new `authorization` subscriber gets the current state immediately,
+    // rather than waiting for the next authorization change.
+    if (event === 'authorization') {
+      void this.native.checkStatus().then((status) =>
+        (listener as (payload: unknown) => void)({ status: status.authorization }),
+      );
+    }
+    return sub;
   }
 
   /** Trigger an SOS — emits the `sos` event with the latest location plus `payload`. */
