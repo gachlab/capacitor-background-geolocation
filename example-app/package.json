@@ -4,7 +4,8 @@
   "private": true,
   "description": "Minimal Capacitor 8 host app exercising @gachlab/capacitor-background-geolocation.",
   "scripts": {
-    "sync": "cap sync",
+    "copy:plugin": "node scripts/copy-plugin.mjs",
+    "sync": "npm run copy:plugin && cap sync",
     "open:android": "cap open android",
     "open:ios": "cap open ios"
   },
