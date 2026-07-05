@@ -225,7 +225,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
 
   async getPluginVersion(): Promise<{ version: string }> {
     // Keep in sync with package.json `version`. Enforced by version-sync.test.ts.
-    return { version: '2.0.0' };
+    return { version: '2.1.0' };
   }
 
   /**

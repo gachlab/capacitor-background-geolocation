@@ -620,6 +620,6 @@ class BackgroundGeolocationPlugin : Plugin() {
 
     companion object {
         // Keep in sync with package.json `version`. Enforced by version-sync.test.ts.
-        private const val PLUGIN_VERSION = "2.0.0"
+        private const val PLUGIN_VERSION = "2.1.0"
     }
 }
