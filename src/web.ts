@@ -69,7 +69,12 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
         this.storeLocation(loc);
         this.notifyListeners('location', loc);
         this.evaluateGeofences(loc);
-        if (this.config.url) void this.postLocation(loc);
+        if (this.config.url) {
+          // Honor httpMode: 'batch' defers to the sync queue (flushed by threshold), 'single'
+          // (default) POSTs each fix immediately — matching the native transports.
+          if (this.config.httpMode === 'batch') this.enqueueForBatch(loc);
+          else void this.postLocation(loc);
+        }
       },
       (err) => {
         this.notifyListeners('error', this.toError(err));
@@ -493,6 +498,13 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     const max = this.config.maxLocations ?? 10_000;
     if (this.locations.length > max) this.locations.splice(0, this.locations.length - max);
     if (this.sessionActive) this.sessionLocations.push(loc);
+  }
+
+  /** httpMode: 'batch' — queue the fix and flush once the batch reaches the threshold. */
+  private enqueueForBatch(loc: Location): void {
+    this.syncQueue.push(loc);
+    const threshold = this.config.syncThreshold ?? 100;
+    if (this.syncQueue.length >= threshold) void this.forceSync();
   }
 
   private async postLocation(loc: Location): Promise<void> {
