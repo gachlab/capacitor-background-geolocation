@@ -41,14 +41,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── Tracking ────────────────────────────────────────────────────────────────
   // v3 two-tier config: clean composed shape → the facade's config-mapper resolves it
-  // to the native wire. Keys the clean types don't (yet) cover ride the explicit
-  // `native` escape hatch (stationaryRadius / interval / startForeground / …).
+  // to the native wire. Fully typed now — no escape hatch needed.
   document.getElementById('configure').onclick = () =>
     safe('configure', () =>
       bg.tracking.configure({
-        location: { provider: 'raw', accuracy: 'high', distanceFilter: 0 },
+        location: { provider: 'raw', accuracy: 'high', distanceFilter: 0, interval: 1000 },
+        stationary: { radius: 25 },
         survival: { stopOnTerminate: false, startOnBoot: false, heartbeatInterval: 30000 },
-        notification: { enabled: true, title: 'Example tracking', text: 'Location enabled' },
+        notification: { enabled: true, foreground: true, title: 'Example tracking', text: 'Location enabled' },
         debug: false,
         driving: {
           enabled: true,
@@ -63,7 +63,6 @@ document.addEventListener('DOMContentLoaded', () => {
           minTripDurationMs: 0,
           minMovingSpeed: 0.5,
         },
-        native: { stationaryRadius: 25, interval: 1000, startForeground: true },
       }),
     );
 
@@ -72,11 +71,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('configure-gf-exit').onclick = () =>
     safe('configure', () =>
       bg.tracking.configure({
-        location: { provider: 'raw', accuracy: 'high', distanceFilter: 0 },
+        location: { provider: 'raw', accuracy: 'high', distanceFilter: 0, interval: 1000 },
+        stationary: { radius: 25, exitMode: 'geofence' },
         survival: { stopOnTerminate: false },
-        notification: { enabled: true, title: 'GF-exit test', text: 'Location enabled' },
+        notification: { enabled: true, foreground: true, title: 'GF-exit test', text: 'Location enabled' },
         debug: false,
-        native: { stationaryRadius: 25, stationaryExitMode: 'geofence', interval: 1000, startForeground: true },
       }),
     );
 

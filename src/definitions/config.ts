@@ -40,6 +40,14 @@ export interface TransportConfig {
   bodyTemplate?: unknown;
 }
 
+/** Text shown on the sync-progress notification (Android). */
+export interface SyncNotificationText {
+  title?: string;
+  text?: string;
+  completedText?: string;
+  failedText?: string;
+}
+
 /** Foreground / sync notification identity. Shared across purposes. */
 export interface NotificationConfig {
   /** Enable local notifications during tracking/sync (Android). @default true */
@@ -50,6 +58,14 @@ export interface NotificationConfig {
   color?: string;
   title?: string;
   text?: string;
+  /** Run the tracking service in the foreground (Android needs a notification). @default false */
+  foreground?: boolean;
+  /** Show elapsed time in the notification (Android). @default false */
+  showTime?: boolean;
+  /** Show accumulated distance in the notification (Android). @default false */
+  showDistance?: boolean;
+  /** Text for the sync-progress notification (Android). */
+  sync?: SyncNotificationText;
 }
 
 /** Base sampling — the default location quality every feature inherits. */
@@ -68,6 +84,28 @@ export interface SamplingConfig {
   mockPolicy?: MockPolicy;
   /** iOS activity type hint. */
   activityType?: 'automotiveNavigation' | 'otherNavigation' | 'fitness' | 'other';
+  /** Android: min time interval between updates (ms). @default 600000 */
+  interval?: number;
+  /** Android: fastest rate updates may be delivered (ms). @default 120000 */
+  fastestInterval?: number;
+  /** Android ACTIVITY provider: activity-recognition cadence (ms). @default 10000 */
+  activityInterval?: number;
+  /** Android: activity confidence threshold (0–100). @default 50 */
+  activityConfidenceThreshold?: number;
+}
+
+/** Android stationary-detection tuning (the no-movement power-saving state machine). */
+export interface StationaryConfig {
+  /** Stationary radius (m). @default 50 */
+  radius?: number;
+  /** No-movement time before entering stationary (ms). @default 300000 */
+  timeout?: number;
+  /** Lazy poll interval while stationary (ms). @default 180000 */
+  pollInterval?: number;
+  /** Aggressive poll interval while stationary (ms). @default 60000 */
+  pollFast?: number;
+  /** How the device detects leaving the stationary region. @default 'poll' */
+  exitMode?: 'poll' | 'geofence';
 }
 
 /** Background-survival strategy (global). */
@@ -86,6 +124,12 @@ export interface SurvivalConfig {
   iosBackgroundFallback?: 'significantChanges' | 'regionMonitoring' | 'none';
   /** iOS: switch to significant changes in background. @default false */
   saveBatteryOnBackground?: boolean;
+  /** iOS: allow the OS to pause location updates. @default false */
+  pauseLocationUpdates?: boolean;
+  /** iOS 11+: show the blue background-location indicator. @default false */
+  showsBackgroundLocationIndicator?: boolean;
+  /** Android WakeLock policy. @default 'posting' */
+  wakeLockMode?: 'none' | 'posting' | 'always';
 }
 
 /** Local persistence limits (global). */
@@ -182,6 +226,7 @@ export interface GeofenceDefaults {
  */
 export interface BaseConfig {
   location?: SamplingConfig;
+  stationary?: StationaryConfig;
   transport?: TransportConfig;
   notification?: NotificationConfig;
   survival?: SurvivalConfig;

@@ -67,6 +67,19 @@ export function toFlatConfig(cfg: BaseConfig): NativeConfig {
     if (loc.includeBattery !== undefined) out.includeBattery = loc.includeBattery;
     if (loc.mockPolicy !== undefined) out.mockLocationPolicy = loc.mockPolicy;
     if (loc.activityType !== undefined) out.activityType = ACTIVITY_TYPE[loc.activityType] ?? loc.activityType;
+    if (loc.interval !== undefined) out.interval = loc.interval;
+    if (loc.fastestInterval !== undefined) out.fastestInterval = loc.fastestInterval;
+    if (loc.activityInterval !== undefined) out.activitiesInterval = loc.activityInterval;
+    if (loc.activityConfidenceThreshold !== undefined) out.activityConfidenceThreshold = loc.activityConfidenceThreshold;
+  }
+
+  const st = cfg.stationary;
+  if (st) {
+    if (st.radius !== undefined) out.stationaryRadius = st.radius;
+    if (st.timeout !== undefined) out.stationaryTimeout = st.timeout;
+    if (st.pollInterval !== undefined) out.stationaryPollInterval = st.pollInterval;
+    if (st.pollFast !== undefined) out.stationaryPollFast = st.pollFast;
+    if (st.exitMode !== undefined) out.stationaryExitMode = st.exitMode;
   }
 
   const t = cfg.transport;
@@ -102,6 +115,13 @@ export function toFlatConfig(cfg: BaseConfig): NativeConfig {
     if (n.color !== undefined) out.notificationIconColor = n.color;
     if (n.icon?.large !== undefined) out.notificationIconLarge = n.icon.large;
     if (n.icon?.small !== undefined) out.notificationIconSmall = n.icon.small;
+    if (n.foreground !== undefined) out.startForeground = n.foreground;
+    if (n.showTime !== undefined) out.showTime = n.showTime;
+    if (n.showDistance !== undefined) out.showDistance = n.showDistance;
+    if (n.sync?.title !== undefined) out.notificationSyncTitle = n.sync.title;
+    if (n.sync?.text !== undefined) out.notificationSyncText = n.sync.text;
+    if (n.sync?.completedText !== undefined) out.notificationSyncCompletedText = n.sync.completedText;
+    if (n.sync?.failedText !== undefined) out.notificationSyncFailedText = n.sync.failedText;
   }
 
   const s = cfg.survival;
@@ -114,6 +134,10 @@ export function toFlatConfig(cfg: BaseConfig): NativeConfig {
     if (s.saveBatteryOnBackground !== undefined) out.saveBatteryOnBackground = s.saveBatteryOnBackground;
     if (s.watchdog?.enabled !== undefined) out.enableWatchdog = s.watchdog.enabled;
     if (s.watchdog?.intervalMs !== undefined) out.watchdogIntervalMs = s.watchdog.intervalMs;
+    if (s.pauseLocationUpdates !== undefined) out.pauseLocationUpdates = s.pauseLocationUpdates;
+    if (s.showsBackgroundLocationIndicator !== undefined)
+      out.showsBackgroundLocationIndicator = s.showsBackgroundLocationIndicator;
+    if (s.wakeLockMode !== undefined) out.wakeLockMode = s.wakeLockMode;
   }
 
   if (cfg.persistence?.maxLocations !== undefined) out.maxLocations = cfg.persistence.maxLocations;

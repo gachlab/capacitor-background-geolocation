@@ -31,6 +31,17 @@ export interface NativeConfig {
   includeBattery?: boolean;
   mockLocationPolicy?: 'allow' | 'flag' | 'drop';
   activityType?: string;
+  interval?: number;
+  fastestInterval?: number;
+  activitiesInterval?: number;
+  activityConfidenceThreshold?: number;
+  // stationary detection (Android)
+  stationaryRadius?: number;
+  stationaryTimeout?: number;
+  stationaryPollInterval?: number;
+  stationaryPollFast?: number;
+  stationaryExitMode?: string;
+  wakeLockMode?: 'none' | 'posting' | 'always';
   // survival
   stopOnTerminate?: boolean;
   startOnBoot?: boolean;
@@ -69,6 +80,12 @@ export interface NativeConfig {
   notificationIconColor?: string;
   notificationIconLarge?: string;
   notificationIconSmall?: string;
+  notificationSyncTitle?: string;
+  notificationSyncText?: string;
+  notificationSyncCompletedText?: string;
+  notificationSyncFailedText?: string;
+  showTime?: boolean;
+  showDistance?: boolean;
   startForeground?: boolean;
   // driving events (X-ext) — sent as a nested blob the native already accepts
   drivingEvents?: Record<string, unknown>;
