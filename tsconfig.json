@@ -21,5 +21,14 @@
     "strictNullChecks": true,
     "target": "es2017"
   },
-  "files": ["src/index.ts", "src/definitions.ts", "src/web.ts"]
+  "files": [
+    "src/index.ts",
+    "src/definitions.ts",
+    "src/web.ts",
+    "src/definitions/values.ts",
+    "src/definitions/config.ts",
+    "src/definitions/events.ts",
+    "src/definitions/wire.ts",
+    "src/definitions/roles.ts"
+  ]
 }
