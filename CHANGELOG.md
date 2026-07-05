@@ -6,6 +6,51 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### v3 API redesign (BREAKING — target v3.0.0, not yet published)
+
+The rule: **modernize the structure, not the syntax.** The Capacitor bridge stays
+`Promise` + `addListener`; the win is a composed facade over a flat native contract.
+The only consumer is `drivers-web`, so the break is intentional. See the blueprint
+for the full rationale.
+
+#### Changed (BREAKING)
+- **Flat plugin surface → composed facade.** `import { BackgroundGeolocation }` is now
+  an instance of composed sub-APIs: `bg.tracking` · `bg.locations` · `bg.geofences` ·
+  `bg.sync` · `bg.driver` · `bg.logs` · `bg.permissions` · `bg.diagnostics` ·
+  `bg.recordings` · `bg.platform`, plus top-level `bg.on()`, `bg.sos()`,
+  `bg.capabilities()`, `bg.supports()`. The raw flat proxy is still available as
+  `NativeBackgroundGeolocation` (escape hatch).
+- **Composed, two-tier config** replaces the ~70 flat fields. `bg.configure(base)` sets
+  the shared tier once (`location`/`transport`/`notification`/`survival`/…); features
+  override only their delta via a `base ⊕ session ⊕ per-call` cascade (deep-merge maps,
+  replace scalars, `null` = unset). No more `[extra: string]` index signature — a typed
+  `native` escape hatch remains for raw wire flags.
+- **Clean output shapes**: string error codes (`'unavailable'`), `AuthorizationStatus`
+  strings, lowercase geofence `action` (`enter`/`exit`/`dwell`), `Geofence.loiteringDelayMs`.
+- **Cordova-compat layer retired** (the old ~1600-line `definitions.ts`).
+
+#### Added
+- **Capability gating** — `bg.capabilities()` (memoized, rejections not cached) +
+  `bg.supports(cap)`; gated APIs (`bg.driver.*`, `bg.diagnostics.oem.*`) throw a typed
+  `CapabilityError` off-platform instead of returning silent no-ops.
+- **`bg.locations.current({ signal })`** — `AbortSignal` on the one-shot (cancels the
+  caller's wait; native GPS keeps its own lifecycle) + `cancelCurrentLocation()`.
+- **`bg.logs.stream()`** — async-generator that hides `fromId` paging; breaking early
+  stops fetching.
+- **Disposable handles** — `using sub = bg.locations.on(cb)` and
+  `await using s = await bg.tracking.start()` auto-clean at scope end (`Symbol.dispose`
+  / `Symbol.asyncDispose`, polyfilled). Additive: `.remove()` / `.stop()` still work.
+- **`transport.mode`** → wire `httpMode` (live-POST batch/single), previously reachable
+  only via the escape hatch.
+
+#### Internal
+- Native contract segregated into role interfaces (`definitions/roles.ts`), composed by
+  intersection; flat wire config in `definitions/wire.ts`.
+- `toFlatConfig` **coverage guard test** — fails if a `NativeConfig` wire key has no
+  mapping (compile-time exhaustive table + runtime maximal-config check).
+- TypeScript target bumped es2017 → **es2022** (+ `esnext.disposable` lib) for async
+  generators and `using`.
+
 ## [2.0.0] - 2026-06-25
 
 Legacy cleanup of the Cordova-era inheritance. The only consumer is `drivers-web`,
