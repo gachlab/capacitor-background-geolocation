@@ -218,9 +218,11 @@ class BGFacade(private val context: Context) {
             is ServiceEvent.Stationary     -> { lastStationary = event.loc; lastStationaryRadius = event.radius }
             else -> Unit
         }
-        // Satisfy any pending getCurrentLocation() calls + cache for sticky replay.
+        // Satisfy any pending getCurrentLocation() calls + cache for sticky replay. Only cache
+        // while running, so a Location dispatched right after ServiceStopped can't re-arm a stale
+        // fix from the ended session (getCurrentLocation waiters are still satisfied regardless).
         if (event is ServiceEvent.Location) {
-            lastLocation = event.loc
+            if (isRunning) lastLocation = event.loc
             drainPending().forEach { it(event.loc) }
         }
         pluginListener?.invoke(event)

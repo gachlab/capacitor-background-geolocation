@@ -325,16 +325,19 @@ public final class BGFacade: NSObject {
         oneShotLock.lock(); oneShotCancels[id] = nil; let wasCancelled = cancelled; oneShotLock.unlock()
         helper.cancel()
 
-        if wasCancelled || waitResult == .timedOut {
-            throw BGError.timeout
-        }
+        // Prefer a delivered result over a racing late cancel: if onResult already produced a
+        // fix/error before the cancel signalled, honor it rather than discarding it as a timeout.
         if let err = resultError {
             throw err
         }
-        guard let clLoc = resultLocation else {
+        if let clLoc = resultLocation {
+            return BGLocation.from(clLocation: clLoc)
+        }
+        // No result: cancelled or timed out.
+        if wasCancelled || waitResult == .timedOut {
             throw BGError.timeout
         }
-        return BGLocation.from(clLocation: clLoc)
+        throw BGError.timeout
     }
 
     // MARK: - Config
