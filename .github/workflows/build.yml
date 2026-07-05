@@ -67,6 +67,9 @@ jobs:
       - name: Install example-app dependencies
         working-directory: example-app
         run: npm ci
+      - name: Copy plugin bundle into www
+        working-directory: example-app
+        run: npm run copy:plugin
       - name: Sync web assets and plugin into Android project
         working-directory: example-app
         run: npx cap sync android
@@ -138,6 +141,9 @@ jobs:
       - name: Install example-app deps
         working-directory: example-app
         run: npm ci
+      - name: Copy plugin bundle into www
+        working-directory: example-app
+        run: npm run copy:plugin
       - name: Sync web assets and plugin into iOS project
         working-directory: example-app
         run: npx cap sync ios

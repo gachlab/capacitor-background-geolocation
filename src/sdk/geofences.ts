@@ -28,7 +28,11 @@ export class GeofencesApi {
 
   /** Register geofences. Existing ones with the same id are replaced. */
   add(geofences: Geofence[]): Promise<void> {
-    return this.native.addGeofences({ geofences });
+    // Translate the clean field to the native wire key (loiteringDelayMs → loiteringDelay).
+    const wire = geofences.map(({ loiteringDelayMs, ...g }) =>
+      loiteringDelayMs === undefined ? g : { ...g, loiteringDelay: loiteringDelayMs },
+    );
+    return this.native.addGeofences({ geofences: wire as unknown as Geofence[] });
   }
 
   /** Remove geofences by id. Omit `ids` to remove all. */

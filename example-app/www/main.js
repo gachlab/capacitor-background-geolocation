@@ -2,72 +2,18 @@
 // Copyright (c) 2026 gachlab
 //
 // Minimal host page exercising the plugin on web/Android/iOS — the base of the E2E
-// integration tests.
+// integration tests. Uses the REAL v3 facade.
 //
-// No bundler is used. The Capacitor native-bridge.js is injected before this script,
-// so window.Capacitor.Plugins.BackgroundGeolocation (the raw native contract) is
-// available without imports.
-//
-// v3 note: real apps import the composed facade
+// No bundler: the plugin's IIFE build (dist/plugin.js, copied to www/bg-plugin.js by
+// scripts/copy-plugin.mjs and loaded by index.html) exposes the facade as the global
+// `capacitorBackgroundGeolocation`. This is the SAME facade npm consumers import via
 //   import { BackgroundGeolocation } from '@gachlab/capacitor-background-geolocation'
-// and use bg.tracking.configure(...) / bg.locations.on(...). Here — no bundler — we
-// build the SAME facade SHAPE inline over the raw proxy. The underlying native calls,
-// wire config and event names are IDENTICAL to what the facade emits, so device E2E
-// behaviour is unchanged. Config stays in the native wire format the (as-yet
-// unchanged) native side parses.
+// so the E2E exercises the real facade → config-mapper → native pipeline.
 
-/* global Capacitor */
+/* global capacitorBackgroundGeolocation */
 
 document.addEventListener('DOMContentLoaded', () => {
-  const native = Capacitor.Plugins.BackgroundGeolocation;
-
-  // ── v3 facade shape over the raw native proxy (identical underlying calls) ──
-  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-  const bg = {
-    tracking: {
-      configure: (wire) => native.configure(wire),
-      start: () => native.start(),
-      stop: () => native.stop(),
-      status: () => native.checkStatus(),
-    },
-    locations: {
-      // Mirror the facade: clean `accuracy` → native `enableHighAccuracy`, so the
-      // underlying native getCurrentLocation call is identical to the raw one.
-      current: (o = {}) => {
-        const nativeOpts = { timeout: o.timeout, maximumAge: o.maximumAge };
-        if (o.accuracy !== undefined) nativeOpts.enableHighAccuracy = o.accuracy === 'high';
-        return native.getCurrentLocation(nativeOpts);
-      },
-      pending: (o) => (o && o.consume ? native.getValidLocationsAndDelete() : native.getValidLocations()),
-      clear: () => native.deleteAllLocations(),
-      on: (cb) => native.addListener('location', cb),
-    },
-    geofences: {
-      add: (geofences) => native.addGeofences({ geofences }),
-      list: () => native.getGeofences(),
-      clear: (ids) => native.removeGeofences(ids ? { ids } : undefined),
-      on: (ev, cb) => native.addListener('geofence' + cap(ev), cb), // enter→geofenceEnter
-    },
-    diagnostics: {
-      report: () => native.getDiagnostics(),
-      version: () => native.getPluginVersion(),
-    },
-    permissions: {
-      request: () => native.requestPermissions(),
-      requestBackground: () => native.requestBackgroundLocationPermission(),
-      requestActivity: () => native.requestActivityRecognitionPermission(),
-      requestNotifications: () => native.requestNotificationPermission(),
-    },
-    driver: {
-      on: (ev, cb) => native.addListener(ev, cb),
-    },
-    platform: {
-      // 'moving' → mode 1, 'stationary' → mode 0 (native switchMode wire is 0|1)
-      switchMode: (mode) => native.switchMode({ mode: mode === 'moving' ? 1 : 0 }),
-    },
-    sos: (payload) => native.triggerSOS(payload),
-    on: (ev, cb) => native.addListener(ev, cb), // global/lifecycle events
-  };
+  const bg = capacitorBackgroundGeolocation.BackgroundGeolocation;
 
   const out = document.getElementById('log');
   const statusEl = document.querySelector('[data-testid="service-status"]');
@@ -94,25 +40,17 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ── Tracking ────────────────────────────────────────────────────────────────
-  // Config is the native wire format (locationProvider/desiredAccuracy numeric,
-  // drivingEvents blob) — unchanged so the (as-yet unmodified) native side parses it.
+  // v3 two-tier config: clean composed shape → the facade's config-mapper resolves it
+  // to the native wire. Keys the clean types don't (yet) cover ride the explicit
+  // `native` escape hatch (stationaryRadius / interval / startForeground / …).
   document.getElementById('configure').onclick = () =>
     safe('configure', () =>
       bg.tracking.configure({
-        locationProvider: 2,
-        desiredAccuracy: 0,
-        stationaryRadius: 25,
-        distanceFilter: 0,
+        location: { provider: 'raw', accuracy: 'high', distanceFilter: 0 },
+        survival: { stopOnTerminate: false, startOnBoot: false, heartbeatInterval: 30000 },
+        notification: { enabled: true, title: 'Example tracking', text: 'Location enabled' },
         debug: false,
-        stopOnTerminate: false,
-        startOnBoot: false,
-        interval: 1000,
-        notificationsEnabled: true,
-        startForeground: true,
-        notificationTitle: 'Example tracking',
-        notificationText: 'Location enabled',
-        heartbeatInterval: 30000,
-        drivingEvents: {
+        driving: {
           enabled: true,
           speedLimit: 90,
           // Lowered thresholds for E2E emulator testing
@@ -122,38 +60,33 @@ document.addEventListener('DOMContentLoaded', () => {
           sensorFusion: false,
           phoneUsageWindowMs: 3000,
           phoneUsageCooldownMs: 5000,
-          minTripDuration: 0,
+          minTripDurationMs: 0,
           minMovingSpeed: 0.5,
         },
+        native: { stationaryRadius: 25, interval: 1000, startForeground: true },
       }),
     );
 
-  // Same provider as Configure but with the native geofence stationary-exit backstop
-  // enabled — used by the stationary-geofence E2E (needs Play Services / a GMS emulator).
+  // Same as Configure but with the native geofence stationary-exit backstop enabled
+  // (stationary-geofence E2E; needs Play Services / a GMS emulator).
   document.getElementById('configure-gf-exit').onclick = () =>
     safe('configure', () =>
       bg.tracking.configure({
-        locationProvider: 2,
-        desiredAccuracy: 0,
-        stationaryRadius: 25,
-        stationaryExitMode: 'geofence',
-        distanceFilter: 0,
+        location: { provider: 'raw', accuracy: 'high', distanceFilter: 0 },
+        survival: { stopOnTerminate: false },
+        notification: { enabled: true, title: 'GF-exit test', text: 'Location enabled' },
         debug: false,
-        stopOnTerminate: false,
-        interval: 1000,
-        notificationsEnabled: true,
-        startForeground: true,
-        notificationTitle: 'GF-exit test',
-        notificationText: 'Location enabled',
+        native: { stationaryRadius: 25, stationaryExitMode: 'geofence', interval: 1000, startForeground: true },
       }),
     );
 
-  // changePace equivalent: force the movement state machine for manual on-device
-  // geofence-mode testing. 'moving' → switchMode(1), 'stationary' → switchMode(0).
+  // changePace equivalent: force the movement state machine for on-device geofence-mode
+  // testing. This plugin overloads switchMode: mode 1 (foreground) = moving, mode 0
+  // (background) = stationary.
   document.getElementById('pace-moving').onclick = () =>
-    safe('switchMode(moving)', () => bg.platform.switchMode('moving'));
+    safe('switchMode(moving)', () => bg.platform.switchMode('foreground'));
   document.getElementById('pace-stationary').onclick = () =>
-    safe('switchMode(stationary)', () => bg.platform.switchMode('stationary'));
+    safe('switchMode(stationary)', () => bg.platform.switchMode('background'));
 
   document.getElementById('start').onclick = () => safe('start', () => bg.tracking.start());
   document.getElementById('stop').onclick = () => safe('stop', () => bg.tracking.stop());
@@ -175,8 +108,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sos').onclick = () => safe('triggerSOS', () => bg.sos({ reason: 'manual' }));
 
   // ── Geofencing ──────────────────────────────────────────────────────────────
-  // GF_CENTER must match the coordinate injected by the E2E scripts so the device
-  // starts already-inside.
+  // GF_CENTER must match the coordinate injected by the E2E scripts (device starts
+  // already-inside).
   const GF_CENTER = { latitude: 37.3349, longitude: -122.009 };
   document.getElementById('gf-enter').onclick = () =>
     safe('geofences.add[enter-here]', () =>
@@ -189,12 +122,12 @@ document.addEventListener('DOMContentLoaded', () => {
           notifyOnEntry: true,
           notifyOnExit: true,
           notifyOnDwell: true,
-          loiteringDelay: 4000,
+          loiteringDelayMs: 4000,
         },
       ]),
     );
-  // Register 21 geofences in one call. iOS caps user geofences at 19, so the last two
-  // overflow and must surface a geofence `error` (code 1005).
+  // Register 21 geofences in one call. iOS caps user geofences at 19 → the last two
+  // overflow and surface a geofence `error`.
   document.getElementById('gf-limit').onclick = () =>
     safe('geofences.add[21]', () => {
       const geofences = [];
@@ -226,7 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('notifperm').onclick = () =>
     safe('requestNotifications', () => bg.permissions.requestNotifications());
 
-  // ── Event subscriptions (v3 sub-API shape; same native events under the hood) ──
+  // ── Event subscriptions (v3 sub-API shape) ──────────────────────────────────
   bg.locations.on((loc) => {
     locationCount++;
     countEl.textContent = String(locationCount);
@@ -256,7 +189,7 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('[BGGL-E2E] driving-event:possibleCrash');
     log('event:possibleCrash', loc);
   });
-  bg.driver.on('phoneUsageWhileDriving', (loc) => {
+  bg.driver.on('phoneUsage', (loc) => {
     console.log('[BGGL-E2E] driving-event:phoneUsageWhileDriving');
     log('event:phoneUsageWhileDriving', loc);
   });
