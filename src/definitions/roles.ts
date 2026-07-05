@@ -62,6 +62,8 @@ export interface LocationStore {
    */
   cancelCurrentLocation(): Promise<void>;
   getStationaryLocation(): Promise<StationaryLocation | null>;
+  /** The last known fix (from the native PositionBuffer), or null — used for sticky replay on subscribe. */
+  getLastLocation(): Promise<Location | null>;
   getLocations(): Promise<{ locations: Location[] }>;
   getValidLocations(): Promise<{ locations: Location[] }>;
   getValidLocationsAndDelete(): Promise<{ locations: Location[] }>;
