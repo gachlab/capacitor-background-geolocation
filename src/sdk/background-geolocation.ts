@@ -11,6 +11,7 @@ import type { Capabilities } from '../definitions/values';
 
 import { DiagnosticsApi } from './diagnostics';
 import { DriverApi } from './driver';
+import { type BooleanCapability, ensureCapability } from './errors';
 import { GeofencesApi } from './geofences';
 import { LocationsApi } from './locations';
 import { LogsApi } from './logs';
@@ -66,6 +67,15 @@ export class BackgroundGeolocation {
   /** Feature-detect a single capability (e.g. `await bg.supports('driverIntelligence')`). */
   async supports<K extends keyof Capabilities>(capability: K): Promise<Capabilities[K]> {
     return (await this.capabilities())[capability];
+  }
+
+  /**
+   * Assert a capability is available, else throw {@link CapabilityError}. The explicit
+   * guard form of {@link supports} — reads as a precondition before a run of gated calls:
+   * `await bg.require('driverIntelligence'); const s = await bg.driver.lastTripScore();`
+   */
+  async require(capability: BooleanCapability): Promise<void> {
+    await ensureCapability(() => this.capabilities(), capability);
   }
 
   /**
