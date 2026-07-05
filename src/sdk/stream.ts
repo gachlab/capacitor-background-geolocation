@@ -39,14 +39,36 @@ export interface Subscription<TPayload = unknown> {
 export function subscribe<T>(
   addListener: (cb: (event: T) => void) => Promise<PluginListenerHandle>,
   listener: (event: T) => void,
+  replay?: () => Promise<T | null | undefined>,
 ): Subscription<T> {
   let handle: PluginListenerHandle | null = null;
   let removed = false;
+  let gotLive = false;
 
-  void addListener(listener).then((h) => {
+  const onEvent = replay
+    ? (event: T): void => {
+        gotLive = true;
+        listener(event);
+      }
+    : listener;
+
+  void addListener(onEvent).then((h) => {
     handle = h;
     if (removed) void h.remove();
   });
+
+  // Sticky replay: hand the last-known value to this new subscriber — but NOT if it was
+  // already removed, or if a fresher live event beat the replay (which would deliver a
+  // stale value out of order). Native rejections (version-skew / pre-init) are swallowed:
+  // replay is best-effort, never an unhandled rejection.
+  if (replay) {
+    replay().then(
+      (value) => {
+        if (value != null && !removed && !gotLive) listener(value);
+      },
+      () => {},
+    );
+  }
 
   const subscription: Subscription<T> = {
     remove(): void {
@@ -72,12 +94,13 @@ export function listen<T>(
   native: BackgroundGeolocationNative,
   eventName: GeolocationEventName,
   listener: (payload: T) => void,
+  replay?: () => Promise<T | null | undefined>,
 ): Subscription<T> {
   const add = native.addListener.bind(native) as unknown as (
     name: GeolocationEventName,
     cb: (event: T) => void,
   ) => Promise<PluginListenerHandle>;
-  return subscribe<T>((cb) => add(eventName, cb), listener);
+  return subscribe<T>((cb) => add(eventName, cb), listener, replay);
 }
 
 /** Reject when an AbortSignal fires — used to race one-shot native calls. */
