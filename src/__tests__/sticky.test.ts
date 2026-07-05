@@ -52,6 +52,59 @@ describe('sticky location', () => {
 
     assert.equal(seen.length, 0);
   });
+
+  it('does NOT replay to a subscriber removed before the replay resolves', async () => {
+    const native = {
+      addListener: async () => handle,
+      getLastLocation: async (): Promise<Location | null> => FIX,
+    } as unknown as BackgroundGeolocationNative;
+
+    const seen: Location[] = [];
+    const sub = new LocationsApi(native).on((loc) => seen.push(loc));
+    sub.remove(); // synchronous removal, before getLastLocation() settles
+    await tick();
+
+    assert.equal(seen.length, 0, 'replay must be gated on removal');
+  });
+
+  it('does NOT replay a stale fix once a live fix already arrived', async () => {
+    let liveCb: ((loc: Location) => void) | undefined;
+    const LIVE: Location = { ...FIX, latitude: 99, time: 2000 };
+    const native = {
+      addListener: async (_name: string, cb: (loc: Location) => void) => {
+        liveCb = cb;
+        return handle;
+      },
+      // resolves AFTER the live fix below
+      getLastLocation: async (): Promise<Location | null> => {
+        await tick();
+        return FIX;
+      },
+    } as unknown as BackgroundGeolocationNative;
+
+    const seen: Location[] = [];
+    new LocationsApi(native).on((loc) => seen.push(loc));
+    // liveCb is wired synchronously by on(); fire a fresh live fix before the (awaited) replay settles.
+    liveCb?.(LIVE);
+    await tick();
+    await tick();
+
+    assert.deepEqual(seen, [LIVE], 'the older replayed fix must be skipped after a live one');
+  });
+
+  it('swallows a native rejection from the replay (no unhandled rejection)', async () => {
+    const native = {
+      addListener: async () => handle,
+      getLastLocation: async (): Promise<Location | null> => {
+        throw new Error('not implemented');
+      },
+    } as unknown as BackgroundGeolocationNative;
+
+    const seen: Location[] = [];
+    assert.doesNotThrow(() => new LocationsApi(native).on((loc) => seen.push(loc)));
+    await tick();
+    assert.equal(seen.length, 0);
+  });
 });
 
 describe('sticky authorization', () => {
