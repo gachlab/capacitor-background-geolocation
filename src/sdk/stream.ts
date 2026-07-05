@@ -7,10 +7,13 @@
 // so an iterable would either buffer unboundedly or lie about backpressure, and it
 // would be single-consumer. A callback is multi-subscriber and truthful.
 //
-// `using` / Symbol.dispose support arrives with the ES2022 target bump (Fase 4); the
-// Subscription is shaped to accept it additively then, without breaking today.
+// `using` support (Fase 4): the Subscription carries an additive [Symbol.dispose] that
+// just calls remove(), so `using sub = api.on(cb)` auto-removes at scope end. It stays
+// optional and lax — .remove() is always there, nothing depends on the symbol.
 
 import type { PluginListenerHandle } from '@capacitor/core';
+
+import './dispose'; // ensure Symbol.dispose exists at runtime
 
 import type { GeolocationEventName } from '../definitions/events';
 import type { BackgroundGeolocationNative } from '../definitions/roles';
@@ -22,6 +25,8 @@ import type { BackgroundGeolocationNative } from '../definitions/roles';
  */
 export interface Subscription<TPayload = unknown> {
   remove(): void;
+  /** `using sub = api.on(cb)` auto-removes at scope end. Optional/additive — equals remove(). */
+  [Symbol.dispose](): void;
   /** Phantom marker — never assigned; only carries `TPayload` at the type level. */
   readonly __payload?: TPayload;
 }
@@ -43,7 +48,7 @@ export function subscribe<T>(
     if (removed) void h.remove();
   });
 
-  return {
+  const subscription: Subscription<T> = {
     remove(): void {
       removed = true;
       if (handle) {
@@ -51,7 +56,11 @@ export function subscribe<T>(
         handle = null;
       }
     },
+    [Symbol.dispose](): void {
+      subscription.remove();
+    },
   };
+  return subscription;
 }
 
 /**

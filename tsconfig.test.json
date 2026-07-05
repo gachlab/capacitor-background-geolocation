@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "lib": ["es2018"],
+    "lib": ["es2022", "esnext.disposable"],
     "types": ["node"],
     "noUnusedLocals": false,
     "noUnusedParameters": false,

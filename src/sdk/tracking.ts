@@ -8,13 +8,16 @@ import type { BaseConfig, StartOverride } from '../definitions/config';
 import type { BackgroundGeolocationNative } from '../definitions/roles';
 import type { ServiceStatus } from '../definitions/values';
 import { mergeConfig, toFlatConfig } from './config-mapper';
+import './dispose'; // ensure Symbol.asyncDispose exists at runtime
 
 /**
- * A running tracking session. `stop()` ends it. `Symbol.asyncDispose` (so
- * `await using` auto-stops at scope end) is added with the ES2022 bump (Fase 4).
+ * A running tracking session. `stop()` ends it. `[Symbol.asyncDispose]` (Fase 4) lets
+ * `await using s = await bg.tracking.start()` auto-stop at scope end — optional and
+ * lax: it just calls stop(), which is always there.
  */
 export interface TrackingSession {
   stop(): Promise<void>;
+  [Symbol.asyncDispose](): Promise<void>;
 }
 
 export class TrackingApi {
@@ -41,7 +44,11 @@ export class TrackingApi {
     }
     await this.native.start();
     const native = this.native;
-    return { stop: (): Promise<void> => native.stop() };
+    const session: TrackingSession = {
+      stop: (): Promise<void> => native.stop(),
+      [Symbol.asyncDispose]: (): Promise<void> => session.stop(),
+    };
+    return session;
   }
 
   stop(): Promise<void> {
