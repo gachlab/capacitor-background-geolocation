@@ -3,15 +3,18 @@
 //
 // v3 contract · native contract, segregated into role interfaces (Fase 1).
 //
-// This is the flat, Promise-based surface that crosses the Capacitor bridge. It is
-// composed by INTERSECTION of small role interfaces (Interface Segregation — the
-// SOLID form of "composition over inheritance" applicable to a flat bridge). The
-// public facade (Fase 2) builds clean, disposable sub-APIs on top and translates the
-// composed BaseConfig to NativeConfig.
+// This mirrors the FLAT method surface the natives expose TODAY (getLocations,
+// getValidLocations, showAppSettings…), composed by INTERSECTION of small role
+// interfaces (Interface Segregation — the SOLID form of "composition over
+// inheritance" for a flat bridge). Method names stay as-is so the natives barely
+// change; the public facade (Fase 2) CONSOLIDATES and RENAMES on top (5 location
+// getters → one query(), etc.) by calling these real methods.
 //
-// Payload shapes are the clean ones from values.ts; the native side emits them (or
-// the facade coerces raw → clean at the boundary). Config INPUT uses the native wire
-// (NativeConfig); config vocabulary rename happens facade-side only.
+// Payloads use the clean shapes from values.ts: in v3 the natives emit clean OUTPUT
+// (authorization string, lowercase geofence action, camelCase reason) — a small,
+// contained emit-point change per platform, cheaper than maintaining duplicate
+// raw/clean type sets. Config INPUT stays the native wire (NativeConfig); the facade
+// translates the composed cascade to it (toFlatConfig).
 
 import type { GeolocationEvents } from './events';
 import type {
@@ -35,18 +38,11 @@ export interface NativeCurrentOptions {
   enableHighAccuracy?: boolean;
 }
 
-/** Consolidated location query — replaces the 5 overlapping getters. */
-export interface LocationQuery {
-  /** Which store to read. @default 'all' */
-  scope?: 'all' | 'valid' | 'stationary' | 'session';
-  /** Delete the returned rows after reading (replaces the `…AndDelete` variant). */
-  consume?: boolean;
-}
-
 /** Capacitor-style permission state. */
 export type PermissionState = 'granted' | 'denied' | 'prompt' | 'prompt-with-rationale';
 
 // ── Roles ──────────────────────────────────────────────────────────────────
+// Real native method names. The facade renames/consolidates on top.
 
 export interface Trackable {
   /** Apply the fully-resolved flat config (plain replace — the facade resolved the cascade). */
@@ -56,10 +52,13 @@ export interface Trackable {
   checkStatus(): Promise<ServiceStatus>;
 }
 
+/** The five overlapping getters the facade consolidates into `bg.locations.query()`. */
 export interface LocationStore {
   getCurrentLocation(options?: NativeCurrentOptions): Promise<Location>;
-  queryLocations(query: LocationQuery): Promise<{ locations: Location[] }>;
   getStationaryLocation(): Promise<StationaryLocation | null>;
+  getLocations(): Promise<{ locations: Location[] }>;
+  getValidLocations(): Promise<{ locations: Location[] }>;
+  getValidLocationsAndDelete(): Promise<{ locations: Location[] }>;
   deleteLocation(options: { locationId: number }): Promise<void>;
   deleteAllLocations(): Promise<void>;
 }
@@ -90,8 +89,9 @@ export interface PermissionController {
   requestBackgroundLocationPermission(): Promise<PermissionRequestResult>;
   requestActivityRecognitionPermission(): Promise<PermissionRequestResult>;
   requestNotificationPermission(): Promise<PermissionRequestResult>;
-  openAppSettings(): Promise<void>;
-  openLocationSettings(): Promise<void>;
+  showAppSettings(): Promise<void>;
+  openSettings(): Promise<void>;
+  showLocationSettings(): Promise<void>;
 }
 
 export interface DiagnosticsApi {
@@ -118,11 +118,11 @@ export interface OemSettings {
   getManufacturerHelp(): Promise<{ manufacturer: string; steps: string[] }>;
 }
 
-/** iOS platform tasks — gated by platform. */
+/** iOS platform tasks — gated by platform. `switchMode` keeps the native 0|1 wire. */
 export interface PlatformTasks {
   startTask(): Promise<{ taskKey: number }>;
   endTask(options: { taskKey: number }): Promise<void>;
-  switchMode(options: { mode: 'background' | 'foreground' }): Promise<void>;
+  switchMode(options: { mode: 0 | 1 }): Promise<void>;
 }
 
 /** Safety — SOS. Payload is passed as the bare call args (flattened top-level). */
