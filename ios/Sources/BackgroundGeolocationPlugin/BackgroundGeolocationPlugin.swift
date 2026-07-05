@@ -311,7 +311,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         call.resolve([
             "isRunning": facade.isStarted(),
             "locationServicesEnabled": facade.locationServicesEnabled(),
-            "authorization": facade.authorizationStatus().rawValue
+            "authorization": Self.authorizationText(facade.authorizationStatus())
         ])
     }
 
@@ -644,9 +644,19 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
     // MARK: - LocationProviderDelegate
 
+    /// v3 clean output: BGAuthorizationStatus → the `AuthorizationStatus` string union.
+    private static func authorizationText(_ status: BGAuthorizationStatus) -> String {
+        switch status {
+        case .always:                 return "authorized"
+        case .foreground:             return "authorizedForeground"
+        case .denied, .notDetermined: return "notAuthorized"
+        }
+    }
+
     public func onAuthorizationChanged(_ status: BGAuthorizationStatus) {
-        BGLog.shared.i("Authorization changed: \(status.rawValue)")
-        notifyListeners("authorization", data: ["status": status.rawValue])
+        let text = Self.authorizationText(status)
+        BGLog.shared.i("Authorization changed: \(text)")
+        notifyListeners("authorization", data: ["status": text])
     }
 
     public func onLocationChanged(_ location: BGLocation) {
@@ -701,11 +711,11 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     }
 
     public func onAbortRequested() {
-        notifyListeners("abort_requested", data: [:])
+        notifyListeners("abortRequested", data: [:])
     }
 
     public func onHttpAuthorization() {
-        notifyListeners("http_authorization", data: [:])
+        notifyListeners("httpAuthorization", data: [:])
     }
 
     public func onError(_ error: Error) {
@@ -904,15 +914,16 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
     @objc private func onGeofenceN(_ note: Notification) {
         guard let id = note.userInfo?["id"] as? String,
-              let action = note.userInfo?["action"] as? String else { return }
+              let rawAction = note.userInfo?["action"] as? String else { return }
+        let action = rawAction.lowercased() // v3 clean output: enter/exit/dwell
         var p: [String: Any] = ["id": id, "action": action]
         if let loc = note.userInfo?["location"] as? BGLocation {
             p["location"] = loc.toDictionaryWithId()
         }
         let eventName: String
         switch action {
-        case "ENTER": eventName = "geofenceEnter"
-        case "EXIT":  eventName = "geofenceExit"
+        case "enter": eventName = "geofenceEnter"
+        case "exit":  eventName = "geofenceExit"
         default:      eventName = "geofenceDwell"
         }
         notifyListeners(eventName, data: p)
