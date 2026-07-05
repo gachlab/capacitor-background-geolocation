@@ -12,6 +12,9 @@
 
 import type { PluginListenerHandle } from '@capacitor/core';
 
+import type { GeolocationEventName } from '../definitions/events';
+import type { BackgroundGeolocationNative } from '../definitions/roles';
+
 /**
  * A live event subscription, parameterized by the payload it delivers. `remove()`
  * stops it. The `TPayload` type is carried for tooling/readability (a
@@ -49,6 +52,23 @@ export function subscribe<T>(
       }
     },
   };
+}
+
+/**
+ * Subscribe to a native event by name with a typed payload. Centralizes the single
+ * unavoidable cast at the generic-addListener boundary (the runtime name→payload
+ * mapping is correct; TS can't follow the indirection), so sub-APIs stay clean.
+ */
+export function listen<T>(
+  native: BackgroundGeolocationNative,
+  eventName: GeolocationEventName,
+  listener: (payload: T) => void,
+): Subscription<T> {
+  const add = native.addListener.bind(native) as unknown as (
+    name: GeolocationEventName,
+    cb: (event: T) => void,
+  ) => Promise<PluginListenerHandle>;
+  return subscribe<T>((cb) => add(eventName, cb), listener);
 }
 
 /** Reject when an AbortSignal fires — used to race one-shot native calls. */

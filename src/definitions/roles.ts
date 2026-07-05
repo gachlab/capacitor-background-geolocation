@@ -100,7 +100,7 @@ export interface PermissionController {
   showLocationSettings(): Promise<void>;
 }
 
-export interface DiagnosticsApi {
+export interface DiagnosticsProvider {
   getDiagnostics(): Promise<Diagnostics>;
   getPluginVersion(): Promise<{ version: string }>;
   /** Static platform capabilities (the `misa` register). Permission state is in getDiagnostics. */
@@ -147,7 +147,7 @@ export interface BackgroundGeolocationNative
     SyncQueue,
     Geofencing,
     PermissionController,
-    DiagnosticsApi,
+    DiagnosticsProvider,
     DriverIntelligence,
     OemSettings,
     PlatformTasks,
