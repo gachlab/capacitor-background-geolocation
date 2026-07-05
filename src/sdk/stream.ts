@@ -12,9 +12,15 @@
 
 import type { PluginListenerHandle } from '@capacitor/core';
 
-/** A live event subscription. Call `remove()` to stop receiving events. */
-export interface Subscription {
+/**
+ * A live event subscription, parameterized by the payload it delivers. `remove()`
+ * stops it. The `TPayload` type is carried for tooling/readability (a
+ * `Subscription<Location>` reads as what it is) and future typed composition.
+ */
+export interface Subscription<TPayload = unknown> {
   remove(): void;
+  /** Phantom marker — never assigned; only carries `TPayload` at the type level. */
+  readonly __payload?: TPayload;
 }
 
 /**
@@ -25,7 +31,7 @@ export interface Subscription {
 export function subscribe<T>(
   addListener: (cb: (event: T) => void) => Promise<PluginListenerHandle>,
   listener: (event: T) => void,
-): Subscription {
+): Subscription<T> {
   let handle: PluginListenerHandle | null = null;
   let removed = false;
 
@@ -49,14 +55,15 @@ export function subscribe<T>(
 export function rejectOnAbort(signal: AbortSignal): Promise<never> {
   return new Promise<never>((_resolve, reject) => {
     if (signal.aborted) {
-      reject(makeAbortError());
+      reject(abortError());
       return;
     }
-    signal.addEventListener('abort', () => reject(makeAbortError()), { once: true });
+    signal.addEventListener('abort', () => reject(abortError()), { once: true });
   });
 }
 
-function makeAbortError(): Error {
+/** A DOMException-style AbortError (name is what callers check). */
+export function abortError(): Error {
   const error = new Error('The request was aborted.');
   error.name = 'AbortError';
   return error;
