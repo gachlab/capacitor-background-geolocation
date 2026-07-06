@@ -243,14 +243,14 @@ class BGFacade(private val context: Context) {
         // Track service liveness.
         when (event) {
             is ServiceEvent.ServiceStarted -> isRunning = true
-            is ServiceEvent.ServiceStopped -> { isRunning = false; lastLocation = null } // drop sticky fix from the ended session
+            is ServiceEvent.ServiceStopped -> isRunning = false
             is ServiceEvent.TripEnd        -> lastScore = event.journey.score
             is ServiceEvent.Stationary     -> { lastStationary = event.loc; lastStationaryRadius = event.radius }
             else -> Unit
         }
-        // Satisfy any pending getCurrentLocation() calls + cache for sticky replay. (Cleared on
-        // ServiceStopped so a stopped session doesn't replay; not gated on isRunning, which would
-        // drop a first fix arriving before ServiceStarted is processed.)
+        // Satisfy any pending getCurrentLocation() calls + cache for sticky replay. lastLocation
+        // is simply the last known fix — it persists across stop/start (contract parity with iOS
+        // lastBGLocation / web lastLocation), so a late subscriber always gets last-known.
         if (event is ServiceEvent.Location) {
             lastLocation = event.loc
             drainPending().forEach { it(event.loc) }
