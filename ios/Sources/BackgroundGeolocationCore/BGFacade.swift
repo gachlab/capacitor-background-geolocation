@@ -325,19 +325,20 @@ public final class BGFacade: NSObject {
         oneShotLock.lock(); oneShotCancels[id] = nil; let wasCancelled = cancelled; oneShotLock.unlock()
         helper.cancel()
 
-        // Prefer a delivered result over a racing late cancel: if onResult already produced a
-        // fix/error before the cancel signalled, honor it rather than discarding it as a timeout.
-        if let err = resultError {
-            throw err
-        }
-        if let clLoc = resultLocation {
-            return BGLocation.from(clLocation: clLoc)
-        }
-        // No result: cancelled or timed out.
+        // Cancel/timeout FIRST, before touching resultLocation/resultError: on those wake paths
+        // onResult may still be writing those ARC-reference vars concurrently (a late main-thread
+        // didUpdateLocations), so reading them here would be a data race. We only read them when
+        // woken by onResult itself, where the semaphore provides the happens-before edge.
         if wasCancelled || waitResult == .timedOut {
             throw BGError.timeout
         }
-        throw BGError.timeout
+        if let err = resultError {
+            throw err
+        }
+        guard let clLoc = resultLocation else {
+            throw BGError.timeout
+        }
+        return BGLocation.from(clLocation: clLoc)
     }
 
     // MARK: - Config

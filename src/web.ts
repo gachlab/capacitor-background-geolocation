@@ -96,7 +96,8 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
       this.notifyListeners('stop', {});
     }
     // Flush any batched-but-unsent fixes so a short session (< threshold) doesn't strand them.
-    if (this.syncQueue.length > 0) await this.forceSync().catch(() => {});
+    // Fire-and-forget: stop() must not block on a slow/unreachable syncUrl fetch.
+    if (this.syncQueue.length > 0) void this.forceSync().catch(() => {});
   }
 
   async switchMode(_options: { mode: 0 | 1 }): Promise<void> {
@@ -170,9 +171,11 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     const url = this.config.syncUrl ?? this.config.url;
     if (!url || this.syncQueue.length === 0 || this.syncing) return;
     this.syncing = true;
-    this.notifyListeners('syncStart', {});
-    const batch = this.syncQueue.splice(0);
+    let batch: Location[] = [];
     try {
+      // Inside the try so a throwing 'syncStart' listener can't leave `syncing` stuck true.
+      this.notifyListeners('syncStart', {});
+      batch = this.syncQueue.splice(0);
       const resp = await fetch(url, {
         method: (this.config.syncHttpMethod ?? this.config.httpMethod ?? 'POST').toUpperCase(),
         headers: { 'Content-Type': 'application/json', ...(this.config.headers ?? {}) },
