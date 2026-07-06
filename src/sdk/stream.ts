@@ -52,10 +52,15 @@ export function subscribe<T>(
       }
     : listener;
 
-  void addListener(onEvent).then((h) => {
-    handle = h;
-    if (removed) void h.remove();
-  });
+  addListener(onEvent).then(
+    (h) => {
+      handle = h;
+      if (removed) void h.remove();
+    },
+    // Native rejection (version-skew / pre-init) is swallowed: registration is best-effort and
+    // must never surface as an unhandled promise rejection (mirrors the replay arm below).
+    () => {},
+  );
 
   // Sticky replay: hand the last-known value to this new subscriber — but NOT if it was
   // already removed, or if a fresher live event beat the replay (which would deliver a

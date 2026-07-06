@@ -117,11 +117,13 @@ describe('BackgroundGeolocationWeb', () => {
       assert.equal(cfg.desiredAccuracy, 0);
     });
 
-    it('merges successive configure() calls', async () => {
+    it('replaces (not merges) on each configure() — the facade sends the fully-resolved wire', async () => {
       await plugin.configure({ distanceFilter: 100 });
       await plugin.configure({ desiredAccuracy: 1000 });
       const cfg = await plugin.getConfig();
-      assert.equal(cfg.distanceFilter, 100);
+      // Replace-of-resolved parity with Android/iOS (commit 16ae926): the first call's
+      // distanceFilter is gone, not merged, so an unset key can't linger on web.
+      assert.equal(cfg.distanceFilter, undefined);
       assert.equal(cfg.desiredAccuracy, 1000);
     });
 

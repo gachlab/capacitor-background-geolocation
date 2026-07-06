@@ -81,4 +81,40 @@ describe('ConfigApi', () => {
     // the wire still carries the full resolved config (url not dropped)
     assert.equal(sent[sent.length - 1].url, 'https://api.me');
   });
+
+  // ── review-fix regressions ────────────────────────────────────────────────
+
+  it('does not alias the caller patch — later mutation cannot rewrite the stored base', async () => {
+    const { native } = fakeNative();
+    const api = ConfigApi({ native });
+    const patch: BaseConfig = { location: { accuracy: 'high' } };
+    await api.configure(patch);
+    patch.location!.accuracy = 'low'; // mutate the object the caller still holds
+    const base = await api.current();
+    assert.equal(base.location?.accuracy, 'high', 'stored base must be insulated from caller mutation');
+  });
+
+  it('resolveStartWire() rehydrates the persisted base first — a start() after reload does not clobber it', async () => {
+    const persisted: BaseConfig = { transport: { baseUrl: 'https://api.me' }, location: { accuracy: 'high' } };
+    const { native } = fakeNative({ baseConfigJson: JSON.stringify(persisted) } as NativeConfig);
+    const api = ConfigApi({ native }); // post-reload facade, no configure()/current() yet
+
+    const wire = await api.resolveStartWire({ location: { distanceFilter: 5 } });
+    assert.equal(wire.url, 'https://api.me', 'persisted base survives a cold start(override)');
+    assert.equal(wire.distanceFilter, 5, 'override applied over the rehydrated base');
+    const blob = JSON.parse(wire.baseConfigJson as string) as BaseConfig;
+    assert.equal(blob.transport?.baseUrl, 'https://api.me', 'the persisted blob is NOT overwritten with {}');
+  });
+
+  it('configure() survives a non-cloneable value in the native escape hatch (no post-commit crash)', async () => {
+    const { native, sent } = fakeNative();
+    const api = ConfigApi({ native });
+    const seen: BaseConfig[] = [];
+    api.on((c) => seen.push(c));
+    await tick();
+    // A function is not structured-cloneable; emit()/current() must degrade, not throw.
+    await assert.doesNotReject(() => api.configure({ native: { onEvent: (() => {}) as unknown } }));
+    assert.equal(sent.length, 1, 'native.configure still received the wire');
+    assert.ok(seen.length >= 1, 'subscribers still notified despite the non-cloneable value');
+  });
 });

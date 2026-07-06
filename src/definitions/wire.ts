@@ -75,6 +75,7 @@ export interface NativeConfig {
   prioritySyncRetryDelays?: number[];
   // notification
   notificationsEnabled?: boolean;
+  notificationChannel?: string;
   notificationTitle?: string;
   notificationText?: string;
   notificationIconColor?: string;

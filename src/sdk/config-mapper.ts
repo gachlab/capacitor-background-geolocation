@@ -45,11 +45,33 @@ function deepMerge(base: Record<string, unknown>, patch: Record<string, unknown>
       continue; // not provided → keep base
     } else if (isPlainObject(value) && isPlainObject(out[key])) {
       out[key] = deepMerge(out[key] as Record<string, unknown>, value);
+    } else if (isPlainObject(value) || Array.isArray(value)) {
+      // Copy — never alias the caller's nested object/array into our stored state, or a
+      // later external mutation of the passed patch would silently rewrite the config.
+      out[key] = safeClone(value);
     } else {
-      out[key] = value; // scalar / array → replace
+      out[key] = value; // scalar → replace
     }
   }
   return out;
+}
+
+/**
+ * Structured deep clone that degrades gracefully instead of throwing on a non-cloneable value
+ * (e.g. a function slipped into the `native` escape hatch). Used wherever we must NOT alias
+ * caller state (deepMerge) or must snapshot for subscribers (config-api) without a stray
+ * non-serializable value crashing configure()/emit() after the native side already applied.
+ */
+export function safeClone<T>(value: T): T {
+  try {
+    return structuredClone(value);
+  } catch {
+    try {
+      return JSON.parse(JSON.stringify(value)) as T; // drops functions/undefined, but never throws on cycles-free config
+    } catch {
+      return value; // last resort: keep the reference rather than throw
+    }
+  }
 }
 
 // ── Translation to native wire ───────────────────────────────────────────────
@@ -111,6 +133,7 @@ export function toFlatConfig(cfg: BaseConfig): NativeConfig {
   const n = cfg.notification;
   if (n) {
     if (n.enabled !== undefined) out.notificationsEnabled = n.enabled;
+    if (n.channel !== undefined) out.notificationChannel = n.channel;
     if (n.title !== undefined) out.notificationTitle = n.title;
     if (n.text !== undefined) out.notificationText = n.text;
     if (n.color !== undefined) out.notificationIconColor = n.color;

@@ -55,7 +55,9 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   // ---------------- Tracking control ----------------
 
   async configure(config: NativeConfig): Promise<void> {
-    this.config = { ...this.config, ...config };
+    // Replace-of-resolved (parity with Android/iOS, commit 16ae926): the facade always sends
+    // the FULLY-resolved wire, so a merge would keep keys the caller unset — replace instead.
+    this.config = { ...config };
     // Persist the facade's clean-base blob so it survives a reload (foreground-only web).
     const blob = config.baseConfigJson;
     if (typeof blob === 'string') {
@@ -396,7 +398,13 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   }
 
   async getGeofences(): Promise<{ geofences: Geofence[] }> {
-    return { geofences: [...this.geofences.values()] };
+    // Emit the native wire key (loiteringDelay); the facade's list() translates it back to
+    // the clean loiteringDelayMs, matching Android/iOS toJS output.
+    const geofences = [...this.geofences.values()].map(({ loiteringDelayMs, ...g }) => ({
+      ...g,
+      loiteringDelay: loiteringDelayMs,
+    }));
+    return { geofences: geofences as unknown as Geofence[] };
   }
 
   private normalizeGeofence(gf: Geofence): Geofence | null {
@@ -419,7 +427,8 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
       notifyOnEntry: gf.notifyOnEntry ?? true,
       notifyOnExit: gf.notifyOnExit ?? false,
       notifyOnDwell: gf.notifyOnDwell ?? false,
-      loiteringDelayMs: gf.loiteringDelayMs ?? 30_000,
+      // The facade sends the native wire key `loiteringDelay`; keep the clean field internally.
+      loiteringDelayMs: (gf as { loiteringDelay?: number }).loiteringDelay ?? gf.loiteringDelayMs ?? 30_000,
     };
   }
 

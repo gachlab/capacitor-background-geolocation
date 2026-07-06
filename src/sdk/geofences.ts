@@ -6,7 +6,11 @@
 import type { GeolocationEventMap, GeolocationEventName } from '../definitions/events';
 import type { BackgroundGeolocationNative } from '../definitions/roles';
 import type { Geofence } from '../definitions/values';
+import type { ConfigApi } from './config-api';
 import { listen, type Subscription } from './stream';
+
+/** A geofence on the native wire: the clean `loiteringDelayMs` is carried as `loiteringDelay`. */
+type WireGeofence = Omit<Geofence, 'loiteringDelayMs'> & { loiteringDelay?: number };
 
 /** Short geofence event names → their payloads. */
 export interface GeofenceEvents {
@@ -37,21 +41,36 @@ export interface GeofencesApi {
   ): Subscription<GeofenceEvents[E]>;
 }
 
-export function GeofencesApi(deps: { native: BackgroundGeolocationNative }): GeofencesApi {
-  const { native } = deps;
+export function GeofencesApi(deps: { native: BackgroundGeolocationNative; config: ConfigApi }): GeofencesApi {
+  const { native, config } = deps;
   return {
-    add(geofences) {
-      // Translate the clean field to the native wire key (loiteringDelayMs → loiteringDelay).
-      const wire = geofences.map(({ loiteringDelayMs, ...g }) =>
-        loiteringDelayMs === undefined ? g : { ...g, loiteringDelay: loiteringDelayMs },
-      );
+    async add(geofences) {
+      // Fill any field the registration omits from the plugin-level geofenceDefaults, then
+      // translate the clean field name (loiteringDelayMs) to the native wire key (loiteringDelay).
+      const defaults = (await config.current()).geofenceDefaults ?? {};
+      const wire: WireGeofence[] = geofences.map((gf) => {
+        const merged = {
+          ...gf,
+          radius: gf.radius ?? defaults.radius,
+          notifyOnEntry: gf.notifyOnEntry ?? defaults.notifyOnEntry,
+          notifyOnExit: gf.notifyOnExit ?? defaults.notifyOnExit,
+          notifyOnDwell: gf.notifyOnDwell ?? defaults.notifyOnDwell,
+          loiteringDelayMs: gf.loiteringDelayMs ?? defaults.loiteringDelayMs,
+        };
+        const { loiteringDelayMs, ...rest } = merged;
+        return loiteringDelayMs === undefined ? rest : { ...rest, loiteringDelay: loiteringDelayMs };
+      });
       return native.addGeofences({ geofences: wire as unknown as Geofence[] });
     },
     remove(ids) {
       return native.removeGeofences(ids === undefined ? undefined : { ids });
     },
     async list() {
-      return (await native.getGeofences()).geofences;
+      // Translate the native wire key (loiteringDelay) back to the clean field (loiteringDelayMs).
+      const wire = (await native.getGeofences()).geofences as unknown as WireGeofence[];
+      return wire.map(({ loiteringDelay, ...rest }) =>
+        loiteringDelay === undefined ? (rest as Geofence) : ({ ...rest, loiteringDelayMs: loiteringDelay } as Geofence),
+      );
     },
     on<E extends keyof GeofenceEvents>(
       event: E,

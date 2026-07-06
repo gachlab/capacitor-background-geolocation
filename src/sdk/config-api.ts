@@ -12,7 +12,7 @@
 import type { BaseConfig, StartOverride } from '../definitions/config';
 import type { BackgroundGeolocationNative } from '../definitions/roles';
 import type { NativeConfig } from '../definitions/wire';
-import { mergeConfig, toFlatConfig } from './config-mapper';
+import { mergeConfig, safeClone, toFlatConfig } from './config-mapper';
 import type { Subscription } from './stream';
 
 /** Wire key carrying the clean base as an opaque JSON blob for reload rehydration. */
@@ -25,8 +25,12 @@ export interface ConfigApi {
   current(): Promise<BaseConfig>;
   /** Subscribe to base-config changes; the current config is delivered immediately (sticky). */
   on(listener: (config: BaseConfig) => void): Subscription<BaseConfig>;
-  /** Resolved wire for `tracking.start(override)` — tags the PERSISTENT base (not the override). */
-  wireForStart(override: StartOverride): NativeConfig;
+  /**
+   * Resolved wire for `tracking.start(override)`, rehydrating the persisted base FIRST so a
+   * start() right after a reload can't clobber the saved base with an empty one. Tags the
+   * PERSISTENT base (not the override) into `baseConfigJson`.
+   */
+  resolveStartWire(override?: StartOverride): Promise<NativeConfig>;
 }
 
 export function ConfigApi(deps: { native: BackgroundGeolocationNative }): ConfigApi {
@@ -60,13 +64,13 @@ export function ConfigApi(deps: { native: BackgroundGeolocationNative }): Config
     })());
 
   const emit = (): void => {
-    const snapshot = structuredClone(base);
+    const snapshot = safeClone(base);
     for (const listener of [...listeners]) listener(snapshot);
   };
 
   const current = async (): Promise<BaseConfig> => {
     await ensureRehydrated();
-    return structuredClone(base);
+    return safeClone(base);
   };
 
   return {
@@ -91,7 +95,8 @@ export function ConfigApi(deps: { native: BackgroundGeolocationNative }): Config
       return { remove, [Symbol.dispose]: remove };
     },
 
-    wireForStart(override: StartOverride): NativeConfig {
+    async resolveStartWire(override?: StartOverride): Promise<NativeConfig> {
+      await ensureRehydrated(); // never resolve a start from an un-rehydrated (empty) base
       return wireFor(mergeConfig(base, override), base);
     },
   };

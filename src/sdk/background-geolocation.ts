@@ -87,7 +87,7 @@ export function BackgroundGeolocation(deps: { native: BackgroundGeolocationNativ
   const config = ConfigApi({ native });
   const tracking = TrackingApi({ native, config });
   const locations = LocationsApi({ native });
-  const geofences = GeofencesApi({ native });
+  const geofences = GeofencesApi({ native, config });
   const sync = SyncApi({ native });
   const recordings = RecordingsApi({ native });
   const permissions = PermissionsApi({ native });
