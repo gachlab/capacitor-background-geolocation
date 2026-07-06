@@ -44,9 +44,10 @@ export function TrackingApi(deps: { native: BackgroundGeolocationNative; config:
     },
 
     async start(override?: StartOverride): Promise<TrackingSession> {
-      if (override !== undefined) {
-        await native.configure(config.wireForStart(override));
-      }
+      // Always resolve and apply the session wire (base ⊕ override) — so a plain start()
+      // reverts a prior session override (as documented), and a start() right after a reload
+      // rehydrates the persisted base before writing it (never clobbers it with an empty base).
+      await native.configure(await config.resolveStartWire(override));
       await native.start();
       const session: TrackingSession = {
         stop: (): Promise<void> => native.stop(),

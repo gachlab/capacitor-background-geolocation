@@ -80,7 +80,12 @@ export interface GeolocationEventMap {
   location: Location;
   stationary: StationaryLocation;
   activity: Activity;
-  heartbeat: Location;
+  /**
+   * Periodic keep-alive. Carries the last known Location — but BEFORE the first fix exists
+   * (cold start) both natives emit an EMPTY payload, so narrow with `'latitude' in event`
+   * before reading location fields.
+   */
+  heartbeat: Location | Record<string, never>;
   providerChange: { provider: string };
   // lifecycle & system
   start: void;
