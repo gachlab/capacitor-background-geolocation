@@ -107,7 +107,8 @@ sub.remove();
 
 | Sub-API | Methods |
 | --- | --- |
-| `bg.tracking` | `configure(base)` (also `bg.configure`) · `start(override?)` → `TrackingSession` · `stop()` · `status()` |
+| `bg.config` | `configure(patch)` (also `bg.configure`) · `current()` → `BaseConfig` · `on(cb)` — reactive, reload-safe base config |
+| `bg.tracking` | `start(override?)` → `TrackingSession` · `stop()` · `status()` |
 | `bg.locations` | `on(cb)` · `current(opts?)` · `all()` · `pending({ consume? })` · `stationary()` · `delete(id)` · `clear()` |
 | `bg.geofences` | `add(list)` · `remove(ids?)` · `list()` · `on('enter'\|'exit'\|'dwell'\|'error', cb)` |
 | `bg.sync` | `flush()` · `clear()` · `pending()` · `on('start'\|'progress'\|'success'\|'error'\|'prioritySuccess'\|'priorityFailed', cb)` |

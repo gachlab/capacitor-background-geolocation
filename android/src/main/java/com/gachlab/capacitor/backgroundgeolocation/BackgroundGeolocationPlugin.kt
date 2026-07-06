@@ -174,6 +174,11 @@ class BackgroundGeolocationPlugin : Plugin() {
     @PluginMethod
     fun configure(call: PluginCall) {
         try {
+            // Persist the facade's clean-base blob verbatim so it can rehydrate after a reload.
+            call.getString("baseConfigJson")?.let {
+                context.getSharedPreferences("bgloc_facade", Context.MODE_PRIVATE)
+                    .edit().putString("base_config_json", it).apply()
+            }
             facade.configure(GachConfigMapper.fromJSObject(call.data))
             call.resolve()
         } catch (e: Exception) { call.reject("Configuration error: ${e.message}", "400", e) }
@@ -268,8 +273,12 @@ class BackgroundGeolocationPlugin : Plugin() {
 
     @PluginMethod
     fun getConfig(call: PluginCall) {
-        try { call.resolve(GachConfigMapper.toJSObject(facade.getConfig())) }
-        catch (e: Exception) { call.reject(e.message, "400", e) }
+        try {
+            val js = GachConfigMapper.toJSObject(facade.getConfig())
+            context.getSharedPreferences("bgloc_facade", Context.MODE_PRIVATE)
+                .getString("base_config_json", null)?.let { js.put("baseConfigJson", it) }
+            call.resolve(js)
+        } catch (e: Exception) { call.reject(e.message, "400", e) }
     }
 
     @PluginMethod
