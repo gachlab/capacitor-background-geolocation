@@ -13,11 +13,11 @@ import {
 
 /**
  * The raw flat native proxy (Promise + addListener). Registered by Capacitor; the web
- * implementation lives in web.ts. Most apps use the `BackgroundGeolocation` facade — this
- * is the low-level escape hatch, and the default dependency injected below.
+ * implementation lives in web/ (a lazy-loaded chunk). Most apps use the `BackgroundGeolocation`
+ * facade — this is the low-level escape hatch, and the default dependency injected below.
  */
 const nativeProxy = registerPlugin<BackgroundGeolocationNative>('BackgroundGeolocation', {
-  web: () => import('./web').then((m) => new m.BackgroundGeolocationWeb()),
+  web: () => import('./web/index').then((m) => new m.BackgroundGeolocationWeb()),
 });
 
 /**

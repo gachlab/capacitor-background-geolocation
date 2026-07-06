@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
-import { BackgroundGeolocationWeb } from '../web.js';
+import { BackgroundGeolocationWeb } from '../web/index.js';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 const read = (rel: string): string => readFileSync(repoRoot + rel, 'utf8');

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 
 import type { NativeConfig } from '../definitions/wire.js';
-import { BackgroundGeolocationWeb } from '../web.js';
+import { BackgroundGeolocationWeb } from '../web/index.js';
 
 // ─── Mock browser globals ─────────────────────────────────────────────────────
 

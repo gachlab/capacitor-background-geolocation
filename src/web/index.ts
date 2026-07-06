@@ -10,7 +10,7 @@
 
 import { WebPlugin } from '@capacitor/core';
 
-import type { BackgroundGeolocationNative, NativeCurrentOptions, PermissionState } from './definitions/roles';
+import type { BackgroundGeolocationNative, NativeCurrentOptions, PermissionState } from '../definitions/roles';
 import type {
   Capabilities,
   Diagnostics,
@@ -23,8 +23,8 @@ import type {
   ServiceStatus,
   StationaryLocation,
   TripScore,
-} from './definitions/values';
-import type { NativeConfig } from './definitions/wire';
+} from '../definitions/values';
+import type { NativeConfig } from '../definitions/wire';
 import { GeoEvent } from './domain/geo-event';
 import { GeoPoint } from './domain/geo-point';
 import { GeofenceTransition } from './domain/geofence-transition';
