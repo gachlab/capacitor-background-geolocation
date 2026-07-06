@@ -36,6 +36,8 @@ export interface NativeCurrentOptions {
   timeout?: number;
   maximumAge?: number;
   enableHighAccuracy?: boolean;
+  /** Correlates this one-shot with a targeted cancelCurrentLocation({ requestId }). */
+  requestId?: string;
 }
 
 /** Capacitor-style permission state. */
@@ -56,11 +58,14 @@ export interface Trackable {
 export interface LocationStore {
   getCurrentLocation(options?: NativeCurrentOptions): Promise<Location>;
   /**
-   * Cancel any in-flight one-shot `getCurrentLocation` request — stops the native GPS
-   * work so an AbortSignal is honest, not just caller-side. NEW native method in v3
-   * (small: cancel the pending CLLocationManager / FusedLocationClient one-shot).
+   * Cancel an in-flight one-shot `getCurrentLocation` — stops the native GPS work so an
+   * AbortSignal is honest, not just caller-side. With `{ requestId }` it cancels exactly
+   * that request (so concurrent one-shots aren't cross-cancelled) and pre-empts it even if
+   * the cancel wins the register race; with no id it cancels all *currently-registered* ones.
+   * The facade always passes a requestId (via `locations.current({ signal })`); the id-less
+   * form is a raw-proxy escape hatch and does NOT pre-empt a not-yet-registered request.
    */
-  cancelCurrentLocation(): Promise<void>;
+  cancelCurrentLocation(options?: { requestId?: string }): Promise<void>;
   getStationaryLocation(): Promise<StationaryLocation | null>;
   /** The last known fix (from the native PositionBuffer), or null — used for sticky replay on subscribe. */
   getLastLocation(): Promise<Location | null>;

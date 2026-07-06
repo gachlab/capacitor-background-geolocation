@@ -246,39 +246,40 @@ public final class BGFacade: NSObject {
 
     // MARK: - One-shot current location
 
-    // Cancel handles for in-flight getCurrentLocation() one-shots — one per concurrent call,
-    // so overlapping calls don't clobber each other's slot.
-    private var oneShotCancels: [UUID: () -> Void] = [:]
+    // Cancel handles for in-flight getCurrentLocation() one-shots, keyed by requestId. A cancel
+    // targets one by id; `cancelledIds` records a cancel that arrived before its waiter
+    // registered, so the waiter aborts on registration — closes the cancel-before-register race
+    // with the id itself (no generation capture needed).
+    private var oneShotCancels: [String: () -> Void] = [:]
+    private var cancelledIds: Set<String> = []
+    private var internalSeq = 0
     private let oneShotLock = NSLock()
-    // Bumped on cancel. A one-shot captures the generation on the bridge queue BEFORE its
-    // blocking wait is dispatched; if a cancel bumps it before the waiter registers, the
-    // waiter aborts immediately instead of parking — closes the cancel-before-register race.
-    private var cancelGeneration = 0
-
-    /// Read the cancel generation synchronously (call on the bridge queue before dispatching a wait).
-    public func currentCancelGeneration() -> Int {
-        oneShotLock.lock(); defer { oneShotLock.unlock() }; return cancelGeneration
-    }
 
     /**
-     Cancel every in-flight [getCurrentLocation] one-shot — stops the CLLocationManager
-     one-shot and wakes the waiters with no fix so the plugin resolves the pending calls
-     immediately (the JS caller already aborted). Also bumps the cancel generation so a
-     one-shot still dispatching (not yet registered) aborts.
+     Cancel an in-flight [getCurrentLocation] one-shot — stops the CLLocationManager one-shot and
+     wakes the waiter with no fix. With [requestId] cancels that one (and remembers it if it
+     hasn't registered yet); with nil cancels all.
      */
-    public func cancelCurrentLocation() {
-        oneShotLock.lock()
-        cancelGeneration += 1
-        let cancels = Array(oneShotCancels.values); oneShotCancels.removeAll()
-        oneShotLock.unlock()
-        cancels.forEach { $0() }
+    public func cancelCurrentLocation(requestId: String? = nil) {
+        if let id = requestId {
+            oneShotLock.lock()
+            let cancel = oneShotCancels.removeValue(forKey: id)
+            if cancel == nil { cancelledIds.insert(id) } // arrived before register
+            oneShotLock.unlock()
+            cancel?()
+        } else {
+            oneShotLock.lock()
+            let cancels = Array(oneShotCancels.values); oneShotCancels.removeAll()
+            oneShotLock.unlock()
+            cancels.forEach { $0() }
+        }
     }
 
     public func getCurrentLocation(
         timeout: Int32,
         maximumAge: Int,
         enableHighAccuracy: Bool,
-        sinceGeneration: Int
+        requestId: String?
     ) throws -> BGLocation {
         // Check if the BGLocationManager already has a fresh enough fix
         if let clLoc = BGLocationManager.shared.currentLocation {
@@ -295,7 +296,6 @@ public final class BGFacade: NSObject {
         var resultLocation: CLLocation?
         var resultError: Error?
         var cancelled = false
-        let id = UUID()
 
         let helper = OneShotLocationHelper(
             enableHighAccuracy: enableHighAccuracy,
@@ -307,7 +307,9 @@ public final class BGFacade: NSObject {
         )
 
         oneShotLock.lock()
-        if cancelGeneration != sinceGeneration { // cancelled before we could register
+        if internalSeq == Int.max { internalSeq = 0 }
+        let id = requestId ?? { internalSeq += 1; return "internal-\(internalSeq)" }()
+        if cancelledIds.remove(id) != nil { // cancelled before we could register
             oneShotLock.unlock()
             throw BGError.timeout
         }

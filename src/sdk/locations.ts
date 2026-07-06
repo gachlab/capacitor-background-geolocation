@@ -27,8 +27,7 @@ const HIGH_ACCURACY: Record<Accuracy, boolean> = {
 };
 
 export class LocationsApi {
-  /** In-flight current() calls — native cancelCurrentLocation() cancels ALL, so we only fire it when this is the last one. */
-  private inFlight = 0;
+  private requestSeq = 0; // monotonic id source for correlating current() with its cancel
 
   constructor(private readonly native: BackgroundGeolocationNative) {}
 
@@ -60,30 +59,25 @@ export class LocationsApi {
     };
 
     const signal = options.signal;
-    if (signal?.aborted) {
+    if (signal === undefined) {
+      return this.native.getCurrentLocation(nativeOptions);
+    }
+    if (signal.aborted) {
       throw abortError();
     }
 
-    this.inFlight++;
-    const request = this.native.getCurrentLocation(nativeOptions);
+    // Tag this one-shot so abort cancels exactly it — concurrent current() calls with
+    // independent signals no longer cross-cancel.
+    const requestId = `loc-${++this.requestSeq}`;
+    const request = this.native.getCurrentLocation({ ...nativeOptions, requestId });
+    const onAbort = (): void => {
+      void this.native.cancelCurrentLocation({ requestId });
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
     try {
-      if (signal === undefined) {
-        return await request;
-      }
-      // Only cancel the native one-shot when this is the SOLE in-flight call: native
-      // cancelCurrentLocation() cancels ALL of them, so firing it while siblings run would
-      // fail them with a false timeout. The caller's own wait still rejects via rejectOnAbort.
-      const onAbort = (): void => {
-        if (this.inFlight === 1) void this.native.cancelCurrentLocation();
-      };
-      signal.addEventListener('abort', onAbort, { once: true });
-      try {
-        return await Promise.race([request, rejectOnAbort(signal)]);
-      } finally {
-        signal.removeEventListener('abort', onAbort);
-      }
+      return await Promise.race([request, rejectOnAbort(signal)]);
     } finally {
-      this.inFlight--;
+      signal.removeEventListener('abort', onAbort);
     }
   }
 
