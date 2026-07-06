@@ -44,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // to the native wire. Fully typed now — no escape hatch needed.
   document.getElementById('configure').onclick = () =>
     safe('configure', () =>
-      bg.tracking.configure({
+      bg.configure({
         location: { provider: 'raw', accuracy: 'high', distanceFilter: 0, interval: 1000 },
         stationary: { radius: 25 },
         survival: { stopOnTerminate: false, startOnBoot: false, heartbeatInterval: 30000 },
@@ -70,7 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // (stationary-geofence E2E; needs Play Services / a GMS emulator).
   document.getElementById('configure-gf-exit').onclick = () =>
     safe('configure', () =>
-      bg.tracking.configure({
+      bg.configure({
         location: { provider: 'raw', accuracy: 'high', distanceFilter: 0, interval: 1000 },
         stationary: { radius: 25, exitMode: 'geofence' },
         survival: { stopOnTerminate: false },
@@ -159,6 +159,10 @@ document.addEventListener('DOMContentLoaded', () => {
     safe('requestNotifications', () => bg.permissions.requestNotifications());
 
   // ── Event subscriptions (v3 sub-API shape) ──────────────────────────────────
+  // Reactive config (v3): sticky — fires immediately with the current base, then on every
+  // configure(). Exercises the config-mapper round-trip + persisted-blob rehydration in E2E.
+  bg.config.on((cfg) => log('config:changed', { location: cfg.location, driving: cfg.driving?.enabled }));
+
   bg.locations.on((loc) => {
     locationCount++;
     countEl.textContent = String(locationCount);
