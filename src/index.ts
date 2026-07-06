@@ -34,6 +34,7 @@ export type { NativeConfig } from './definitions/wire';
 export { BackgroundGeolocationClient };
 export { CapabilityError } from './sdk/errors';
 export type { Subscription } from './sdk/stream';
+export { ConfigApi } from './sdk/config-api';
 export type { TrackingSession } from './sdk/tracking';
 export type { PendingQuery } from './sdk/locations';
 export type { SyncEvents } from './sdk/sync';

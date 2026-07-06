@@ -56,6 +56,15 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
 
   async configure(config: NativeConfig): Promise<void> {
     this.config = { ...this.config, ...config };
+    // Persist the facade's clean-base blob so it survives a reload (foreground-only web).
+    const blob = config.baseConfigJson;
+    if (typeof blob === 'string') {
+      try {
+        localStorage.setItem('bgloc.baseConfigJson', blob);
+      } catch {
+        /* storage unavailable (private mode) — rehydration just no-ops */
+      }
+    }
   }
 
   async start(): Promise<void> {
@@ -486,7 +495,14 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   // ---------------- Config & logs ----------------
 
   async getConfig(): Promise<NativeConfig> {
-    return { ...this.config };
+    const out: NativeConfig = { ...this.config };
+    try {
+      const blob = localStorage.getItem('bgloc.baseConfigJson');
+      if (blob !== null) out.baseConfigJson = blob;
+    } catch {
+      /* storage unavailable */
+    }
+    return out;
   }
 
   async getLogEntries(_options: { limit: number; fromId?: number; minLevel?: LogLevel }): Promise<{

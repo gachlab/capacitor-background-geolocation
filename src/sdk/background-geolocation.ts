@@ -9,6 +9,7 @@ import type { GeolocationEventListener, GeolocationEventName } from '../definiti
 import type { BackgroundGeolocationNative } from '../definitions/roles';
 import type { Capabilities } from '../definitions/values';
 
+import { ConfigApi } from './config-api';
 import { DiagnosticsApi } from './diagnostics';
 import { DriverApi } from './driver';
 import { type BooleanCapability, ensureCapability } from './errors';
@@ -26,6 +27,7 @@ import { TrackingApi } from './tracking';
 const CONTRACT_VERSION = 3;
 
 export class BackgroundGeolocation {
+  readonly config: ConfigApi;
   readonly tracking: TrackingApi;
   readonly locations: LocationsApi;
   readonly geofences: GeofencesApi;
@@ -41,7 +43,8 @@ export class BackgroundGeolocation {
 
   constructor(private readonly native: BackgroundGeolocationNative) {
     const caps = (): Promise<Capabilities> => this.capabilities();
-    this.tracking = new TrackingApi(native);
+    this.config = new ConfigApi(native);
+    this.tracking = new TrackingApi(native, this.config);
     this.locations = new LocationsApi(native);
     this.geofences = new GeofencesApi(native);
     this.sync = new SyncApi(native);
@@ -51,6 +54,14 @@ export class BackgroundGeolocation {
     this.driver = new DriverApi(native, caps);
     this.logs = new LogsApi(native);
     this.platform = new PlatformApi(native);
+  }
+
+  /**
+   * Set the shared, plugin-level base config. Convenience alias for `bg.config.configure()`
+   * (and `bg.tracking.configure()`). Observe changes with `bg.config.on()`.
+   */
+  configure(base: Parameters<ConfigApi['configure']>[0]): Promise<void> {
+    return this.config.configure(base);
   }
 
   /**

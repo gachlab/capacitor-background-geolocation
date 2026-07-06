@@ -139,6 +139,10 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     @objc func configure(_ call: CAPPluginCall) {
         guard let facade = facade else { call.reject("facade not initialized"); return }
         let opts: [String: Any] = call.options as? [String: Any] ?? [:]
+        // Persist the facade's clean-base blob verbatim so it can rehydrate after a reload.
+        if let blob = call.getString("baseConfigJson") {
+            UserDefaults.standard.set(blob, forKey: "bgloc.baseConfigJson")
+        }
         let cfg = BGConfig.from(dictionary: opts)
         currentConfig = cfg
         configureDrivingDetector(from: opts)
@@ -277,7 +281,11 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
     @objc func getConfig(_ call: CAPPluginCall) {
         guard let facade = facade else { call.reject("facade not initialized"); return }
-        call.resolve(facade.getConfig().toDictionary())
+        var dict = facade.getConfig().toDictionary()
+        if let blob = UserDefaults.standard.string(forKey: "bgloc.baseConfigJson") {
+            dict["baseConfigJson"] = blob
+        }
+        call.resolve(dict)
     }
 
     @objc func deleteLocation(_ call: CAPPluginCall) {
