@@ -99,7 +99,7 @@ class BackgroundGeolocationPlugin : Plugin() {
             is ServiceEvent.PhoneUsageWhileDriving -> notify("phoneUsageWhileDriving", event.loc.toJS())
             is ServiceEvent.TripEnd           -> notifyListeners("tripEnd", JSObject().apply {
                 put("location",   event.loc.toJSONObjectWithId())
-                put("distance",   event.journey.distanceMeters)
+                put("distanceKm", event.journey.distanceMeters / 1000.0) // clean output: km, matches TripEndPayload
                 put("durationMs", event.journey.durationMs)
                 put("score", scoreToJS(event.journey.score))
             })
@@ -132,7 +132,12 @@ class BackgroundGeolocationPlugin : Plugin() {
             ServiceEvent.ServiceStarted       -> notifyListeners("start",              JSObject())
             ServiceEvent.ServiceStopped       -> notifyListeners("stop",               JSObject())
             is ServiceEvent.ServiceRestarted  -> notifyListeners("serviceRestarted",
-                JSObject().apply { put("reason", event.reason) })
+                // Clean output: camelCase reason to match ServiceRestartedPayload.reason.
+                JSObject().apply { put("reason", when (event.reason) {
+                    ServiceEvent.REASON_SYSTEM_KILL -> "systemKill"
+                    ServiceEvent.REASON_APP_REMOVED -> "appRemoved"
+                    else -> event.reason // watchdog / boot already match
+                }) })
             is ServiceEvent.GeofenceEnter     -> notifyListeners("geofenceEnter",
                 JSObject().apply { put("id", event.geofenceId); put("action", "enter")
                     event.loc?.let { put("location", it.toJSONObjectWithId()) } })

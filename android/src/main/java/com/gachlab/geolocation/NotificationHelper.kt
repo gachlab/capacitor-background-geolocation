@@ -35,7 +35,17 @@ internal object NotificationHelper {
         val largeIconName = config.notificationIconLarge?.takeIf { it !== BGConfig.NULL_STRING }
         val colorStr      = config.notificationIconColor?.takeIf { it !== BGConfig.NULL_STRING }
 
-        val builder = NotificationCompat.Builder(context, SERVICE_CHANNEL_ID)
+        // Honor a caller-supplied notification.channel (mapped to notificationChannel); create it
+        // on demand since registerAllChannels only knows the built-in ids. Falls back to default.
+        val channelId = config.notificationChannel?.takeIf { it !== BGConfig.NULL_STRING && it.isNotBlank() } ?: SERVICE_CHANNEL_ID
+        if (channelId != SERVICE_CHANNEL_ID && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.createNotificationChannel(
+                NotificationChannel(channelId, "Location Service", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) }
+            )
+        }
+
+        val builder = NotificationCompat.Builder(context, channelId)
             .setContentTitle(title)
             .setContentText(text)
             .setOngoing(true)

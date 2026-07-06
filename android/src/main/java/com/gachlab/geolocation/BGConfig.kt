@@ -42,6 +42,7 @@ class BGConfig() : Parcelable {
     // ── Notification strings ──────────────────────────────────────────────────
     var notificationTitle: String?              = null
     var notificationText: String?               = null
+    var notificationChannel: String?            = null
     var notificationSyncTitle: String?          = null
     var notificationSyncText: String?           = null
     var notificationSyncCompletedText: String?  = null
@@ -273,6 +274,7 @@ class BGConfig() : Parcelable {
         dest.writeValue(maxAcceptedAccuracy)
         dest.writeValue(watchdogIntervalMs)
         dest.writeValue(restartOnKill)
+        dest.writeString(notificationChannel) // keep in sync with createFromParcel (last scalar before bundle)
         // Bundle for map / template fields (classloader required for deserialization)
         val bundle = Bundle()
         bundle.putSerializable("httpHeaders", httpHeaders)
@@ -413,6 +415,7 @@ class BGConfig() : Parcelable {
             result.debug                       = b.debug
             result.notificationTitle           = b.notificationTitle
             result.notificationText            = b.notificationText
+            result.notificationChannel         = b.notificationChannel
             result.notificationSyncTitle       = b.notificationSyncTitle
             result.notificationSyncText        = b.notificationSyncText
             result.notificationSyncCompletedText = b.notificationSyncCompletedText
@@ -471,6 +474,7 @@ class BGConfig() : Parcelable {
             o.debug?.let                       { result.debug                       = it }
             o.notificationTitle?.let           { result.notificationTitle           = it }
             o.notificationText?.let            { result.notificationText            = it }
+            o.notificationChannel?.let         { result.notificationChannel         = it }
             o.notificationSyncTitle?.let       { result.notificationSyncTitle       = it }
             o.notificationSyncText?.let        { result.notificationSyncText        = it }
             o.notificationSyncCompletedText?.let { result.notificationSyncCompletedText = it }
@@ -613,6 +617,7 @@ class BGConfig() : Parcelable {
                 c.maxAcceptedAccuracy         = parcel.readValue(null) as? Float
                 c.watchdogIntervalMs          = parcel.readValue(null) as? Long
                 c.restartOnKill               = parcel.readValue(null) as? Boolean
+                c.notificationChannel         = parcel.readString() // mirrors writeToParcel (last scalar before bundle)
                 val bundle = parcel.readBundle(BGConfig::class.java.classLoader)
                 if (bundle != null) {
                     @Suppress("DEPRECATION")

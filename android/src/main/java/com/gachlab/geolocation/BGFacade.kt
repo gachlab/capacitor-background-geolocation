@@ -53,7 +53,9 @@ class BGFacade(private val context: Context) {
     // race with the id itself, no bridge-thread generation capture needed.
     private val pendingLock = Any()
     private val pending = LinkedHashMap<String, (BGLocation?) -> Unit>()
-    private val cancelledIds = HashSet<String>()
+    // Bounded (insertion-ordered): a cancel that arrives AFTER its request already completed adds an
+    // id that never registers again (ids are monotonic), which would leak forever — evict oldest.
+    private val cancelledIds = LinkedHashSet<String>()
     private var internalSeq = 0L
 
     /** Register a waiter; false if this id was already cancelled before it could register. */
@@ -64,7 +66,14 @@ class BGFacade(private val context: Context) {
     private fun removePending(id: String) = synchronized(pendingLock) { pending.remove(id) }
     /** Cancel one waiter by id; if it hasn't registered yet, remember the id so it aborts on register. */
     private fun takePending(id: String): ((BGLocation?) -> Unit)? = synchronized(pendingLock) {
-        val cb = pending.remove(id); if (cb == null) cancelledIds.add(id); cb
+        val cb = pending.remove(id)
+        if (cb == null) {
+            cancelledIds.add(id)
+            while (cancelledIds.size > MAX_CANCELLED_IDS) {
+                val it = cancelledIds.iterator(); it.next(); it.remove() // drop oldest
+            }
+        }
+        cb
     }
     /** Atomically take and clear ALL waiters — each callback handed to exactly one drainer. */
     private fun drainPending(): List<(BGLocation?) -> Unit> = synchronized(pendingLock) {
@@ -267,5 +276,6 @@ class BGFacade(private val context: Context) {
 
     companion object {
         private const val TAG = "BGFacade"
+        private const val MAX_CANCELLED_IDS = 128 // cap the cancel-before-register race set
     }
 }
