@@ -9,10 +9,15 @@ with a two-tier composed config, typed capability gating, and disposable handles
 native bridge is unchanged — this is a pure TS-surface migration.
 
 ```ts
-// before (v2)
+// before (v2) — BackgroundGeolocation IS the instance
 import { BackgroundGeolocation } from '@gachlab/capacitor-background-geolocation';
-// after (v3) — same import; it now returns the composed facade
-import { BackgroundGeolocation as bg } from '@gachlab/capacitor-background-geolocation';
+BackgroundGeolocation.configure({ … });
+
+// after (v3) — BackgroundGeolocation is a FACTORY; call it to get the composed facade
+import { BackgroundGeolocation } from '@gachlab/capacitor-background-geolocation';
+const bg = BackgroundGeolocation();                 // zero-config: shared singleton
+// const bg = BackgroundGeolocation({ native: fakeBridge }); // inject a fake bridge in tests
+bg.configure({ … });
 ```
 
 Need the old flat surface temporarily? It's still exported as `NativeBackgroundGeolocation`
