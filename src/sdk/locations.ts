@@ -10,7 +10,7 @@
 import type { CurrentLocationOptions } from '../definitions/config';
 import type { BackgroundGeolocationNative, NativeCurrentOptions } from '../definitions/roles';
 import type { Accuracy, Location, StationaryLocation } from '../definitions/values';
-import { abortError, rejectOnAbort, subscribe, type Subscription } from './stream';
+import { abortError, listen, rejectOnAbort, type Subscription } from './stream';
 
 /** Options for reading the pending (not-yet-uploaded) queue. */
 export interface PendingQuery {
@@ -68,11 +68,7 @@ export function LocationsApi(deps: { native: BackgroundGeolocationNative }): Loc
       // Sticky: replay the last known fix to the new subscriber (if any), so a late subscriber
       // is not blind until the next GPS update. The replay is gated inside subscribe() — it is
       // skipped if the subscription was removed or a fresher live fix already arrived.
-      return subscribe<Location>(
-        (cb) => native.addListener('location', cb),
-        listener,
-        () => native.getLastLocation(),
-      );
+      return listen<Location>(native, 'location', listener, () => native.getLastLocation());
     },
 
     async current(options: CurrentLocationOptions = {}) {
@@ -110,9 +106,7 @@ export function LocationsApi(deps: { native: BackgroundGeolocationNative }): Loc
     },
 
     async pending(options: PendingQuery = {}) {
-      const result = options.consume
-        ? await native.getValidLocationsAndDelete()
-        : await native.getValidLocations();
+      const result = options.consume ? await native.getValidLocationsAndDelete() : await native.getValidLocations();
       return result.locations;
     },
 

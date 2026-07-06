@@ -32,9 +32,44 @@ export interface Subscription<TPayload = unknown> {
 }
 
 /**
+ * The single sticky-replay primitive. Given a fresh subscriber, schedule `replay()` and
+ * hand its value to that SAME subscriber — but only if it is still meaningful, still
+ * wanted, and not stale. Returns a wrapped listener that MUST be used in place of the
+ * original for live delivery, so a live event marks the replay as beaten.
+ *
+ * The ordering guard lives here, once, so every sticky source — the native-backed hot
+ * stream (`subscribe`) and any facade-local (Set-based) source (e.g. `ConfigApi.on`) —
+ * gets the same three gates:
+ *   - `value != null`: nothing to replay (no last fix, no authorization yet).
+ *   - `!gotLive`: a fresher live event already reached this subscriber; replaying the
+ *     last-known value now would deliver it out of order.
+ *   - `isActive()`: the subscription was removed before the (async) replay settled.
+ * A rejected `replay()` is swallowed — sticky delivery is best-effort and must never
+ * surface as an unhandled promise rejection (version-skew / pre-init native calls reject).
+ */
+export function stickyReplay<T>(
+  listener: (value: T) => void,
+  replay: () => Promise<T | null | undefined>,
+  isActive: () => boolean,
+): (value: T) => void {
+  let gotLive = false;
+  replay().then(
+    (value) => {
+      if (value != null && !gotLive && isActive()) listener(value);
+    },
+    () => {},
+  );
+  return (value: T): void => {
+    gotLive = true;
+    listener(value);
+  };
+}
+
+/**
  * Wire a native `addListener` to a listener and return a Subscription. The native
  * handle resolves asynchronously; `remove()` is safe to call before it settles — the
- * listener is removed as soon as the handle is available.
+ * listener is removed as soon as the handle is available. An optional `replay` makes the
+ * subscription sticky (see {@link stickyReplay}).
  */
 export function subscribe<T>(
   addListener: (cb: (event: T) => void) => Promise<PluginListenerHandle>,
@@ -43,14 +78,8 @@ export function subscribe<T>(
 ): Subscription<T> {
   let handle: PluginListenerHandle | null = null;
   let removed = false;
-  let gotLive = false;
 
-  const onEvent = replay
-    ? (event: T): void => {
-        gotLive = true;
-        listener(event);
-      }
-    : listener;
+  const onEvent = replay ? stickyReplay(listener, replay, () => !removed) : listener;
 
   addListener(onEvent).then(
     (h) => {
@@ -58,22 +87,9 @@ export function subscribe<T>(
       if (removed) void h.remove();
     },
     // Native rejection (version-skew / pre-init) is swallowed: registration is best-effort and
-    // must never surface as an unhandled promise rejection (mirrors the replay arm below).
+    // must never surface as an unhandled promise rejection (mirrors the replay arm above).
     () => {},
   );
-
-  // Sticky replay: hand the last-known value to this new subscriber — but NOT if it was
-  // already removed, or if a fresher live event beat the replay (which would deliver a
-  // stale value out of order). Native rejections (version-skew / pre-init) are swallowed:
-  // replay is best-effort, never an unhandled rejection.
-  if (replay) {
-    replay().then(
-      (value) => {
-        if (value != null && !removed && !gotLive) listener(value);
-      },
-      () => {},
-    );
-  }
 
   const subscription: Subscription<T> = {
     remove(): void {
@@ -106,6 +122,20 @@ export function listen<T>(
     cb: (event: T) => void,
   ) => Promise<PluginListenerHandle>;
   return subscribe<T>((cb) => add(eventName, cb), listener, replay);
+}
+
+/**
+ * Build an aliased `.on(event, listener)` for a sub-API whose short event names map to
+ * native event names. `map` need only carry the REAL renames; a short name absent from it
+ * passes through unchanged (`event as GeolocationEventName`). This is the single home for
+ * the sub-API `on()` body — geofences/sync/driver differ only by their `map`.
+ */
+export function makeAliasedOn<Events>(
+  native: BackgroundGeolocationNative,
+  map: Partial<Record<keyof Events, GeolocationEventName>>,
+): <E extends keyof Events>(event: E, listener: (payload: Events[E]) => void) => Subscription<Events[E]> {
+  return <E extends keyof Events>(event: E, listener: (payload: Events[E]) => void): Subscription<Events[E]> =>
+    listen<Events[E]>(native, map[event] ?? (event as GeolocationEventName), listener);
 }
 
 /** Reject when an AbortSignal fires — used to race one-shot native calls. */

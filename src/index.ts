@@ -6,7 +6,10 @@
 import { registerPlugin } from '@capacitor/core';
 
 import type { BackgroundGeolocationNative } from './definitions/roles';
-import { BackgroundGeolocation as composeFacade } from './sdk/background-geolocation';
+import {
+  BackgroundGeolocation as composeFacade,
+  type BackgroundGeolocation as BackgroundGeolocationFacade,
+} from './sdk/background-geolocation';
 
 /**
  * The raw flat native proxy (Promise + addListener). Registered by Capacitor; the web
@@ -17,8 +20,12 @@ const nativeProxy = registerPlugin<BackgroundGeolocationNative>('BackgroundGeolo
   web: () => import('./web').then((m) => new m.BackgroundGeolocationWeb()),
 });
 
-/** The composed v3 facade type (merges with the factory function of the same name below). */
-export type BackgroundGeolocation = ReturnType<typeof composeFacade>;
+/**
+ * The composed v3 facade type — the AUTHORED interface (not `ReturnType` inference), so the
+ * public type is the same one the facade is annotated to. Merges with the factory function of
+ * the same name below.
+ */
+export type BackgroundGeolocation = BackgroundGeolocationFacade;
 
 let defaultInstance: BackgroundGeolocation | undefined;
 

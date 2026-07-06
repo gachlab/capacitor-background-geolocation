@@ -10,7 +10,7 @@ import type { GeolocationEventMap, GeolocationEventName } from '../definitions/e
 import type { BackgroundGeolocationNative } from '../definitions/roles';
 import type { Capabilities, TripScore } from '../definitions/values';
 import { ensureCapability } from './errors';
-import { listen, type Subscription } from './stream';
+import { makeAliasedOn, type Subscription } from './stream';
 
 /** Short driver event names → their payloads. */
 export interface DriverEvents {
@@ -28,19 +28,12 @@ export interface DriverEvents {
   idleEnd: GeolocationEventMap['idleEnd'];
 }
 
-const DRIVER_EVENT: Record<keyof DriverEvents, GeolocationEventName> = {
-  tripStart: 'tripStart',
-  tripEnd: 'tripEnd',
-  moving: 'moving',
-  stopped: 'stopped',
-  speeding: 'speeding',
-  hardBrake: 'hardBrake',
-  rapidAcceleration: 'rapidAcceleration',
-  sharpTurn: 'sharpTurn',
-  possibleCrash: 'possibleCrash',
+/**
+ * Real renames only. Every other short name is identical to its native event name and
+ * passes through unchanged via `makeAliasedOn` — `phoneUsage` is the sole alias.
+ */
+const DRIVER_EVENT: Partial<Record<keyof DriverEvents, GeolocationEventName>> = {
   phoneUsage: 'phoneUsageWhileDriving',
-  idleStart: 'idleStart',
-  idleEnd: 'idleEnd',
 };
 
 export interface DriverApi {
@@ -63,11 +56,6 @@ export function DriverApi(deps: {
       await ensureCapability(capabilities, 'driverIntelligence');
       return native.getTripScore();
     },
-    on<E extends keyof DriverEvents>(
-      event: E,
-      listener: (payload: DriverEvents[E]) => void,
-    ): Subscription<DriverEvents[E]> {
-      return listen<DriverEvents[E]>(native, DRIVER_EVENT[event], listener);
-    },
+    on: makeAliasedOn<DriverEvents>(native, DRIVER_EVENT),
   };
 }

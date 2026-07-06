@@ -5,7 +5,7 @@
 
 import type { GeolocationEventMap, GeolocationEventName } from '../definitions/events';
 import type { BackgroundGeolocationNative } from '../definitions/roles';
-import { listen, type Subscription } from './stream';
+import { makeAliasedOn, type Subscription } from './stream';
 
 /** Short sync event names → their payloads. */
 export interface SyncEvents {
@@ -17,7 +17,8 @@ export interface SyncEvents {
   priorityFailed: GeolocationEventMap['prioritySyncFailed'];
 }
 
-const SYNC_EVENT: Record<keyof SyncEvents, GeolocationEventName> = {
+/** Real renames only (every sync event is prefixed / renamed on the wire). */
+const SYNC_EVENT: Partial<Record<keyof SyncEvents, GeolocationEventName>> = {
   start: 'syncStart',
   progress: 'syncProgress',
   success: 'syncSuccess',
@@ -49,8 +50,6 @@ export function SyncApi(deps: { native: BackgroundGeolocationNative }): SyncApi 
     async pending() {
       return (await native.getPendingSyncCount()).count;
     },
-    on<E extends keyof SyncEvents>(event: E, listener: (payload: SyncEvents[E]) => void): Subscription<SyncEvents[E]> {
-      return listen<SyncEvents[E]>(native, SYNC_EVENT[event], listener);
-    },
+    on: makeAliasedOn<SyncEvents>(native, SYNC_EVENT),
   };
 }
