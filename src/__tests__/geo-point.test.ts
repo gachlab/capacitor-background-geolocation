@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { GeoPoint } from '../domain/geo-point.js';
+import { GeoPoint } from '../web/domain/geo-point.js';
 
 describe('GeoPoint — geographic coordinate value object', () => {
   it('distance to itself is zero', () => {
