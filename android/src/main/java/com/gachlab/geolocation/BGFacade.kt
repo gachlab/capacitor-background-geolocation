@@ -41,6 +41,10 @@ class BGFacade(private val context: Context) {
     @Volatile private var lastLocation: BGLocation? = null
 
     private val configDAO   = ConfigDAO(context.applicationContext)
+    // In-memory resolved-config cache (mirrors iOS `_config`): avoids a DB read+parse per
+    // getConfig() call. Populated on first read, refreshed on configure(). @Volatile for the
+    // cross-thread reads (getConfig runs off Capacitor's executor and the one-shot thread).
+    @Volatile private var configCache: BGConfig? = null
     private val locationDAO = LocationDAO(context.applicationContext)
     private val sessionDAO  = SessionDAO(context.applicationContext)
     private val logDAO      = com.gachlab.geolocation.persistence.LogDAO(context.applicationContext)
@@ -107,6 +111,7 @@ class BGFacade(private val context: Context) {
         // config, so a field the facade drops reverts to default instead of going stale.
         val resolved = BGConfig.merge(BGConfig.getDefault(), newConfig)
         configDAO.persistConfig(resolved)
+        configCache = resolved // keep the cache consistent with what we just persisted
         // Hot-reload if running; otherwise next start() picks up the persisted config.
         startedService()?.configure(resolved)
     }
@@ -136,7 +141,16 @@ class BGFacade(private val context: Context) {
         timeout: Long = 20_000L,
         enableHighAccuracy: Boolean = false,
         requestId: String? = null,
+        maximumAge: Long = 0L,
     ): BGLocation? {
+        // Honor maximumAge (parity with iOS/web): a recent-enough cached fix short-circuits the
+        // one-shot request. maximumAge <= 0 (the default) always fetches a fresh fix, preserving
+        // the prior Android behavior for callers that don't ask for a cached fix.
+        if (maximumAge > 0) {
+            lastLocation?.let { last ->
+                if (System.currentTimeMillis() - last.time <= maximumAge) return last
+            }
+        }
         val id = requestId ?: nextInternalId()
         val latch = CountDownLatch(1)
         val ref   = AtomicReference<BGLocation?>()
@@ -198,7 +212,8 @@ class BGFacade(private val context: Context) {
 
     // ── Config reads ──────────────────────────────────────────────────────────
 
-    fun getConfig(): BGConfig = configDAO.retrieveConfig() ?: BGConfig.getDefault()
+    fun getConfig(): BGConfig =
+        configCache ?: (configDAO.retrieveConfig() ?: BGConfig.getDefault()).also { configCache = it }
 
     // ── Stationary ──────────────────────────────────────────────────────────────
 
