@@ -302,13 +302,21 @@ public final class BGFacade: NSObject {
         var resultLocation: CLLocation?
         var resultError: Error?
         var cancelled = false
+        // Signal the waiter AT MOST ONCE: both onResult and cancel race to wake it, and CLLocation-
+        // Manager may deliver more than one callback. The first signal wins; later ones are dropped
+        // so we never over-signal a semaphore that will be discarded when this call returns.
+        var signalled = false
+        let signalOnce: () -> Void = { [oneShotLock] in
+            oneShotLock.lock(); let first = !signalled; signalled = true; oneShotLock.unlock()
+            if first { semaphore.signal() }
+        }
 
         let helper = OneShotLocationHelper(
             enableHighAccuracy: enableHighAccuracy,
             onResult: { loc, err in
                 resultLocation = loc
                 resultError = err
-                semaphore.signal()
+                signalOnce()
             }
         )
 
@@ -321,11 +329,14 @@ public final class BGFacade: NSObject {
         }
         oneShotCancels[id] = { [oneShotLock] in
             oneShotLock.lock(); cancelled = true; oneShotLock.unlock()
-            helper.cancel(); semaphore.signal()
+            helper.cancel(); signalOnce()
         }
         oneShotLock.unlock()
 
-        runOnMain { helper.start() }
+        // Kick off the CLLocationManager one-shot on main WITHOUT blocking this background thread on
+        // it (the shared runOnMain uses .main.sync — a deadlock risk if main is busy while we then
+        // park on the semaphore below). start() is fire-and-forget; the result arrives via onResult.
+        if Thread.isMainThread { helper.start() } else { DispatchQueue.main.async { helper.start() } }
 
         let timeoutSeconds = timeout > 0 ? DispatchTime.now() + .milliseconds(Int(timeout)) : DispatchTime.distantFuture
         let waitResult = semaphore.wait(timeout: timeoutSeconds)

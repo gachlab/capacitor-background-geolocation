@@ -158,8 +158,11 @@ class BGFacade(private val context: Context) {
         if (!registerPending(id, cb)) return null // cancelled before we could register
         // Standalone one-shot via the fused client so this works even when tracking is NOT
         // running (parity with iOS/web); if tracking IS running, the service's next fix also
-        // satisfies the same latch — whichever arrives first wins.
-        val cts = requestFusedOneShot(enableHighAccuracy) { loc -> cb(loc) }
+        // satisfies the same latch — whichever arrives first wins. Route the fused fix through
+        // takePending(id) (not cb directly) so it resolves the waiter EXACTLY ONCE and atomically
+        // with a concurrent service-fix drain or a cancel — a late fused fix after either simply
+        // finds the waiter gone and is discarded, never a double callback.
+        val cts = requestFusedOneShot(enableHighAccuracy) { loc -> takePending(id)?.invoke(loc) }
         try {
             latch.await(timeout, TimeUnit.MILLISECONDS)
         } finally {
