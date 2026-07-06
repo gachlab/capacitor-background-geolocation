@@ -16,7 +16,13 @@ internal class LocationDAO(context: Context) : BaseLocationDAO() {
 
     // ── Queries ───────────────────────────────────────────────────────────────
 
-    fun getAllLocations(): List<BGLocation> = query(null, null)
+    // Exclude soft-deleted (STATUS_DELETED) rows — a location the caller delete()'d (or that was
+    // consumed/synced-out) is a tombstone awaiting recycling, not a "stored" location. Matches iOS
+    // (`WHERE status != 0`) and web (hard delete), so bg.locations.all() and delete(id) behave
+    // consistently. The sync path (BackgroundSync) filters STATUS_SYNC_PENDING itself, so it is
+    // unaffected. (getValidLocations coincides on Android's model — there is no retained-synced state.)
+    fun getAllLocations(): List<BGLocation> =
+        query("valid <> ?", arrayOf(BGLocation.STATUS_DELETED.toString()))
 
     fun getValidLocations(): List<BGLocation> =
         query("valid <> ?", arrayOf(BGLocation.STATUS_DELETED.toString()))
