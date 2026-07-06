@@ -192,11 +192,14 @@ class BackgroundGeolocationPlugin : Plugin() {
     fun configure(call: PluginCall) {
         try {
             // Persist the facade's clean-base blob verbatim so it can rehydrate after a reload.
-            call.getString("baseConfigJson")?.let {
+            val blob = call.getString("baseConfigJson")
+            if (blob != null) {
                 context.getSharedPreferences("bgloc_facade", Context.MODE_PRIVATE)
-                    .edit().putString("base_config_json", it).apply()
+                    .edit().putString("base_config_json", blob).apply()
             }
             facade.configure(GachConfigMapper.fromJSObject(call.data))
+            // Source-of-truth notification: any facade instance re-derives its clean base from this.
+            if (blob != null) notifyListeners("configChanged", JSObject().apply { put("baseConfigJson", blob) })
             call.resolve()
         } catch (e: Exception) { call.reject("Configuration error: ${e.message}", "400", e) }
     }

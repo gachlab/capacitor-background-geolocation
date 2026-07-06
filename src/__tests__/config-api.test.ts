@@ -11,14 +11,26 @@ import type { BackgroundGeolocationNative } from '../definitions/roles';
 import type { NativeConfig } from '../definitions/wire';
 import { ConfigApi } from '../sdk/config-api';
 
-/** A fake native that records configure() wire payloads and can seed getConfig(). */
-function fakeNative(seed?: NativeConfig): { native: BackgroundGeolocationNative; sent: NativeConfig[] } {
+/** A fake native that records configure() wire payloads, seeds getConfig(), and can fire events. */
+function fakeNative(seed?: NativeConfig): {
+  native: BackgroundGeolocationNative;
+  sent: NativeConfig[];
+  fire: (event: string, payload: unknown) => void;
+} {
   const sent: NativeConfig[] = [];
+  const listeners = new Map<string, ((payload: unknown) => void)[]>();
   const native = {
     configure: async (cfg: NativeConfig): Promise<void> => void sent.push(cfg),
     getConfig: async (): Promise<NativeConfig> => seed ?? {},
+    addListener: async (event: string, cb: (payload: unknown) => void) => {
+      listeners.set(event, [...(listeners.get(event) ?? []), cb]);
+      return { remove: async (): Promise<void> => {} };
+    },
   } as unknown as BackgroundGeolocationNative;
-  return { native, sent };
+  const fire = (event: string, payload: unknown): void => {
+    for (const cb of listeners.get(event) ?? []) cb(payload);
+  };
+  return { native, sent, fire };
 }
 
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
@@ -54,6 +66,36 @@ describe('ConfigApi', () => {
     await api.configure({ location: { accuracy: 'low' } });
     assert.equal(seen.length, 2, 'emits on configure');
     assert.equal(seen[1].location?.accuracy, 'low');
+  });
+
+  it('adopts an EXTERNAL configChanged (another writer) and notifies subscribers', async () => {
+    const { native, fire } = fakeNative();
+    const api = ConfigApi({ native });
+    const seen: BaseConfig[] = [];
+    api.on((c) => seen.push(c));
+    await tick(); // sticky replay of the empty base
+
+    // A write from another facade instance / the raw proxy: native emits the authoritative blob.
+    const external: BaseConfig = { transport: { baseUrl: 'https://other' }, debug: true };
+    fire('configChanged', { baseConfigJson: JSON.stringify(external) });
+
+    assert.equal(seen[seen.length - 1].transport?.baseUrl, 'https://other', 'external change delivered');
+    const cur = await api.current();
+    assert.equal(cur.debug, true, 'current() reflects the adopted external base');
+  });
+
+  it('dedups our OWN configure() echo (no double-delivery from configChanged)', async () => {
+    const { native, fire } = fakeNative();
+    const api = ConfigApi({ native });
+    const seen: BaseConfig[] = [];
+    api.on((c) => seen.push(c));
+    await tick(); // sticky replay (empty base)
+
+    await api.configure({ debug: true }); // local emit → seen gains one
+    const countAfterConfigure = seen.length;
+    // The native echoes configChanged carrying the SAME base we just persisted — must be deduped.
+    fire('configChanged', { baseConfigJson: JSON.stringify(await api.current()) });
+    assert.equal(seen.length, countAfterConfigure, 'self-echo must not re-deliver');
   });
 
   it('a removed listener stops receiving changes', async () => {

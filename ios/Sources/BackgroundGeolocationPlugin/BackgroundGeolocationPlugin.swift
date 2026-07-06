@@ -147,7 +147,8 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         guard let facade = facade else { call.reject("facade not initialized"); return }
         let opts: [String: Any] = call.options as? [String: Any] ?? [:]
         // Persist the facade's clean-base blob verbatim so it can rehydrate after a reload.
-        if let blob = call.getString("baseConfigJson") {
+        let blob = call.getString("baseConfigJson")
+        if let blob = blob {
             UserDefaults.standard.set(blob, forKey: "bgloc.baseConfigJson")
         }
         let cfg = BGConfig.from(dictionary: opts)
@@ -156,6 +157,8 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         prioritySyncManager = PrioritySyncManager(config: cfg)
         do {
             try facade.configure(cfg)
+            // Source-of-truth notification: any facade instance re-derives its clean base from this.
+            if let blob = blob { notifyListeners("configChanged", data: ["baseConfigJson": blob]) }
             call.resolve()
         } catch {
             let nsErr = error as NSError
