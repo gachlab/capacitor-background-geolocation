@@ -55,6 +55,8 @@ object GachConfigMapper {
             c.notificationTitle   = if (!j.isNull("notificationTitle"))  j.getString("notificationTitle")  else BGConfig.NULL_STRING
         if (j.has("notificationText"))
             c.notificationText    = if (!j.isNull("notificationText"))   j.getString("notificationText")   else BGConfig.NULL_STRING
+        if (j.has("notificationChannel"))
+            c.notificationChannel = if (!j.isNull("notificationChannel")) j.getString("notificationChannel") else BGConfig.NULL_STRING
         if (j.has("notificationSyncTitle"))
             c.notificationSyncTitle = if (j.isNull("notificationSyncTitle")) null else j.getString("notificationSyncTitle")
         if (j.has("notificationSyncText"))

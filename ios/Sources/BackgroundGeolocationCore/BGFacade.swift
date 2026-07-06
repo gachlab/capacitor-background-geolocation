@@ -252,6 +252,7 @@ public final class BGFacade: NSObject {
     // with the id itself (no generation capture needed).
     private var oneShotCancels: [String: () -> Void] = [:]
     private var cancelledIds: Set<String> = []
+    private static let maxCancelledIds = 128 // bound the cancel-before-register race set
     private var internalSeq = 0
     private let oneShotLock = NSLock()
 
@@ -264,7 +265,12 @@ public final class BGFacade: NSObject {
         if let id = requestId {
             oneShotLock.lock()
             let cancel = oneShotCancels.removeValue(forKey: id)
-            if cancel == nil { cancelledIds.insert(id) } // arrived before register
+            if cancel == nil {
+                cancelledIds.insert(id) // arrived before register
+                // A cancel after the request already completed adds an id that never registers again
+                // (ids are monotonic) — cap the set so it can't leak unbounded over a long session.
+                if cancelledIds.count > Self.maxCancelledIds { cancelledIds.removeFirst() }
+            }
             oneShotLock.unlock()
             cancel?()
         } else {

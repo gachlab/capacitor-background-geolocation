@@ -72,7 +72,14 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     private var permissionHelper: PermissionRequestHelper?
     private var lastLocationAt: Date?
     private let drivingDetector = DrivingEventsDetector()
-    private var lastBGLocation: BGLocation?
+    // Written on the CLLocationManager delegate thread, read from the Capacitor plugin queue
+    // (getLastLocation) — guard every access with a lock to avoid a non-atomic ARC-reference race.
+    private let lastLocationLock = NSLock()
+    private var _lastBGLocation: BGLocation?
+    private var lastBGLocation: BGLocation? {
+        get { lastLocationLock.lock(); defer { lastLocationLock.unlock() }; return _lastBGLocation }
+        set { lastLocationLock.lock(); defer { lastLocationLock.unlock() }; _lastBGLocation = newValue }
+    }
     private var prevDLLoc: (lat: Double, lon: Double, time: Date)?
     private var lastTripScore: TripScore?
     private var prioritySyncManager: PrioritySyncManager?
@@ -820,7 +827,8 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         } else {
             p["location"] = NSNull()
         }
-        p["distance"]   = (note.userInfo?["distance"]   as? NSNumber)?.doubleValue ?? 0
+        // Clean output: emit km to match TripEndPayload.distanceKm (the note carries meters).
+        p["distanceKm"] = ((note.userInfo?["distance"] as? NSNumber)?.doubleValue ?? 0) / 1000.0
         p["durationMs"] = (note.userInfo?["durationMs"] as? NSNumber)?.int64Value  ?? 0
         if let score = note.userInfo?["score"] as? TripScore {
             p["score"] = scoreToDict(score)
@@ -956,7 +964,9 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     }
 
     @objc private func onFallbackActivatedN(_ note: Notification) {
-        let strategy = (note.userInfo?["strategy"] as? String) ?? "significantchanges"
+        // Clean output: normalize to the camelCase contract ('significantChanges' | 'regionMonitoring').
+        let raw = ((note.userInfo?["strategy"] as? String) ?? "significantChanges").lowercased()
+        let strategy = raw == "regionmonitoring" ? "regionMonitoring" : "significantChanges"
         notifyListeners("iosFallbackActivated", data: ["strategy": strategy])
     }
 
