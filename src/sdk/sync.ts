@@ -26,26 +26,31 @@ const SYNC_EVENT: Record<keyof SyncEvents, GeolocationEventName> = {
   priorityFailed: 'prioritySyncFailed',
 };
 
-export class SyncApi {
-  constructor(private readonly native: BackgroundGeolocationNative) {}
-
+export interface SyncApi {
   /** Force an immediate flush of the pending queue. */
-  flush(): Promise<void> {
-    return this.native.forceSync();
-  }
-
+  flush(): Promise<void>;
   /** Discard every pending queued location. */
-  clear(): Promise<void> {
-    return this.native.clearSync();
-  }
-
+  clear(): Promise<void>;
   /** Number of locations waiting to be uploaded. */
-  async pending(): Promise<number> {
-    return (await this.native.getPendingSyncCount()).count;
-  }
-
+  pending(): Promise<number>;
   /** Subscribe to a sync event. */
-  on<E extends keyof SyncEvents>(event: E, listener: (payload: SyncEvents[E]) => void): Subscription<SyncEvents[E]> {
-    return listen<SyncEvents[E]>(this.native, SYNC_EVENT[event], listener);
-  }
+  on<E extends keyof SyncEvents>(event: E, listener: (payload: SyncEvents[E]) => void): Subscription<SyncEvents[E]>;
+}
+
+export function SyncApi(deps: { native: BackgroundGeolocationNative }): SyncApi {
+  const { native } = deps;
+  return {
+    flush() {
+      return native.forceSync();
+    },
+    clear() {
+      return native.clearSync();
+    },
+    async pending() {
+      return (await native.getPendingSyncCount()).count;
+    },
+    on<E extends keyof SyncEvents>(event: E, listener: (payload: SyncEvents[E]) => void): Subscription<SyncEvents[E]> {
+      return listen<SyncEvents[E]>(native, SYNC_EVENT[event], listener);
+    },
+  };
 }

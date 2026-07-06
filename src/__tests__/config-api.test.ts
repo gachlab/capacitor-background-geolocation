@@ -26,7 +26,7 @@ const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 describe('ConfigApi', () => {
   it('configure() deep-merges the base and sends the resolved wire', async () => {
     const { native, sent } = fakeNative();
-    const api = new ConfigApi(native);
+    const api = ConfigApi({ native });
     await api.configure({ location: { accuracy: 'high', distanceFilter: 25 } });
     await api.configure({ location: { distanceFilter: 50 }, debug: true }); // patch
 
@@ -42,7 +42,7 @@ describe('ConfigApi', () => {
 
   it('on() replays the current config immediately and emits on change', async () => {
     const { native } = fakeNative();
-    const api = new ConfigApi(native);
+    const api = ConfigApi({ native });
     await api.configure({ debug: true });
 
     const seen: BaseConfig[] = [];
@@ -58,7 +58,7 @@ describe('ConfigApi', () => {
 
   it('a removed listener stops receiving changes', async () => {
     const { native } = fakeNative();
-    const api = new ConfigApi(native);
+    const api = ConfigApi({ native });
     const seen: BaseConfig[] = [];
     const sub = api.on((c) => seen.push(c));
     await tick(); // consume sticky replay (empty base)
@@ -70,7 +70,7 @@ describe('ConfigApi', () => {
   it('rehydrates the base from the native persisted blob (survives reload)', async () => {
     const persisted: BaseConfig = { transport: { baseUrl: 'https://api.me' }, location: { accuracy: 'high' } };
     const { native, sent } = fakeNative({ baseConfigJson: JSON.stringify(persisted) } as NativeConfig);
-    const api = new ConfigApi(native); // fresh instance = post-reload facade
+    const api = ConfigApi({ native }); // fresh instance = post-reload facade
 
     // A PARTIAL configure after "reload" must merge onto the rehydrated base, not reset it.
     await api.configure({ location: { distanceFilter: 10 } });

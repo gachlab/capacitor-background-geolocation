@@ -26,21 +26,12 @@ export interface LogStreamOptions {
   minLevel?: LogLevel;
 }
 
-export class LogsApi {
-  constructor(private readonly native: BackgroundGeolocationNative) {}
-
+export interface LogsApi {
   /**
    * One newest-first page of log entries. Pass the smallest returned `id` as `fromId`
    * to fetch the next older batch. On web this resolves to `[]`.
    */
-  async page(options: LogPageOptions = {}): Promise<LogEntry[]> {
-    const result = await this.native.getLogEntries({
-      limit: options.limit ?? 100,
-      fromId: options.fromId,
-      minLevel: options.minLevel,
-    });
-    return result.entries;
-  }
+  page(options?: LogPageOptions): Promise<LogEntry[]>;
 
   /**
    * Stream all log entries newest-first, paging transparently — the generator fetches
@@ -53,11 +44,26 @@ export class LogsApi {
    *   report(entry);
    * }
    */
-  async *stream(options: LogStreamOptions = {}): AsyncGenerator<LogEntry, void, void> {
+  stream(options?: LogStreamOptions): AsyncGenerator<LogEntry, void, void>;
+}
+
+export function LogsApi(deps: { native: BackgroundGeolocationNative }): LogsApi {
+  const { native } = deps;
+
+  const page = async (options: LogPageOptions = {}): Promise<LogEntry[]> => {
+    const result = await native.getLogEntries({
+      limit: options.limit ?? 100,
+      fromId: options.fromId,
+      minLevel: options.minLevel,
+    });
+    return result.entries;
+  };
+
+  async function* stream(options: LogStreamOptions = {}): AsyncGenerator<LogEntry, void, void> {
     const batchSize = options.batchSize ?? 100;
     let fromId = options.fromId;
     for (;;) {
-      const entries = await this.page({ limit: batchSize, fromId, minLevel: options.minLevel });
+      const entries = await page({ limit: batchSize, fromId, minLevel: options.minLevel });
       for (const entry of entries) yield entry;
       // A short page means the store is exhausted; the newest-first page ends on the
       // smallest id, so that id seeds the next (older) page.
@@ -65,4 +71,6 @@ export class LogsApi {
       fromId = entries[entries.length - 1].id;
     }
   }
+
+  return { page, stream };
 }

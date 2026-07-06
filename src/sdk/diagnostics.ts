@@ -8,64 +8,70 @@ import type { Capabilities, Diagnostics } from '../definitions/values';
 import { ensureCapability } from './errors';
 
 /** OEM battery / auto-start settings — gated behind `capabilities.oemSettings`. */
-export class OemApi {
-  constructor(
-    private readonly native: BackgroundGeolocationNative,
-    private readonly caps: () => Promise<Capabilities>,
-  ) {}
-
-  private gate(): Promise<void> {
-    return ensureCapability(this.caps, 'oemSettings');
-  }
-
-  async isIgnoringBatteryOptimizations(): Promise<boolean> {
-    await this.gate();
-    return (await this.native.isIgnoringBatteryOptimizations()).whitelisted;
-  }
-
-  async requestIgnoreBatteryOptimizations(): Promise<boolean> {
-    await this.gate();
-    return (await this.native.requestIgnoreBatteryOptimizations()).whitelisted;
-  }
-
-  async openBatterySettings(): Promise<void> {
-    await this.gate();
-    return this.native.openBatterySettings();
-  }
-
-  async openAutoStartSettings(): Promise<{ opened: boolean; manufacturer: string; screen: string }> {
-    await this.gate();
-    return this.native.openAutoStartSettings();
-  }
-
-  async manufacturerHelp(): Promise<{ manufacturer: string; steps: string[] }> {
-    await this.gate();
-    return this.native.getManufacturerHelp();
-  }
+export interface OemApi {
+  isIgnoringBatteryOptimizations(): Promise<boolean>;
+  requestIgnoreBatteryOptimizations(): Promise<boolean>;
+  openBatterySettings(): Promise<void>;
+  openAutoStartSettings(): Promise<{ opened: boolean; manufacturer: string; screen: string }>;
+  manufacturerHelp(): Promise<{ manufacturer: string; steps: string[] }>;
 }
 
-export class DiagnosticsApi {
+export function OemApi(deps: {
+  native: BackgroundGeolocationNative;
+  capabilities: () => Promise<Capabilities>;
+}): OemApi {
+  const { native, capabilities } = deps;
+  const gate = (): Promise<void> => ensureCapability(capabilities, 'oemSettings');
+  return {
+    async isIgnoringBatteryOptimizations() {
+      await gate();
+      return (await native.isIgnoringBatteryOptimizations()).whitelisted;
+    },
+    async requestIgnoreBatteryOptimizations() {
+      await gate();
+      return (await native.requestIgnoreBatteryOptimizations()).whitelisted;
+    },
+    async openBatterySettings() {
+      await gate();
+      return native.openBatterySettings();
+    },
+    async openAutoStartSettings() {
+      await gate();
+      return native.openAutoStartSettings();
+    },
+    async manufacturerHelp() {
+      await gate();
+      return native.getManufacturerHelp();
+    },
+  };
+}
+
+export interface DiagnosticsApi {
   readonly oem: OemApi;
-
-  constructor(
-    private readonly native: BackgroundGeolocationNative,
-    caps: () => Promise<Capabilities>,
-  ) {
-    this.oem = new OemApi(native, caps);
-  }
-
   /** Extended diagnostics (permissions, battery, OEM, iOS flags). */
-  report(): Promise<Diagnostics> {
-    return this.native.getDiagnostics();
-  }
-
+  report(): Promise<Diagnostics>;
   /** The native plugin version. */
-  async version(): Promise<string> {
-    return (await this.native.getPluginVersion()).version;
-  }
-
+  version(): Promise<string>;
   /** Why/when the native service was last killed and auto-restarted (Android). */
-  killReason(): Promise<{ reason: string | null; timestamp: number | null }> {
-    return this.native.getBackgroundKillReason();
-  }
+  killReason(): Promise<{ reason: string | null; timestamp: number | null }>;
+}
+
+export function DiagnosticsApi(deps: {
+  native: BackgroundGeolocationNative;
+  capabilities: () => Promise<Capabilities>;
+}): DiagnosticsApi {
+  const { native, capabilities } = deps;
+  const oem = OemApi({ native, capabilities });
+  return {
+    oem,
+    report() {
+      return native.getDiagnostics();
+    },
+    async version() {
+      return (await native.getPluginVersion()).version;
+    },
+    killReason() {
+      return native.getBackgroundKillReason();
+    },
+  };
 }

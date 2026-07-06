@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 gachlab
 //
-// v3 SDK · the composed facade (Fase 2).
-// Wraps the flat native proxy in clean, disposable, composed sub-APIs. Pure TS, no
-// runtime cost beyond the wrappers. This is what apps import.
+// v3 SDK · the composed facade (Fase 2), functional style.
+// `BackgroundGeolocation({ native })` wires the flat native proxy into clean, disposable,
+// composed sub-APIs — dependencies are INJECTED (native + siblings) so every unit is mockable
+// in isolation, with no `new` and no `this`. This is what apps import.
 
+import type { BaseConfig } from '../definitions/config';
 import type { GeolocationEventListener, GeolocationEventName } from '../definitions/events';
 import type { BackgroundGeolocationNative } from '../definitions/roles';
 import type { Capabilities } from '../definitions/values';
@@ -26,7 +28,7 @@ import { TrackingApi } from './tracking';
 /** The native wire-contract version this facade speaks; native `contractVersion` must be ≥ this. */
 const CONTRACT_VERSION = 3;
 
-export class BackgroundGeolocation {
+export interface BackgroundGeolocation {
   readonly config: ConfigApi;
   readonly tracking: TrackingApi;
   readonly locations: LocationsApi;
@@ -39,38 +41,29 @@ export class BackgroundGeolocation {
   readonly logs: LogsApi;
   readonly platform: PlatformApi;
 
-  private capsCache?: Promise<Capabilities>;
+  /** Set the shared base config. Alias for `bg.config.configure()`. Observe with `bg.config.on()`. */
+  configure(base: BaseConfig): Promise<void>;
+  /** Static platform capabilities (memoized; rejections are not cached). */
+  capabilities(): Promise<Capabilities>;
+  /** Feature-detect a single capability. */
+  supports<K extends keyof Capabilities>(capability: K): Promise<Capabilities[K]>;
+  /** Assert a capability is available, else throw CapabilityError. */
+  require(capability: BooleanCapability): Promise<void>;
+  /** Subscribe to a global / lifecycle event (domain events live on their sub-API). */
+  on<E extends GeolocationEventName>(event: E, listener: GeolocationEventListener<E>): Subscription;
+  /** Trigger an SOS — emits the `sos` event with the latest location plus `payload`. */
+  sos(payload?: Record<string, unknown>): Promise<void>;
+  /** Remove every listener registered on the plugin. */
+  removeAllListeners(): Promise<void>;
+}
 
-  constructor(private readonly native: BackgroundGeolocationNative) {
-    const caps = (): Promise<Capabilities> => this.capabilities();
-    this.config = new ConfigApi(native);
-    this.tracking = new TrackingApi(native, this.config);
-    this.locations = new LocationsApi(native);
-    this.geofences = new GeofencesApi(native);
-    this.sync = new SyncApi(native);
-    this.recordings = new RecordingsApi(native);
-    this.permissions = new PermissionsApi(native);
-    this.diagnostics = new DiagnosticsApi(native, caps);
-    this.driver = new DriverApi(native, caps);
-    this.logs = new LogsApi(native);
-    this.platform = new PlatformApi(native);
-  }
+export function BackgroundGeolocation(deps: { native: BackgroundGeolocationNative }): BackgroundGeolocation {
+  const { native } = deps;
 
-  /**
-   * Set the shared, plugin-level base config. Convenience alias for `bg.config.configure()`
-   * (and `bg.tracking.configure()`). Observe changes with `bg.config.on()`.
-   */
-  configure(base: Parameters<ConfigApi['configure']>[0]): Promise<void> {
-    return this.config.configure(base);
-  }
-
-  /**
-   * Static platform capabilities (the `misa` register) — memoized after the first
-   * call. Rejections are NOT cached, so a transient failure can be retried.
-   */
-  capabilities(): Promise<Capabilities> {
-    if (this.capsCache === undefined) {
-      this.capsCache = this.native
+  let capsCache: Promise<Capabilities> | undefined;
+  const capabilities = (): Promise<Capabilities> => {
+    if (capsCache === undefined) {
+      capsCache = native
         .getCapabilities()
         .then((caps) => {
           // Turn a stale-native `cap sync` (renamed events/methods silently no-op) into a signal.
@@ -84,51 +77,69 @@ export class BackgroundGeolocation {
           return caps;
         })
         .catch((error: unknown) => {
-          this.capsCache = undefined;
+          capsCache = undefined;
           throw error;
         });
     }
-    return this.capsCache;
-  }
+    return capsCache;
+  };
 
-  /** Feature-detect a single capability (e.g. `await bg.supports('driverIntelligence')`). */
-  async supports<K extends keyof Capabilities>(capability: K): Promise<Capabilities[K]> {
-    return (await this.capabilities())[capability];
-  }
+  const config = ConfigApi({ native });
+  const tracking = TrackingApi({ native, config });
+  const locations = LocationsApi({ native });
+  const geofences = GeofencesApi({ native });
+  const sync = SyncApi({ native });
+  const recordings = RecordingsApi({ native });
+  const permissions = PermissionsApi({ native });
+  const diagnostics = DiagnosticsApi({ native, capabilities });
+  const driver = DriverApi({ native, capabilities });
+  const logs = LogsApi({ native });
+  const platform = PlatformApi({ native });
 
-  /**
-   * Assert a capability is available, else throw {@link CapabilityError}. The explicit
-   * guard form of {@link supports} — reads as a precondition before a run of gated calls:
-   * `await bg.require('driverIntelligence'); const s = await bg.driver.lastTripScore();`
-   */
-  async require(capability: BooleanCapability): Promise<void> {
-    await ensureCapability(() => this.capabilities(), capability);
-  }
+  return {
+    config,
+    tracking,
+    locations,
+    geofences,
+    sync,
+    recordings,
+    permissions,
+    diagnostics,
+    driver,
+    logs,
+    platform,
 
-  /**
-   * Subscribe to a global / lifecycle event: `start`, `stop`, `foreground`,
-   * `background`, `error`, `authorization`, `heartbeat`, `providerChange`,
-   * `serviceRestarted`, `iosFallbackActivated`, `abortRequested`, `httpAuthorization`.
-   * Domain events live on their sub-API (`locations.on`, `geofences.on`, …).
-   */
-  on<E extends GeolocationEventName>(event: E, listener: GeolocationEventListener<E>): Subscription {
-    // Sticky: a new `authorization` subscriber gets the current state immediately. The replay
-    // is gated inside subscribe() (skipped if removed / beaten by a live event) and its
-    // rejection is swallowed there, so it never leaks an unhandled promise rejection.
-    const replay =
-      event === 'authorization'
-        ? (): Promise<{ status: unknown }> => this.native.checkStatus().then((s) => ({ status: s.authorization }))
-        : undefined;
-    return listen(this.native, event, listener as (payload: unknown) => void, replay);
-  }
+    configure(base: BaseConfig): Promise<void> {
+      return config.configure(base);
+    },
 
-  /** Trigger an SOS — emits the `sos` event with the latest location plus `payload`. */
-  sos(payload?: Record<string, unknown>): Promise<void> {
-    return this.native.triggerSOS(payload);
-  }
+    capabilities,
 
-  /** Remove every listener registered on the plugin. */
-  removeAllListeners(): Promise<void> {
-    return this.native.removeAllListeners();
-  }
+    async supports<K extends keyof Capabilities>(capability: K): Promise<Capabilities[K]> {
+      return (await capabilities())[capability];
+    },
+
+    async require(capability: BooleanCapability): Promise<void> {
+      await ensureCapability(capabilities, capability);
+    },
+
+    on<E extends GeolocationEventName>(event: E, listener: GeolocationEventListener<E>): Subscription {
+      // Sticky: a new `authorization` subscriber gets the current state immediately. The replay is
+      // gated inside subscribe() (skipped if removed / beaten by a live event) and its rejection is
+      // swallowed there, so it never leaks an unhandled promise rejection.
+      const replay =
+        event === 'authorization'
+          ? (): Promise<{ status: unknown }> => native.checkStatus().then((s) => ({ status: s.authorization }))
+          : undefined;
+      return listen(native, event, listener as (payload: unknown) => void, replay);
+    },
+
+    sos(payload?: Record<string, unknown>): Promise<void> {
+      return native.triggerSOS(payload);
+    },
+
+    removeAllListeners(): Promise<void> {
+      return native.removeAllListeners();
+    },
+  };
 }

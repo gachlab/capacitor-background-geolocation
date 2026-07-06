@@ -8,6 +8,7 @@ import { describe, it } from 'node:test';
 
 import type { BackgroundGeolocationNative } from '../definitions/roles';
 import { subscribe } from '../sdk/stream';
+import { ConfigApi } from '../sdk/config-api';
 import { TrackingApi } from '../sdk/tracking';
 
 /** Settle the microtask/timer queue so subscribe()'s async handle resolves. */
@@ -47,14 +48,16 @@ describe('TrackingSession disposal', () => {
 
   it('[Symbol.asyncDispose]() stops the session (equals stop())', async () => {
     const counter = { stopped: 0 };
-    const session = await new TrackingApi(fakeNative(counter)).start();
+    const native = fakeNative(counter);
+    const session = await TrackingApi({ native, config: ConfigApi({ native }) }).start();
     await session[Symbol.asyncDispose]();
     assert.equal(counter.stopped, 1);
   });
 
   it('`await using` auto-stops at scope end', async () => {
     const counter = { stopped: 0 };
-    const api = new TrackingApi(fakeNative(counter));
+    const native = fakeNative(counter);
+    const api = TrackingApi({ native, config: ConfigApi({ native }) });
     {
       await using session = await api.start();
       assert.equal(counter.stopped, 0, 'still running inside the block');

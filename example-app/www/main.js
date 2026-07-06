@@ -13,7 +13,7 @@
 /* global capacitorBackgroundGeolocation */
 
 document.addEventListener('DOMContentLoaded', () => {
-  const bg = capacitorBackgroundGeolocation.BackgroundGeolocation;
+  const bg = capacitorBackgroundGeolocation.BackgroundGeolocation(); // factory (zero-config → shared singleton)
 
   const out = document.getElementById('log');
   const statusEl = document.querySelector('[data-testid="service-status"]');

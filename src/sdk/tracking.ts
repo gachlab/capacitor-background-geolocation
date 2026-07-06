@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 gachlab
 //
-// v3 SDK · Tracking sub-API (Fase 2).
+// v3 SDK · Tracking sub-API (Fase 2). Functional: TrackingApi({ native, config }) → TrackingApi.
 // The shared base config lives in ConfigApi (bg.config); tracking delegates configure() to it
 // and resolves the session cascade on start().
 
@@ -21,44 +21,46 @@ export interface TrackingSession {
   [Symbol.asyncDispose](): Promise<void>;
 }
 
-export class TrackingApi {
-  constructor(
-    private readonly native: BackgroundGeolocationNative,
-    private readonly config: ConfigApi,
-  ) {}
-
+export interface TrackingApi {
   /**
-   * Set the shared, plugin-level base config — the tier every feature inherits. Call once at
-   * startup; calling again patches (deep-merge) the existing base. Delegates to `bg.config`
-   * (reload-safe + observable). Equivalent to `bg.config.configure(base)`.
+   * Set the shared, plugin-level base config — the tier every feature inherits. Delegates to
+   * `bg.config` (reload-safe + observable). Equivalent to `bg.config.configure(base)`.
    */
-  async configure(base: BaseConfig): Promise<void> {
-    await this.config.configure(base);
-  }
-
+  configure(base: BaseConfig): Promise<void>;
   /**
    * Start tracking. An optional session override composes over the base for the lifetime of
-   * this run (scope: session) — it is NOT persisted into the base, so a later plain start()
-   * reverts it.
+   * this run (scope: session) — NOT persisted into the base, so a later plain start() reverts it.
    */
-  async start(override?: StartOverride): Promise<TrackingSession> {
-    if (override !== undefined) {
-      await this.native.configure(this.config.wireForStart(override));
-    }
-    await this.native.start();
-    const native = this.native;
-    const session: TrackingSession = {
-      stop: (): Promise<void> => native.stop(),
-      [Symbol.asyncDispose]: (): Promise<void> => session.stop(),
-    };
-    return session;
-  }
+  start(override?: StartOverride): Promise<TrackingSession>;
+  stop(): Promise<void>;
+  status(): Promise<ServiceStatus>;
+}
 
-  stop(): Promise<void> {
-    return this.native.stop();
-  }
+export function TrackingApi(deps: { native: BackgroundGeolocationNative; config: ConfigApi }): TrackingApi {
+  const { native, config } = deps;
+  return {
+    async configure(base: BaseConfig): Promise<void> {
+      await config.configure(base);
+    },
 
-  status(): Promise<ServiceStatus> {
-    return this.native.checkStatus();
-  }
+    async start(override?: StartOverride): Promise<TrackingSession> {
+      if (override !== undefined) {
+        await native.configure(config.wireForStart(override));
+      }
+      await native.start();
+      const session: TrackingSession = {
+        stop: (): Promise<void> => native.stop(),
+        [Symbol.asyncDispose]: (): Promise<void> => session.stop(),
+      };
+      return session;
+    },
+
+    stop(): Promise<void> {
+      return native.stop();
+    },
+
+    status(): Promise<ServiceStatus> {
+      return native.checkStatus();
+    },
+  };
 }

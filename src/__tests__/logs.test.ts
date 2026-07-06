@@ -34,7 +34,7 @@ describe('LogsApi.stream()', () => {
     } as unknown as BackgroundGeolocationNative;
 
     const seen: number[] = [];
-    for await (const e of new LogsApi(native).stream({ batchSize: 10 })) seen.push(e.id);
+    for await (const e of LogsApi({ native }).stream({ batchSize: 10 })) seen.push(e.id);
 
     assert.deepEqual(seen, [25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]);
     assert.equal(box.calls, 3, 'pages of 10 over 25 entries → 3 native calls (10 + 10 + 5)');
@@ -53,7 +53,7 @@ describe('LogsApi.stream()', () => {
     } as unknown as BackgroundGeolocationNative;
 
     const seen: number[] = [];
-    for await (const e of new LogsApi(native).stream({ batchSize: 10 })) seen.push(e.id);
+    for await (const e of LogsApi({ native }).stream({ batchSize: 10 })) seen.push(e.id);
 
     assert.deepEqual(seen, [4, 3, 2, 1]);
     assert.equal(box.calls, 1);
@@ -72,7 +72,7 @@ describe('LogsApi.stream()', () => {
     } as unknown as BackgroundGeolocationNative;
 
     const seen: number[] = [];
-    for await (const e of new LogsApi(native).stream({ batchSize: 10 })) {
+    for await (const e of LogsApi({ native }).stream({ batchSize: 10 })) {
       seen.push(e.id);
       if (e.id === 25) break; // 6th entry, mid first page
     }
@@ -98,7 +98,7 @@ describe('LogsApi.stream()', () => {
     } as unknown as BackgroundGeolocationNative;
 
     const seen: number[] = [];
-    for await (const e of new LogsApi(nativeReal).stream({ batchSize: 50, minLevel: 'error' })) seen.push(e.id);
+    for await (const e of LogsApi({ native: nativeReal }).stream({ batchSize: 50, minLevel: 'error' })) seen.push(e.id);
 
     assert.deepEqual(seen, [102, 101]);
     assert.ok(seenLevels.every((l) => l === 'error'));

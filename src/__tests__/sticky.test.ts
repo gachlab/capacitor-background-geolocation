@@ -33,7 +33,7 @@ describe('sticky location', () => {
     } as unknown as BackgroundGeolocationNative;
 
     const seen: Location[] = [];
-    new LocationsApi(native).on((loc) => seen.push(loc));
+    LocationsApi({ native }).on((loc) => seen.push(loc));
     await tick();
 
     assert.equal(seen.length, 1);
@@ -47,7 +47,7 @@ describe('sticky location', () => {
     } as unknown as BackgroundGeolocationNative;
 
     const seen: Location[] = [];
-    new LocationsApi(native).on((loc) => seen.push(loc));
+    LocationsApi({ native }).on((loc) => seen.push(loc));
     await tick();
 
     assert.equal(seen.length, 0);
@@ -60,7 +60,7 @@ describe('sticky location', () => {
     } as unknown as BackgroundGeolocationNative;
 
     const seen: Location[] = [];
-    const sub = new LocationsApi(native).on((loc) => seen.push(loc));
+    const sub = LocationsApi({ native }).on((loc) => seen.push(loc));
     sub.remove(); // synchronous removal, before getLastLocation() settles
     await tick();
 
@@ -83,7 +83,7 @@ describe('sticky location', () => {
     } as unknown as BackgroundGeolocationNative;
 
     const seen: Location[] = [];
-    new LocationsApi(native).on((loc) => seen.push(loc));
+    LocationsApi({ native }).on((loc) => seen.push(loc));
     // liveCb is wired synchronously by on(); fire a fresh live fix before the (awaited) replay settles.
     liveCb?.(LIVE);
     await tick();
@@ -101,7 +101,7 @@ describe('sticky location', () => {
     } as unknown as BackgroundGeolocationNative;
 
     const seen: Location[] = [];
-    assert.doesNotThrow(() => new LocationsApi(native).on((loc) => seen.push(loc)));
+    assert.doesNotThrow(() => LocationsApi({ native }).on((loc) => seen.push(loc)));
     await tick();
     assert.equal(seen.length, 0);
   });
@@ -116,7 +116,7 @@ describe('sticky authorization', () => {
     } as unknown as BackgroundGeolocationNative;
 
     const seen: { status: string }[] = [];
-    new BackgroundGeolocation(native).on('authorization', (e) => seen.push(e));
+    BackgroundGeolocation({ native }).on('authorization', (e) => seen.push(e));
     await tick();
 
     assert.equal(seen.length, 1);
@@ -132,7 +132,7 @@ describe('sticky authorization', () => {
     } as unknown as BackgroundGeolocationNative;
 
     const seen: unknown[] = [];
-    new BackgroundGeolocation(native).on('start', () => seen.push(1));
+    BackgroundGeolocation({ native }).on('start', () => seen.push(1));
     await tick();
 
     assert.equal(seen.length, 0);

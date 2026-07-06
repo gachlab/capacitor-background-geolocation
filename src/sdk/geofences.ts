@@ -23,33 +23,41 @@ const GEOFENCE_EVENT: Record<keyof GeofenceEvents, GeolocationEventName> = {
   error: 'geofenceError',
 };
 
-export class GeofencesApi {
-  constructor(private readonly native: BackgroundGeolocationNative) {}
-
+export interface GeofencesApi {
   /** Register geofences. Existing ones with the same id are replaced. */
-  add(geofences: Geofence[]): Promise<void> {
-    // Translate the clean field to the native wire key (loiteringDelayMs → loiteringDelay).
-    const wire = geofences.map(({ loiteringDelayMs, ...g }) =>
-      loiteringDelayMs === undefined ? g : { ...g, loiteringDelay: loiteringDelayMs },
-    );
-    return this.native.addGeofences({ geofences: wire as unknown as Geofence[] });
-  }
-
+  add(geofences: Geofence[]): Promise<void>;
   /** Remove geofences by id. Omit `ids` to remove all. */
-  remove(ids?: string[]): Promise<void> {
-    return this.native.removeGeofences(ids === undefined ? undefined : { ids });
-  }
-
+  remove(ids?: string[]): Promise<void>;
   /** The current list of registered geofences. */
-  async list(): Promise<Geofence[]> {
-    return (await this.native.getGeofences()).geofences;
-  }
-
+  list(): Promise<Geofence[]>;
   /** Subscribe to a geofence transition (or error). */
   on<E extends keyof GeofenceEvents>(
     event: E,
     listener: (payload: GeofenceEvents[E]) => void,
-  ): Subscription<GeofenceEvents[E]> {
-    return listen<GeofenceEvents[E]>(this.native, GEOFENCE_EVENT[event], listener);
-  }
+  ): Subscription<GeofenceEvents[E]>;
+}
+
+export function GeofencesApi(deps: { native: BackgroundGeolocationNative }): GeofencesApi {
+  const { native } = deps;
+  return {
+    add(geofences) {
+      // Translate the clean field to the native wire key (loiteringDelayMs → loiteringDelay).
+      const wire = geofences.map(({ loiteringDelayMs, ...g }) =>
+        loiteringDelayMs === undefined ? g : { ...g, loiteringDelay: loiteringDelayMs },
+      );
+      return native.addGeofences({ geofences: wire as unknown as Geofence[] });
+    },
+    remove(ids) {
+      return native.removeGeofences(ids === undefined ? undefined : { ids });
+    },
+    async list() {
+      return (await native.getGeofences()).geofences;
+    },
+    on<E extends keyof GeofenceEvents>(
+      event: E,
+      listener: (payload: GeofenceEvents[E]) => void,
+    ): Subscription<GeofenceEvents[E]> {
+      return listen<GeofenceEvents[E]>(native, GEOFENCE_EVENT[event], listener);
+    },
+  };
 }

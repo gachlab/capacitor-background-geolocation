@@ -8,26 +8,31 @@
 import type { BackgroundGeolocationNative } from '../definitions/roles';
 import type { Location } from '../definitions/values';
 
-export class RecordingsApi {
-  constructor(private readonly native: BackgroundGeolocationNative) {}
-
+export interface RecordingsApi {
   /** Begin a recording session (clears the session store and starts capturing). */
-  start(): Promise<void> {
-    return this.native.startSession();
-  }
-
+  start(): Promise<void>;
   /** Stop capturing and clear the session store. */
-  clear(): Promise<void> {
-    return this.native.clearSession();
-  }
-
+  clear(): Promise<void>;
   /** Every location captured in the current session. */
-  async locations(): Promise<Location[]> {
-    return (await this.native.getSessionLocations()).locations;
-  }
-
+  locations(): Promise<Location[]>;
   /** Count of locations in the current session. */
-  async count(): Promise<number> {
-    return (await this.native.getSessionLocationsCount()).count;
-  }
+  count(): Promise<number>;
+}
+
+export function RecordingsApi(deps: { native: BackgroundGeolocationNative }): RecordingsApi {
+  const { native } = deps;
+  return {
+    start() {
+      return native.startSession();
+    },
+    clear() {
+      return native.clearSession();
+    },
+    async locations() {
+      return (await native.getSessionLocations()).locations;
+    },
+    async count() {
+      return (await native.getSessionLocationsCount()).count;
+    },
+  };
 }
