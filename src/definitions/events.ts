@@ -96,6 +96,12 @@ export interface GeolocationEventMap {
   background: void;
   abortRequested: void;
   httpAuthorization: void;
+  /**
+   * The persisted base config changed — the native is the source of truth. Carries the clean
+   * base as a JSON blob so any facade instance (or the raw proxy path) can adopt it. Consumed by
+   * `bg.config` to keep `current()`/`on()` coherent across writers; rarely subscribed directly.
+   */
+  configChanged: { baseConfigJson: string };
   serviceRestarted: ServiceRestartedPayload;
   iosFallbackActivated: { strategy: 'significantChanges' | 'regionMonitoring' };
   // sync
@@ -130,8 +136,9 @@ export interface GeolocationEventMap {
 export type GeolocationEventName = keyof GeolocationEventMap;
 
 /** Listener callback for a given event, correctly typed by its payload. */
-export type GeolocationEventListener<E extends GeolocationEventName> =
-  GeolocationEventMap[E] extends void ? () => void : (event: GeolocationEventMap[E]) => void;
+export type GeolocationEventListener<E extends GeolocationEventName> = GeolocationEventMap[E] extends void
+  ? () => void
+  : (event: GeolocationEventMap[E]) => void;
 
 /**
  * The native event surface — a single generic `addListener` replacing 38 overloads.

@@ -69,6 +69,8 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
       } catch {
         /* storage unavailable (private mode) — rehydration just no-ops */
       }
+      // Source-of-truth notification (parity with native): any facade instance re-derives its base.
+      this.notifyListeners('configChanged', { baseConfigJson: blob });
     }
   }
 

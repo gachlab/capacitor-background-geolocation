@@ -68,6 +68,30 @@ export function ConfigApi(deps: { native: BackgroundGeolocationNative }): Config
     for (const listener of [...listeners]) listener(snapshot);
   };
 
+  // The native emits `configChanged` (carrying the authoritative baseConfigJson) whenever the
+  // persisted base changes — the source-of-truth path that also covers a write from ANOTHER facade
+  // instance or the raw proxy. Adopt the incoming base and notify. Our OWN configure()'s echo is
+  // deduped by comparing the blob to the current base's serialization: wireFor() sent exactly that
+  // string, so an unchanged base is byte-identical and skipped (no double-emit). Best-effort: a
+  // native rejection (version-skew / pre-init) must never surface as an unhandled rejection.
+  // Guarded: a degraded/partial native (or a minimal test double) without addListener simply
+  // forgoes cross-writer notification — it must never be fatal to config, which is enhanced by
+  // this, not dependent on it.
+  if (typeof native.addListener === 'function') {
+    void native
+      .addListener('configChanged', (payload: { baseConfigJson: string }) => {
+        const blob = payload?.baseConfigJson;
+        if (typeof blob !== 'string' || blob === JSON.stringify(base)) return;
+        try {
+          base = JSON.parse(blob) as BaseConfig;
+        } catch {
+          return; // malformed blob — keep the current base
+        }
+        emit();
+      })
+      .catch(() => {});
+  }
+
   const current = async (): Promise<BaseConfig> => {
     await ensureRehydrated();
     return safeClone(base);
