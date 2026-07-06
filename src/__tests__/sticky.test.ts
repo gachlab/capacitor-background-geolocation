@@ -123,6 +123,21 @@ describe('sticky authorization', () => {
     assert.deepEqual(seen[0], { status: 'authorized' });
   });
 
+  it('does NOT replay authorization when the status is unknown (never {status: undefined})', async () => {
+    // checkStatus resolves without an `authorization` field (status not yet determined).
+    const native = {
+      addListener: async () => handle,
+      checkStatus: async (): Promise<ServiceStatus> =>
+        ({ isRunning: false, locationServicesEnabled: true }) as ServiceStatus,
+    } as unknown as BackgroundGeolocationNative;
+
+    const seen: { status: unknown }[] = [];
+    BackgroundGeolocation({ native }).on('authorization', (e) => seen.push(e));
+    await tick();
+
+    assert.equal(seen.length, 0, 'an undefined authorization must not be replayed');
+  });
+
   it('does not replay for a non-sticky event', async () => {
     const native = {
       addListener: async () => handle,

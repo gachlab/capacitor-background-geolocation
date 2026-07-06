@@ -126,10 +126,12 @@ export function BackgroundGeolocation(deps: { native: BackgroundGeolocationNativ
     on<E extends GeolocationEventName>(event: E, listener: GeolocationEventListener<E>): Subscription {
       // Sticky: a new `authorization` subscriber gets the current state immediately. The replay is
       // gated inside subscribe() (skipped if removed / beaten by a live event) and its rejection is
-      // swallowed there, so it never leaks an unhandled promise rejection.
+      // swallowed there, so it never leaks an unhandled promise rejection. Return `null` when the
+      // status is not yet known so the guard skips it — never replay `{ status: undefined }`.
       const replay =
         event === 'authorization'
-          ? (): Promise<{ status: unknown }> => native.checkStatus().then((s) => ({ status: s.authorization }))
+          ? (): Promise<{ status: unknown } | null> =>
+              native.checkStatus().then((s) => (s.authorization == null ? null : { status: s.authorization }))
           : undefined;
       return listen(native, event, listener as (payload: unknown) => void, replay);
     },

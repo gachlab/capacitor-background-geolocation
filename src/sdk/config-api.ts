@@ -13,7 +13,7 @@ import type { BaseConfig, StartOverride } from '../definitions/config';
 import type { BackgroundGeolocationNative } from '../definitions/roles';
 import type { NativeConfig } from '../definitions/wire';
 import { mergeConfig, safeClone, toFlatConfig } from './config-mapper';
-import type { Subscription } from './stream';
+import { stickyReplay, type Subscription } from './stream';
 
 /** Wire key carrying the clean base as an opaque JSON blob for reload rehydration. */
 const BASE_CONFIG_KEY = 'baseConfigJson';
@@ -84,13 +84,13 @@ export function ConfigApi(deps: { native: BackgroundGeolocationNative }): Config
     current,
 
     on(listener: (config: BaseConfig) => void): Subscription<BaseConfig> {
-      listeners.add(listener);
-      // Sticky replay of the current config (skipped if removed before it resolves).
-      void current().then((config) => {
-        if (listeners.has(listener)) listener(config);
-      });
+      // Wrap with the shared sticky primitive: it delivers current() once, but suppresses that
+      // replay if a live configure() emit beat it (the double-delivery race) or the listener was
+      // removed first. `wrapped` is what emit() calls, so a live emit marks the replay as beaten.
+      const wrapped: (config: BaseConfig) => void = stickyReplay(listener, current, () => listeners.has(wrapped));
+      listeners.add(wrapped);
       const remove = (): void => {
-        listeners.delete(listener);
+        listeners.delete(wrapped);
       };
       return { remove, [Symbol.dispose]: remove };
     },

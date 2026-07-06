@@ -7,7 +7,7 @@ import type { GeolocationEventMap, GeolocationEventName } from '../definitions/e
 import type { BackgroundGeolocationNative } from '../definitions/roles';
 import type { Geofence } from '../definitions/values';
 import type { ConfigApi } from './config-api';
-import { listen, type Subscription } from './stream';
+import { makeAliasedOn, type Subscription } from './stream';
 
 /** A geofence on the native wire: the clean `loiteringDelayMs` is carried as `loiteringDelay`. */
 type WireGeofence = Omit<Geofence, 'loiteringDelayMs'> & { loiteringDelay?: number };
@@ -20,7 +20,8 @@ export interface GeofenceEvents {
   error: GeolocationEventMap['geofenceError'];
 }
 
-const GEOFENCE_EVENT: Record<keyof GeofenceEvents, GeolocationEventName> = {
+/** Real renames only (all four are prefixed); identity names would pass through. */
+const GEOFENCE_EVENT: Partial<Record<keyof GeofenceEvents, GeolocationEventName>> = {
   enter: 'geofenceEnter',
   exit: 'geofenceExit',
   dwell: 'geofenceDwell',
@@ -72,11 +73,6 @@ export function GeofencesApi(deps: { native: BackgroundGeolocationNative; config
         loiteringDelay === undefined ? (rest as Geofence) : ({ ...rest, loiteringDelayMs: loiteringDelay } as Geofence),
       );
     },
-    on<E extends keyof GeofenceEvents>(
-      event: E,
-      listener: (payload: GeofenceEvents[E]) => void,
-    ): Subscription<GeofenceEvents[E]> {
-      return listen<GeofenceEvents[E]>(native, GEOFENCE_EVENT[event], listener);
-    },
+    on: makeAliasedOn<GeofenceEvents>(native, GEOFENCE_EVENT),
   };
 }
