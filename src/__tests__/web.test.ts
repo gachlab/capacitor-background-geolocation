@@ -544,6 +544,35 @@ describe('BackgroundGeolocationWeb', () => {
       assert.equal((await plugin.getPendingSyncCount()).count, 1);
     });
 
+    it('a synced fix is no longer "valid", and consume leaves it in history', async () => {
+      setFetch(async () => ({ ok: true })); // fix is accepted → marked synced
+      await postOnce(plugin);
+      // Auto-posted fix stays in the full history but is NOT a pending/valid location.
+      assert.equal((await plugin.getLocations()).locations.length, 1);
+      assert.equal((await plugin.getValidLocations()).locations.length, 0, 'synced fix is not valid');
+      const consumed = await plugin.getValidLocationsAndDelete();
+      assert.equal(consumed.locations.length, 0, 'nothing un-synced to consume');
+      assert.equal((await plugin.getLocations()).locations.length, 1, 'consume must not wipe synced history');
+    });
+
+    it('an un-synced fix remains valid and is consumed (not the synced sibling)', async () => {
+      setFetch(async () => ({ ok: true }));
+      await postOnce(plugin); // fix #1 synced
+      setFetch(async () => {
+        throw new Error('offline'); // fix #2 fails → stays un-synced (queued)
+      });
+      onWatchSuccess?.(makePosition({ latitude: 42 }));
+      await flush();
+
+      const valid = await plugin.getValidLocations();
+      assert.equal(valid.locations.length, 1, 'only the un-synced fix is valid');
+      assert.equal(valid.locations[0].latitude, 42);
+
+      const consumed = await plugin.getValidLocationsAndDelete();
+      assert.equal(consumed.locations.length, 1);
+      assert.equal((await plugin.getLocations()).locations.length, 1, 'the synced sibling survives consume');
+    });
+
     it('postLocation queues the fix when fetch throws (offline)', async () => {
       setFetch(async () => {
         throw new Error('offline');

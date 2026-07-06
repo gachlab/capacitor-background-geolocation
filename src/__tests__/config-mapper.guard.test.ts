@@ -13,7 +13,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { BaseConfig, NotificationConfig } from '../definitions/config';
+import type { BaseConfig, NotificationConfig, SyncConfig } from '../definitions/config';
 import type { NativeConfig } from '../definitions/wire';
 import { toFlatConfig } from '../sdk/config-mapper';
 
@@ -152,13 +152,20 @@ const MAXIMAL_BASE: BaseConfig = {
   persistence: { maxLocations: 10000 },
   sync: {
     path: '/sync',
+    method: 'PUT',
     mode: 'batch',
     threshold: 100,
     auto: true,
     priority: { events: ['sos'], path: '/priority', retries: 3, retryDelaysMs: [1000, 2000, 4000] },
   },
   driving: { enabled: true, speedLimit: 100, scoring: { speeding: 100 } },
-  geofenceDefaults: { radius: 200, loiteringDelayMs: 60000, notifyOnEntry: true, notifyOnExit: true, notifyOnDwell: true },
+  geofenceDefaults: {
+    radius: 200,
+    loiteringDelayMs: 60000,
+    notifyOnEntry: true,
+    notifyOnExit: true,
+    notifyOnDwell: true,
+  },
   debug: true,
 };
 
@@ -181,6 +188,17 @@ const BASE_FIELD_DISPOSITION: Record<keyof BaseConfig, 'wire' | 'facade-side'> =
   debug: 'wire',
   native: 'facade-side', // escape hatch: Object.assign'd straight through, not a named wire key
   geofenceDefaults: 'facade-side', // applied by geofences.add(), never crosses as a config wire key
+};
+
+// SyncConfig nested fields are guarded the same way — `method` is independent of transport.method
+// (falling back to it), so a new sync field can't rot silently either.
+const SYNC_FIELD_DISPOSITION: Record<keyof SyncConfig, 'wire' | 'facade-side'> = {
+  path: 'wire',
+  method: 'wire',
+  mode: 'wire',
+  threshold: 'wire',
+  auto: 'wire',
+  priority: 'wire', // nested blob → prioritySync* wire keys
 };
 
 // notification.channel was silently dropped because nested fields weren't guarded. This makes
@@ -217,15 +235,41 @@ describe('toFlatConfig clean→wire coverage guard', () => {
       (k) => BASE_FIELD_DISPOSITION[k] === 'wire',
     );
     const unmapped = wireFields.filter((k) => Object.keys(toFlatConfig(probes[k] ?? {})).length === 0);
-    assert.deepEqual(unmapped, [], `top-level clean fields marked 'wire' but producing no wire key: ${unmapped.join(', ')}`);
+    assert.deepEqual(
+      unmapped,
+      [],
+      `top-level clean fields marked 'wire' but producing no wire key: ${unmapped.join(', ')}`,
+    );
   });
 
   it('every wire-classified notification field is emitted from a maximal notification', () => {
     const flat = toFlatConfig(MAXIMAL_BASE) as Record<string, unknown>;
     // Each notification wire field lands under some notification* / show* / startForeground key;
     // proven collectively by the maximal base emitting notificationChannel (the regressed field).
-    assert.equal(flat.notificationChannel, 'tracking_channel', 'notification.channel must reach the wire as notificationChannel');
+    assert.equal(
+      flat.notificationChannel,
+      'tracking_channel',
+      'notification.channel must reach the wire as notificationChannel',
+    );
     void NOTIFICATION_FIELD_DISPOSITION; // exhaustiveness is the compile-time guard
+  });
+
+  it('sync.method reaches the wire independently of transport.method (falls back to it)', () => {
+    // Independent: sync.method wins over transport.method.
+    const flat = toFlatConfig({
+      transport: { baseUrl: 'https://api.me', method: 'POST' },
+      sync: { path: '/sync', method: 'PUT' },
+    }) as Record<string, unknown>;
+    assert.equal(flat.syncHttpMethod, 'PUT', 'sync.method must not be tied to transport.method');
+    assert.equal(flat.httpMethod, 'POST', 'transport.method is unchanged');
+
+    // Fallback: no sync.method → inherit transport.method.
+    const fallback = toFlatConfig({
+      transport: { method: 'PATCH' },
+      sync: { path: '/sync' },
+    }) as Record<string, unknown>;
+    assert.equal(fallback.syncHttpMethod, 'PATCH', 'sync inherits transport.method when unset');
+    void SYNC_FIELD_DISPOSITION; // exhaustiveness is the compile-time guard
   });
 
   it('facade-side clean fields never leak into the wire', () => {
@@ -240,7 +284,11 @@ describe('toFlatConfig coverage guard (§08)', () => {
 
   it('produces every facade-mapped wire key from a maximal clean config', () => {
     const missing = facadeKeys.filter((k) => !(k in flat));
-    assert.deepEqual(missing, [], `wire keys marked 'facade' but never produced by toFlatConfig: ${missing.join(', ')}`);
+    assert.deepEqual(
+      missing,
+      [],
+      `wire keys marked 'facade' but never produced by toFlatConfig: ${missing.join(', ')}`,
+    );
   });
 
   it('emits no wire key outside the source-of-truth table', () => {

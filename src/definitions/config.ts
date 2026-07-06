@@ -13,14 +13,7 @@
 // wire.ts). Merge rule: deep-merge for maps (headers, queryParams), replace for
 // scalars, `null` = explicit unset. Modern names here; wire names stay native-side.
 
-import type {
-  Accuracy,
-  DeliveryMode,
-  DrivingEventType,
-  HttpMethod,
-  LocationProvider,
-  MockPolicy,
-} from './values';
+import type { Accuracy, DeliveryMode, DrivingEventType, HttpMethod, LocationProvider, MockPolicy } from './values';
 
 // ---------------------------------------------------------------------------
 // Shared groups (base) — configured once, reused across features
@@ -159,6 +152,8 @@ export interface PrioritySyncConfig {
 export interface SyncConfig {
   /** Endpoint appended to `transport.baseUrl` for queued locations. */
   path?: string;
+  /** HTTP method for queued-location uploads. Falls back to `transport.method`. */
+  method?: HttpMethod;
   /** Delivery mode for queued locations. @default 'batch' */
   mode?: DeliveryMode;
   /** Batch size. @default 100 */
