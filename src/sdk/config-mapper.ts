@@ -92,7 +92,8 @@ export function toFlatConfig(cfg: BaseConfig): NativeConfig {
     if (loc.interval !== undefined) out.interval = loc.interval;
     if (loc.fastestInterval !== undefined) out.fastestInterval = loc.fastestInterval;
     if (loc.activityInterval !== undefined) out.activitiesInterval = loc.activityInterval;
-    if (loc.activityConfidenceThreshold !== undefined) out.activityConfidenceThreshold = loc.activityConfidenceThreshold;
+    if (loc.activityConfidenceThreshold !== undefined)
+      out.activityConfidenceThreshold = loc.activityConfidenceThreshold;
   }
 
   const st = cfg.stationary;
@@ -120,7 +121,9 @@ export function toFlatConfig(cfg: BaseConfig): NativeConfig {
     if (sync.mode !== undefined) out.syncMode = sync.mode;
     if (sync.threshold !== undefined) out.syncThreshold = sync.threshold;
     if (sync.auto !== undefined) out.sync = sync.auto;
-    if (t?.method !== undefined) out.syncHttpMethod = t.method;
+    // Sync method is independent of the live-transport method, falling back to it when unset.
+    const syncMethod = sync.method ?? t?.method;
+    if (syncMethod !== undefined) out.syncHttpMethod = syncMethod;
     const p = sync.priority;
     if (p) {
       if (p.events !== undefined) out.prioritySyncEvents = p.events;

@@ -51,6 +51,9 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   private sessionLocations: Location[] = [];
   private sessionActive = false;
   private syncQueue: Location[] = [];
+  // Fixes already uploaded (immediate POST or a forceSync flush). "Valid" locations are the
+  // UN-synced ones — so a fix that was auto-posted is not also handed out for manual consumption.
+  private syncedLocations = new WeakSet<Location>();
 
   // ---------------- Tracking control ----------------
 
@@ -159,12 +162,14 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   }
 
   async getValidLocations(): Promise<{ locations: Location[] }> {
-    return { locations: [...this.locations] };
+    // Only the un-synced (still-pending) fixes are "valid" — synced ones were already uploaded.
+    return { locations: this.locations.filter((l) => !this.syncedLocations.has(l)) };
   }
 
   async getValidLocationsAndDelete(): Promise<{ locations: Location[] }> {
-    const locations = [...this.locations];
-    this.locations = [];
+    // Consume ONLY the un-synced fixes; leave the already-synced ones in the history store.
+    const locations = this.locations.filter((l) => !this.syncedLocations.has(l));
+    this.locations = this.locations.filter((l) => this.syncedLocations.has(l));
     return { locations };
   }
 
@@ -194,13 +199,20 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
       });
       if (!resp.ok) {
         this.syncQueue.unshift(...batch);
-        this.notifyListeners('syncError', { httpStatus: resp.status ?? 0, message: `sync failed (${resp.status ?? 0})` });
+        this.notifyListeners('syncError', {
+          httpStatus: resp.status ?? 0,
+          message: `sync failed (${resp.status ?? 0})`,
+        });
       } else {
+        for (const loc of batch) this.syncedLocations.add(loc);
         this.notifyListeners('syncSuccess', { sent: batch.length });
       }
     } catch (err) {
       this.syncQueue.unshift(...batch);
-      this.notifyListeners('syncError', { httpStatus: -1, message: err instanceof Error ? err.message : 'sync failed' });
+      this.notifyListeners('syncError', {
+        httpStatus: -1,
+        message: err instanceof Error ? err.message : 'sync failed',
+      });
     } finally {
       this.syncing = false;
     }
@@ -552,6 +564,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
         body: JSON.stringify(loc),
       });
       if (!resp.ok) this.syncQueue.push(loc);
+      else this.syncedLocations.add(loc);
     } catch {
       this.syncQueue.push(loc);
     }
