@@ -271,6 +271,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
   async getCapabilities(): Promise<Capabilities> {
     return {
       platform: 'web',
+      contractVersion: 3,
       backgroundTracking: false,
       activityRecognition: false,
       geofencing: true,

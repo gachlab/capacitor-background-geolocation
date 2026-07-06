@@ -382,6 +382,7 @@ class BackgroundGeolocationPlugin : Plugin() {
     fun getCapabilities(call: PluginCall) =
         call.resolve(JSObject().apply {
             put("platform",            "android")
+            put("contractVersion",     3)
             put("backgroundTracking",  true)
             put("activityRecognition", true)
             put("geofencing",          true)

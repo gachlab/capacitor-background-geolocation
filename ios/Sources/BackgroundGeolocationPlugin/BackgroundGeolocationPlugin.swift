@@ -379,6 +379,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     @objc func getCapabilities(_ call: CAPPluginCall) {
         call.resolve([
             "platform": "ios",
+            "contractVersion": 3,
             "backgroundTracking": true,
             "activityRecognition": true,
             "geofencing": true,
