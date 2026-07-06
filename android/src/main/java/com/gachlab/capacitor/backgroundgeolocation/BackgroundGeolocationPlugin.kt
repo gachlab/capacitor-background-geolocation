@@ -50,6 +50,18 @@ class BackgroundGeolocationPlugin : Plugin() {
     private val oneShotExecutor: java.util.concurrent.ExecutorService =
         java.util.concurrent.Executors.newCachedThreadPool()
 
+    /**
+     * Read a Long-valued call option robustly. Capacitor's [PluginCall.getLong] only succeeds when
+     * the bridged value is literally a `Long`, but JS numbers cross the bridge as `Integer`/`Double`
+     * (any value ≤ Int.MAX arrives as Integer), so getLong silently returns null for e.g. timeout,
+     * maximumAge and small locationIds. Coerce from the raw JSON number/string instead.
+     */
+    private fun PluginCall.getLongOpt(name: String): Long? = when (val v = this.data.opt(name)) {
+        is Number -> v.toLong()
+        is String -> v.toLongOrNull()
+        else -> null
+    }
+
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     override fun load() {
@@ -211,15 +223,16 @@ class BackgroundGeolocationPlugin : Plugin() {
 
     @PluginMethod
     fun getCurrentLocation(call: PluginCall) {
-        val timeout = call.getLong("timeout") ?: 20_000L
+        val timeout = call.getLongOpt("timeout") ?: 20_000L
         val highAccuracy = call.getBoolean("enableHighAccuracy") ?: false
+        val maximumAge = call.getLongOpt("maximumAge") ?: 0L // 0 = always fetch a fresh fix
         val requestId = call.getString("requestId") // correlates with cancelCurrentLocation(requestId)
         // On oneShotExecutor (not bridge.execute) so the blocking wait doesn't HOL-block
         // other plugin calls incl. cancelCurrentLocation. try/catch so a throw can't take
         // down the process; call.resolve/reject are safe off the main thread.
         oneShotExecutor.execute {
             try {
-                val loc = facade.getCurrentLocation(timeout, highAccuracy, requestId)
+                val loc = facade.getCurrentLocation(timeout, highAccuracy, requestId, maximumAge)
                 if (loc == null) { call.reject("Timeout waiting for location", "408"); return@execute }
                 try { call.resolve(JSObject.fromJSONObject(loc.toJSONObjectWithId())) }
                 catch (e: Exception) { call.reject("JSON error: ${e.message}", "400") }
@@ -288,7 +301,7 @@ class BackgroundGeolocationPlugin : Plugin() {
 
     @PluginMethod
     fun deleteLocation(call: PluginCall) {
-        val id = call.getLong("locationId") ?: run { call.reject("locationId required", "400"); return }
+        val id = call.getLongOpt("locationId") ?: run { call.reject("locationId required", "400"); return }
         facade.deleteLocation(id); call.resolve()
     }
 
