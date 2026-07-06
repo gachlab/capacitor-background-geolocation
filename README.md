@@ -64,7 +64,9 @@ Add to `android/app/src/main/AndroidManifest.xml` (inside `<manifest>`):
 Runtime permission flow (API 23+) — request foreground first, then background:
 
 ```ts
-import { BackgroundGeolocation as bg } from '@gachlab/capacitor-background-geolocation';
+import { BackgroundGeolocation } from '@gachlab/capacitor-background-geolocation';
+
+const bg = BackgroundGeolocation(); // factory: zero-config singleton, or BackgroundGeolocation({ native }) to inject a fake
 
 if ((await bg.permissions.request()) !== 'granted') {
   await bg.permissions.openSettings('app');
@@ -79,7 +81,9 @@ its foreground service with `foregroundServiceType="location"`.
 ## Quick start
 
 ```ts
-import { BackgroundGeolocation as bg } from '@gachlab/capacitor-background-geolocation';
+import { BackgroundGeolocation } from '@gachlab/capacitor-background-geolocation';
+
+const bg = BackgroundGeolocation(); // factory: zero-config singleton, or BackgroundGeolocation({ native }) to inject a fake
 
 // 1. Configure the shared base ONCE — every feature inherits it.
 await bg.configure({
@@ -102,8 +106,11 @@ sub.remove();
 
 ## The facade
 
-`BackgroundGeolocation` composes these sub-APIs. The raw flat proxy is still exported as
-`NativeBackgroundGeolocation` for escape-hatch use.
+`BackgroundGeolocation(deps?)` is a **factory**: called with no args it returns a shared,
+zero-config instance (the registered Capacitor bridge); called with `{ native }` it builds a
+fresh instance over an injected bridge — the seam for mocking in a test. It composes these
+sub-APIs by dependency injection (no `new`, no `this`). The raw flat proxy is still exported
+as `NativeBackgroundGeolocation` for escape-hatch use.
 
 | Sub-API | Methods |
 | --- | --- |

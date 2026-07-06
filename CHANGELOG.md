@@ -14,6 +14,10 @@ The only consumer is `drivers-web`, so the break is intentional. See the bluepri
 for the full rationale.
 
 #### Changed (BREAKING)
+- **`BackgroundGeolocation` is now a FACTORY**, not a pre-built instance: `const bg =
+  BackgroundGeolocation()` (zero-config → shared singleton) or `BackgroundGeolocation({ native })`
+  to inject a bridge (testing). The whole SDK is functional with constructor-function DI — each
+  sub-API is a `Name(deps)` factory closing over its state; dependencies are injected, not `new`ed.
 - **Flat plugin surface → composed facade.** `import { BackgroundGeolocation }` is now
   an instance of composed sub-APIs: `bg.tracking` · `bg.locations` · `bg.geofences` ·
   `bg.sync` · `bg.driver` · `bg.logs` · `bg.permissions` · `bg.diagnostics` ·
