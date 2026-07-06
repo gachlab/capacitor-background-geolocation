@@ -22,6 +22,9 @@ import { listen, type Subscription } from './stream';
 import { SyncApi } from './sync';
 import { TrackingApi } from './tracking';
 
+/** The native wire-contract version this facade speaks; native `contractVersion` must be ≥ this. */
+const CONTRACT_VERSION = 3;
+
 export class BackgroundGeolocation {
   readonly tracking: TrackingApi;
   readonly locations: LocationsApi;
@@ -56,10 +59,23 @@ export class BackgroundGeolocation {
    */
   capabilities(): Promise<Capabilities> {
     if (this.capsCache === undefined) {
-      this.capsCache = this.native.getCapabilities().catch((error: unknown) => {
-        this.capsCache = undefined;
-        throw error;
-      });
+      this.capsCache = this.native
+        .getCapabilities()
+        .then((caps) => {
+          // Turn a stale-native `cap sync` (renamed events/methods silently no-op) into a signal.
+          if ((caps.contractVersion ?? 0) < CONTRACT_VERSION) {
+            // eslint-disable-next-line no-console
+            console.warn(
+              `[BackgroundGeolocation] native contract v${caps.contractVersion ?? 0} is older than ` +
+                `this JS facade (v${CONTRACT_VERSION}) — run 'npx cap sync' and rebuild. Some events/methods may not work.`,
+            );
+          }
+          return caps;
+        })
+        .catch((error: unknown) => {
+          this.capsCache = undefined;
+          throw error;
+        });
     }
     return this.capsCache;
   }

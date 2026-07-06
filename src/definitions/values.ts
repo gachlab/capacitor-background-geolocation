@@ -122,6 +122,12 @@ export interface ServiceStatus {
  */
 export interface Capabilities {
   platform: 'ios' | 'android' | 'web';
+  /**
+   * Native wire-contract version. The facade warns once if the native binary is OLDER than
+   * the JS expects (a stale `cap sync`), turning silent event/method skew into a diagnosable
+   * signal. Bump on any breaking wire change.
+   */
+  contractVersion: number;
   backgroundTracking: boolean;
   activityRecognition: boolean;
   geofencing: boolean;

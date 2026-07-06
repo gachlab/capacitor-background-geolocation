@@ -14,6 +14,7 @@ import { CapabilityError } from '../sdk/errors';
 function fakeNative(caps: Partial<Capabilities>, box = { calls: 0 }): BackgroundGeolocationNative {
   const full: Capabilities = {
     platform: 'android',
+    contractVersion: 3,
     backgroundTracking: true,
     activityRecognition: true,
     geofencing: true,
