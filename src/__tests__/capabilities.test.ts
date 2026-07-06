@@ -34,18 +34,18 @@ function fakeNative(caps: Partial<Capabilities>, box = { calls: 0 }): Background
 
 describe('facade capability gating', () => {
   it('supports() reports the underlying capability', async () => {
-    const bg = new BackgroundGeolocation(fakeNative({ driverIntelligence: true }));
+    const bg = BackgroundGeolocation({ native: fakeNative({ driverIntelligence: true }) });
     assert.equal(await bg.supports('driverIntelligence'), true);
     assert.equal(await bg.supports('oemSettings'), false);
   });
 
   it('require() resolves when the capability is present', async () => {
-    const bg = new BackgroundGeolocation(fakeNative({ driverIntelligence: true }));
+    const bg = BackgroundGeolocation({ native: fakeNative({ driverIntelligence: true }) });
     await assert.doesNotReject(() => bg.require('driverIntelligence'));
   });
 
   it('require() throws CapabilityError when the capability is absent', async () => {
-    const bg = new BackgroundGeolocation(fakeNative({ driverIntelligence: false }));
+    const bg = BackgroundGeolocation({ native: fakeNative({ driverIntelligence: false }) });
     await assert.rejects(
       () => bg.require('driverIntelligence'),
       (err: unknown) => err instanceof CapabilityError && err.capability === 'driverIntelligence',
@@ -54,7 +54,7 @@ describe('facade capability gating', () => {
 
   it('capabilities() is memoized across supports()/require() calls', async () => {
     const box = { calls: 0 };
-    const bg = new BackgroundGeolocation(fakeNative({ driverIntelligence: true }, box));
+    const bg = BackgroundGeolocation({ native: fakeNative({ driverIntelligence: true }, box) });
     await bg.supports('geofencing');
     await bg.require('driverIntelligence');
     await bg.capabilities();

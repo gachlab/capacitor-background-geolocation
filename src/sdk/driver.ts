@@ -43,23 +43,31 @@ const DRIVER_EVENT: Record<keyof DriverEvents, GeolocationEventName> = {
   idleEnd: 'idleEnd',
 };
 
-export class DriverApi {
-  constructor(
-    private readonly native: BackgroundGeolocationNative,
-    private readonly caps: () => Promise<Capabilities>,
-  ) {}
-
+export interface DriverApi {
   /** Score for the most recently completed trip, or `null`. Gated. */
-  async lastTripScore(): Promise<TripScore | null> {
-    await ensureCapability(this.caps, 'driverIntelligence');
-    return this.native.getTripScore();
-  }
-
+  lastTripScore(): Promise<TripScore | null>;
   /** Subscribe to a driving/trip event. */
   on<E extends keyof DriverEvents>(
     event: E,
     listener: (payload: DriverEvents[E]) => void,
-  ): Subscription<DriverEvents[E]> {
-    return listen<DriverEvents[E]>(this.native, DRIVER_EVENT[event], listener);
-  }
+  ): Subscription<DriverEvents[E]>;
+}
+
+export function DriverApi(deps: {
+  native: BackgroundGeolocationNative;
+  capabilities: () => Promise<Capabilities>;
+}): DriverApi {
+  const { native, capabilities } = deps;
+  return {
+    async lastTripScore() {
+      await ensureCapability(capabilities, 'driverIntelligence');
+      return native.getTripScore();
+    },
+    on<E extends keyof DriverEvents>(
+      event: E,
+      listener: (payload: DriverEvents[E]) => void,
+    ): Subscription<DriverEvents[E]> {
+      return listen<DriverEvents[E]>(native, DRIVER_EVENT[event], listener);
+    },
+  };
 }
