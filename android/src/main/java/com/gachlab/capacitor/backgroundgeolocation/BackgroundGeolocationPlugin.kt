@@ -202,6 +202,7 @@ class BackgroundGeolocationPlugin : Plugin() {
     @PluginMethod
     fun getCurrentLocation(call: PluginCall) {
         val timeout = call.getLong("timeout") ?: 20_000L
+        val highAccuracy = call.getBoolean("enableHighAccuracy") ?: false
         // Capture the cancel generation SYNCHRONOUSLY on the bridge thread so a cancel that
         // arrives before the (offloaded) waiter registers still aborts it — see BGFacade.
         val generation = facade.currentCancelGeneration()
@@ -210,7 +211,7 @@ class BackgroundGeolocationPlugin : Plugin() {
         // down the process; call.resolve/reject are safe off the main thread.
         oneShotExecutor.execute {
             try {
-                val loc = facade.getCurrentLocation(timeout, generation)
+                val loc = facade.getCurrentLocation(timeout, highAccuracy, generation)
                 if (loc == null) { call.reject("Timeout waiting for location", "408"); return@execute }
                 try { call.resolve(JSObject.fromJSONObject(loc.toJSONObjectWithId())) }
                 catch (e: Exception) { call.reject("JSON error: ${e.message}", "400") }

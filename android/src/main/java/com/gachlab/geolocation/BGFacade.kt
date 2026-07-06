@@ -3,6 +3,7 @@
 
 package com.gachlab.geolocation
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -11,6 +12,10 @@ import com.gachlab.geolocation.persistence.ConfigDAO
 import com.gachlab.geolocation.persistence.LocationDAO
 import com.gachlab.geolocation.persistence.SessionDAO
 import com.gachlab.geolocation.service.LocationService
+import com.google.android.gms.location.CurrentLocationRequest
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -112,7 +117,11 @@ class BGFacade(private val context: Context) {
      * if a cancel bumped it in the meantime, this returns null immediately instead of parking.
      * Concurrent calls are safe (one waiter each).
      */
-    fun getCurrentLocation(timeout: Long = 20_000L, sinceGeneration: Int): BGLocation? {
+    fun getCurrentLocation(
+        timeout: Long = 20_000L,
+        enableHighAccuracy: Boolean = false,
+        sinceGeneration: Int,
+    ): BGLocation? {
         val latch = CountDownLatch(1)
         val ref   = AtomicReference<BGLocation?>()
         val cb: (BGLocation?) -> Unit = { loc -> ref.set(loc); latch.countDown() }
@@ -120,12 +129,33 @@ class BGFacade(private val context: Context) {
             if (cancelGeneration != sinceGeneration) return null // cancelled before we could register
             pendingLocations.add(cb)
         }
+        // Standalone one-shot via the fused client so this works even when tracking is NOT
+        // running (parity with iOS/web); if tracking IS running, the service's next fix also
+        // satisfies the same latch — whichever arrives first wins.
+        val cts = requestFusedOneShot(enableHighAccuracy) { loc -> cb(loc) }
         try {
             latch.await(timeout, TimeUnit.MILLISECONDS)
         } finally {
             removePending(cb) // no-op if a fix/cancel already drained it
+            cts.cancel()      // stop the fused one-shot if it hasn't delivered
         }
         return ref.get()
+    }
+
+    /** Fire a standalone fused-provider one-shot; the returned source cancels it. */
+    @SuppressLint("MissingPermission")
+    private fun requestFusedOneShot(highAccuracy: Boolean, onFix: (BGLocation) -> Unit): CancellationTokenSource {
+        val cts = CancellationTokenSource()
+        try {
+            val priority = if (highAccuracy) Priority.PRIORITY_HIGH_ACCURACY else Priority.PRIORITY_BALANCED_POWER_ACCURACY
+            val req = CurrentLocationRequest.Builder().setPriority(priority).build()
+            LocationServices.getFusedLocationProviderClient(context)
+                .getCurrentLocation(req, cts.token)
+                .addOnSuccessListener { loc -> if (loc != null) onFix(BGLocation.fromLocation(loc)) }
+        } catch (e: SecurityException) {
+            Log.w("BGFacade", "getCurrentLocation: no location permission for the fused one-shot")
+        }
+        return cts
     }
 
     /**
