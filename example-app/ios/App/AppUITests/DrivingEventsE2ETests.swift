@@ -22,6 +22,10 @@ final class DrivingEventsE2ETests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        // Wipe persisted geofences before launch so each test starts clean — otherwise a
+        // prior run's geofences reload from UserDefaults and saturate the 19-region cap,
+        // crowding out this test's geofence (AppDelegate honours this arg).
+        app.launchArguments = ["-uitest-reset-geofences"]
         app.launch()
 
         addUIInterruptionMonitor(withDescription: "System alert") { alert in
@@ -127,17 +131,34 @@ final class DrivingEventsE2ETests: XCTestCase {
     // MARK: - Geofence helpers
 
     private func tapGeofenceButton(_ label: String) {
-        let webView = app.webViews.firstMatch
-        let btn = webView.buttons[label]
-        XCTAssert(btn.waitForExistence(timeout: 10), "Geofence button '\(label)' not found")
-        btn.tap()
-        sleep(1)
+        tapWebButton(label, timeout: 10)
     }
 
     private func clearGeofences() {
         let webView = app.webViews.firstMatch
-        let btn = webView.buttons["GF: clear"]
-        if btn.waitForExistence(timeout: 5) { btn.tap(); sleep(1) }
+        guard webView.buttons["GF: clear"].waitForExistence(timeout: 5) else { return }
+        tapWebButton("GF: clear", timeout: 5)
+    }
+
+    /// Taps a WebView button robustly. The geofence buttons sit below the fold, and an
+    /// off-screen WKWebView element taps at a clamped coordinate that lands on a neighbouring
+    /// button (e.g. "GF: enter-here" hitting the adjacent "GF: 21 geofences"). Scroll it into
+    /// the viewport until it is hittable, then tap the element's own centre.
+    private func tapWebButton(_ label: String, timeout: TimeInterval) {
+        let webView = app.webViews.firstMatch
+        let btn = webView.buttons[label]
+        XCTAssert(btn.waitForExistence(timeout: timeout), "WebView button '\(label)' not found")
+        // Scroll it into the viewport if it's below the fold — an off-screen element taps at
+        // a clamped/scrolled coordinate that can miss. The geofence buttons are block-level
+        // full-width rows (see .gf-row in index.html) so there is no horizontal neighbour to
+        // hit by mistake once the correct row is on screen.
+        var attempts = 0
+        while !btn.isHittable && attempts < 6 {
+            webView.swipeUp()
+            attempts += 1
+        }
+        btn.tap()
+        sleep(1)
     }
 
     // MARK: - Helpers

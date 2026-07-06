@@ -7,6 +7,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        // UI-test hook: start each geofence test from a clean persisted state. XCUITest runs
+        // in a separate process and can't clear UserDefaults, so it passes this launch argument
+        // and the app wipes the persisted geofences here — before the Capacitor plugin (and
+        // GeofenceManager, which reloads them on init) starts. Gated on the arg, so production
+        // launches are untouched. Key mirrors GeofenceManager.userDefaultsKey ("gachlab_geofences").
+        if ProcessInfo.processInfo.arguments.contains("-uitest-reset-geofences") {
+            UserDefaults.standard.removeObject(forKey: "gachlab_geofences")
+        }
         // Override point for customization after application launch.
         return true
     }
