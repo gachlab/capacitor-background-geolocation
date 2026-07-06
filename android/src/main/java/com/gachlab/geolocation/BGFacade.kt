@@ -71,7 +71,7 @@ class BGFacade(private val context: Context) {
 
     fun destroy() {
         pluginListener = null
-        drainPending().forEach { it(null) }
+        cancelCurrentLocation() // bumps the generation + drains waiters, so a task still dispatching aborts too
         GeofenceManager.destroy()
         // Only clear the static listener if it's still ours.
         if (LocationService.eventListener === ::dispatch) {
@@ -112,7 +112,7 @@ class BGFacade(private val context: Context) {
      * if a cancel bumped it in the meantime, this returns null immediately instead of parking.
      * Concurrent calls are safe (one waiter each).
      */
-    fun getCurrentLocation(timeout: Long = 20_000L, sinceGeneration: Int = currentCancelGeneration()): BGLocation? {
+    fun getCurrentLocation(timeout: Long = 20_000L, sinceGeneration: Int): BGLocation? {
         val latch = CountDownLatch(1)
         val ref   = AtomicReference<BGLocation?>()
         val cb: (BGLocation?) -> Unit = { loc -> ref.set(loc); latch.countDown() }
@@ -218,11 +218,11 @@ class BGFacade(private val context: Context) {
             is ServiceEvent.Stationary     -> { lastStationary = event.loc; lastStationaryRadius = event.radius }
             else -> Unit
         }
-        // Satisfy any pending getCurrentLocation() calls + cache for sticky replay. Only cache
-        // while running, so a Location dispatched right after ServiceStopped can't re-arm a stale
-        // fix from the ended session (getCurrentLocation waiters are still satisfied regardless).
+        // Satisfy any pending getCurrentLocation() calls + cache for sticky replay. (Cleared on
+        // ServiceStopped so a stopped session doesn't replay; not gated on isRunning, which would
+        // drop a first fix arriving before ServiceStarted is processed.)
         if (event is ServiceEvent.Location) {
-            if (isRunning) lastLocation = event.loc
+            lastLocation = event.loc
             drainPending().forEach { it(event.loc) }
         }
         pluginListener?.invoke(event)
