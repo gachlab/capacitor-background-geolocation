@@ -11,6 +11,10 @@
       h1 { font-size: 1.2rem; margin: 0 0 12px; }
       h2 { font-size: 0.9rem; margin: 12px 0 4px; color: #555; }
       button { display: inline-block; margin: 4px 4px 4px 0; padding: 6px 10px; font-size: 13px; }
+      /* Geofence actions are block-level full-width rows: adjacent inline buttons share an
+         ambiguous WKWebView hit-test region, so XCUITest taps land on the neighbour. One
+         button per row (no horizontal neighbour) makes E2E taps unambiguous. */
+      .gf-row button { display: block; width: 100%; margin: 6px 0; padding: 12px 10px; }
       #log { background: #111; color: #eee; padding: 8px; height: 50vh; overflow: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
       .row { margin-bottom: 6px; }
     </style>
@@ -44,7 +48,7 @@
       <button id="sos">triggerSOS</button>
     </div>
     <h2>Geofencing</h2>
-    <div class="row">
+    <div class="row gf-row">
       <button id="gf-enter">GF: enter-here</button>
       <button id="gf-limit">GF: 21 geofences</button>
       <button id="gf-invalid">GF: invalid</button>
