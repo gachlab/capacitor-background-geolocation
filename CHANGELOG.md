@@ -6,7 +6,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### v3 API redesign (BREAKING — target v3.0.0, not yet published)
+## [3.0.0] - 2026-07-06
+
+### v3 API redesign (BREAKING)
 
 The rule: **modernize the structure, not the syntax.** The Capacitor bridge stays
 `Promise` + `addListener`; the win is a composed facade over a flat native contract.
@@ -14,8 +16,9 @@ The only consumer is `drivers-web`, so the break is intentional. See the bluepri
 for the full rationale.
 
 #### Changed (BREAKING)
+
 - **`BackgroundGeolocation` is now a FACTORY**, not a pre-built instance: `const bg =
-  BackgroundGeolocation()` (zero-config → shared singleton) or `BackgroundGeolocation({ native })`
+BackgroundGeolocation()` (zero-config → shared singleton) or `BackgroundGeolocation({ native })`
   to inject a bridge (testing). The whole SDK is functional with constructor-function DI — each
   sub-API is a `Name(deps)` factory closing over its state; dependencies are injected, not `new`ed.
 - **Flat plugin surface → composed facade.** `import { BackgroundGeolocation }` is now
@@ -34,6 +37,7 @@ for the full rationale.
 - **Cordova-compat layer retired** (the old ~1600-line `definitions.ts`).
 
 #### Added
+
 - **Capability gating** — `bg.capabilities()` (memoized, rejections not cached) +
   `bg.supports(cap)`; gated APIs (`bg.driver.*`, `bg.diagnostics.oem.*`) throw a typed
   `CapabilityError` off-platform instead of returning silent no-ops.
@@ -48,6 +52,7 @@ for the full rationale.
   only via the escape hatch.
 
 #### Internal
+
 - Native contract segregated into role interfaces (`definitions/roles.ts`), composed by
   intersection; flat wire config in `definitions/wire.ts`.
 - `toFlatConfig` **coverage guard test** — fails if a `NativeConfig` wire key has no
@@ -55,12 +60,37 @@ for the full rationale.
 - TypeScript target bumped es2017 → **es2022** (+ `esnext.disposable` lib) for async
   generators and `using`.
 
+#### Finalization (altitude + correctness)
+
+- **Single sticky-replay primitive** (`stream.ts`): one `stickyReplay()` now owns the
+  ordering guard reimplemented three times before (native stream, `config.on`,
+  `bg.on('authorization')`). Fixes the `config.on()` double-delivery race and the
+  authorization sticky delivering `{ status: undefined }`. `makeAliasedOn()` dedups the
+  sub-API `.on()` bodies; `bg.config` is exported as its authored interface.
+- **`configChanged` native event** — the persisted base config is now a native
+  source-of-truth: a write from another facade instance (or the raw proxy) notifies every
+  `bg.config` subscriber (self-echo deduped).
+- **`SyncConfig.method`** — sync HTTP method is independent of `transport.method` (falls
+  back to it), no longer hard-tied.
+- **web**: `locations.pending({ consume: true })` no longer deletes already-synced fixes —
+  only the un-synced (valid) locations are consumed.
+- **Android**: `getConfig()` caches in-memory (parity with iOS); `getCurrentLocation`
+  honors `maximumAge`; `PluginCall` Long options (`timeout`, `maximumAge`, `locationId`)
+  are parsed robustly (Capacitor's `getLong` silently dropped bridged JS numbers, so
+  `timeout` was never honored and `deleteLocation` always rejected).
+- **Android**: `bg.locations.all()` no longer returns soft-deleted rows — a `delete(id)`'d
+  (or synced-out) location is excluded, matching iOS (`status != 0`) and web (hard delete).
+- **Native one-shot hardening**: Android fused fix resolves the waiter exactly once
+  (atomic with cancel/drain); iOS one-shot starts off the blocking thread and its
+  semaphore signals at most once.
+
 ## [2.0.0] - 2026-06-25
 
 Legacy cleanup of the Cordova-era inheritance. The only consumer is `drivers-web`,
 so these breaking changes are intentional.
 
 ### Removed (BREAKING)
+
 - **Cordova-era plugin methods** `isLocationEnabled`, `watchLocationMode`,
   `stopWatchingLocationMode` (iOS + Android) — not part of the TypeScript contract;
   the latter two were no-ops.
@@ -71,17 +101,20 @@ so these breaking changes are intentional.
   its fallback hydration — config is now a single `config_json` blob.
 
 ### Changed (BREAKING)
+
 - **Android**: the on-disk database was renamed `cordova_bg_geolocation.db` →
   `gachlab_bg_geolocation.db` and reset to v1. The ~190 lines of Cordova migration
   history were dropped. **Locations/config persisted by a previous version are not
   carried over** on upgrade (the unsynced queue starts empty).
 
 ### Internal
+
 - Removed dead `JosueLMM`/`MAURLocation` references; copyright is uniformly `gachlab`.
 
 ## [1.7.0] - 2026-06-24
 
 ### Fixed
+
 - **Android** (geofencing, critical): `GeofenceManager` built its transition
   `PendingIntent` with `FLAG_IMMUTABLE`, which GMS `GeofencingClient.addGeofences`
   rejects with "PendingIntent must be mutable" (opStatusCode 10) on **API 31+**. This
@@ -89,6 +122,7 @@ so these breaking changes are intentional.
   fired). Now uses `FLAG_MUTABLE` on API ≥ 31.
 
 ### Added
+
 - **`geofenceError` event** (all platforms): a geofence that fails to register or
   monitor now surfaces a dedicated `geofenceError` (`{ id?, message }`) instead of
   failing silently — iOS (region cap / monitoring failure), Android (GMS registration
@@ -101,6 +135,7 @@ so these breaking changes are intentional.
   (initial ENTER when already inside, EXIT, DWELL, `geofenceError`) — previously a no-op.
 
 ### Changed
+
 - **iOS**: `SensorFusionDetector` phone-usage is now gated by `sensorFusion`, fixing a
   double-count with the GPS phone-usage path when `sensorFusion` was off.
 - **Tooling**: migrated to the native **TypeScript 7** compiler. Type-aware ESLint
@@ -108,48 +143,56 @@ so these breaking changes are intentional.
   `lint` runs Prettier and `typecheck` (`tsc --noEmit`) is the type gate.
 
 ### Tests
+
 - Geofencing E2E across all three platforms: iOS (simulator), Android (GMS emulator),
   and web (Playwright + Chromium with mocked geolocation).
 
 ## [1.6.7] - 2026-06-18
 
 ### Fixed
+
 - **iOS** (`BackgroundSync`): guard `syncUrl` / documents-directory resolution to
   avoid a force-unwrap crash when sync is not yet configured (#42).
 
 ## [1.6.6] - 2026-06-18
 
 ### Fixed
+
 - **Android**: resolve `@`-placeholders inside nested objects and arrays in the
   location POST template, not just top-level keys (#40).
 
 ## [1.6.5] - 2026-06-18
 
 ### Fixed
-- **Android**: set request headers *before* `requestMethod`/`doOutput` on the
+
+- **Android**: set request headers _before_ `requestMethod`/`doOutput` on the
   `HttpURLConnection`. Real fix for the intermittent HTTP `-1` responses (#38).
 
 ## [1.6.4] - 2026-06-18
 
 ### Fixed
+
 - **Android**: set request headers before `setFixedLengthStreamingMode` as a
   first attempt at the HTTP `-1` failures (superseded by 1.6.5) (#37).
 
 ## [1.6.3] - 2026-06-18
 
 ### Fixed
+
 - **Android**: escape `}` in the `UrlTemplateResolver` regex — strict ART
   runtimes threw on class init otherwise (#35).
 
 ## [1.6.2] - 2026-05-30
 
 ### Fixed
+
 - **Android**: replace `ThreadLocal.withInitial` with a subclass override for
   API 23+ compatibility (#33).
 
 ## [1.6.1] - 2026-05-29
 
 ### Fixed
+
 - **Android build**: declare Kotlin via buildscript classpath instead of
   `apply plugin: 'kotlin-android'` — AGP 9.x integrates Kotlin and applying it
   explicitly threw "extension 'kotlin' already registered" (#31, #32).
@@ -157,6 +200,7 @@ so these breaking changes are intentional.
 ## [1.6.0] - 2026-05-27
 
 ### Added
+
 - **`crashConfirmWindowMs`** (Android + iOS): deferred `possibleCrash` confirmation window.
   When > 0, the crash event is held until the vehicle stays stopped for the configured ms
   after the velocity drop; if speed recovers before the window elapses the event is
@@ -173,6 +217,7 @@ so these breaking changes are intentional.
   on web as documented.
 
 ### Removed
+
 - `registerHeadlessTask` removed from the iOS bridge. The method was a no-op on iOS since
   headless tasks are an Android-only concept; keeping it caused confusion and stale test
   coverage. Android support is unchanged.
@@ -180,6 +225,7 @@ so these breaking changes are intentional.
 ## [1.5.0] - 2026-05-27
 
 ### Added
+
 - **Priority sync** for safety-critical events. Configured events (`possibleCrash` and `sos`
   by default) are POSTed immediately via a dedicated channel that bypasses the regular sync
   queue. The channel deduplicates by event timestamp, retries with configurable backoff, and
@@ -196,6 +242,7 @@ so these breaking changes are intentional.
 ## [1.4.0] - 2026-05-27
 
 ### Added
+
 - **Idle detection** during active trips. Fires `idleStart` when the vehicle has been
   stationary for ≥ `drivingEvents.idleThresholdMs` (default 5 min); fires `idleEnd` when
   movement resumes. `idleEnd` payload includes `durationMs`.
@@ -213,6 +260,7 @@ so these breaking changes are intentional.
 ## [1.3.0] - 2026-05-27
 
 ### Added
+
 - **Geofencing API**: `addGeofences`, `addGeofence`, `removeGeofence`, `removeGeofences`,
   `removeAllGeofences`, `getGeofences`. Zones persist across service restarts.
   - Android: `GeofencingClient` (Google Play Services); `GeofenceBroadcastReceiver`;
@@ -223,7 +271,7 @@ so these breaking changes are intentional.
   - New events: `geofenceEnter`, `geofenceExit`, `geofenceDwell` — each carries
     `{ geofenceId, label, location, metadata, dwellMs? }`.
   - New `GeofenceConfig` type: `{ id, latitude, longitude, radius, label?, notifyOnEnter?,
-    notifyOnExit?, notifyOnDwell?, dwellMilliseconds?, metadata? }`.
+notifyOnExit?, notifyOnDwell?, dwellMilliseconds?, metadata? }`.
 - **Trip–geofence integration**: `drivingEvents.tripStartGeofenceIds` / `tripEndGeofenceIds` —
   auto-start or auto-end a trip when the device crosses a nominated geofence boundary.
 
@@ -232,22 +280,24 @@ so these breaking changes are intentional.
 ## [1.2.0] - 2026-05-27
 
 ### Added
+
 - **WorkManager headless task** (Android): `registerHeadlessTask()` now schedules a
   `PeriodicWorkRequest` via `WorkManager` instead of the previous `JsEvaluator` WebView.
   This survives Android 12+ background-activity restrictions that would prevent launching
   a WebView from a killed process. New config field: `headlessTaskTimeoutMs`.
 - **iOS background fallback config**: `iosBackgroundFallback: 'significantChanges' |
-  'regionMonitoring' | 'none'` lets apps pick the strategy used when iOS suspends regular
+'regionMonitoring' | 'none'` lets apps pick the strategy used when iOS suspends regular
   location updates. New event: `iosFallbackActivated → { reason: string }`.
 - **`getBackgroundKillReason()`** available on both platforms. Android returns the last
   watchdog / OOM / system-kill cause persisted in SQLite; iOS returns `{ reason: null,
-  timestamp: null }` (iOS does not expose a kill reason).
+timestamp: null }` (iOS does not expose a kill reason).
 
 ---
 
 ## [1.1.0] - 2026-05-27
 
 ### Added
+
 - **Android core rewritten in Kotlin** under `com.gachlab.*`. No Java remains in the main
   source tree. Eliminated runtime dependencies: `gson`, `slf4j`, `logback-android`,
   `jparkie-promise`, `android-permissions`. SyncAdapter / AuthenticatorService /
@@ -271,6 +321,7 @@ so these breaking changes are intentional.
   `DrivingEventsDetectorTests`, `BackgroundGeolocationPluginTests` (iOS XCTest).
 
 ### Removed
+
 - All Objective-C source files from iOS (`MAUR*` prefix classes superseded by Swift).
 - `com.marianhello.*`, `com.evgenii.*`, `ru.andremoniy.*`, `org.apache.*`, `org.chromium.*`
   Java packages from Android.
@@ -280,6 +331,7 @@ so these breaking changes are intentional.
 ## [1.0.2] - 2026-05-25
 
 ### Fixed
+
 - **iOS background sync: HTTP 400 "Invalid request payload JSON format".** `MAURBackgroundSync`
   was collecting all pending locations, serialising them into a JSON **array**, and uploading
   the entire array in a single `NSURLSessionUploadTask`. Strict REST backends (Fastify/Hapi
@@ -292,6 +344,7 @@ so these breaking changes are intentional.
 ## [1.0.1] - 2026-05-25
 
 ### Fixed
+
 - **iOS background sync: HTTP 415 on every location POST.** `MAURBackgroundSync`
   was calling `addValue:forHTTPHeaderField:` for all `httpHeaders` entries
   including `Content-Type`, appending a second `application/json` value to the
@@ -305,6 +358,7 @@ so these breaking changes are intentional.
 Pulled in v4.5.4 native bug-fixes from upstream cordova plugin.
 
 ### Fixed
+
 - **HTTP POST: skip null / `JSONObject.NULL` / `NSNull` values when
   serialising form-urlencoded bodies.** Previously these were sent as the
   literal string `"null"` (or `"<null>"` on iOS), which Traccar's
@@ -320,6 +374,7 @@ Pulled in v4.5.4 native bug-fixes from upstream cordova plugin.
 First public release.
 
 ### Added
+
 - **40 plugin methods** mirroring the Cordova spec. New entries since 0.1.0:
   `switchMode`, `getLocations`, `getValidLocationsAndDelete`, `clearSync`,
   `getPendingSyncCount`, `startSession`, `getSessionLocations`, `clearSession`,
@@ -362,6 +417,7 @@ First public release.
   `heartbeat`, `tripStart`, `tripEnd`, `speeding`, `sos`).
 
 ### Changed
+
 - Renamed `LocationOptions` → `ConfigureOptions` (with a back-compat alias).
 - Renamed `Status` → `ServiceStatus` (with a back-compat alias).
 - Tightened `LogEntry` shape to match the Cordova spec (`timestamp`, `level`,
@@ -373,6 +429,7 @@ First public release.
   the call as a no-op; Web throws `unimplemented`.
 
 ### Removed
+
 - Placeholder `watchLocationMode` / `stopWatchingLocationMode` methods (not
   present in the Cordova spec).
 
@@ -381,6 +438,7 @@ First public release.
 Initial scaffold and native bridges.
 
 ### Added
+
 - Capacitor 8+ plugin scaffold (`@gachlab/capacitor-background-geolocation`).
 - TypeScript API mirroring the legacy Cordova plugin surface: `configure`, `start`, `stop`, `getCurrentLocation`,
   `getStationaryLocation`, `getValidLocations`, `getConfig`, `deleteLocation`,
@@ -404,4 +462,5 @@ Initial scaffold and native bridges.
   on `v*` tags).
 
 ### Notes
+
 - Not yet published to npm. First public release will be tagged `v1.0.0`.
