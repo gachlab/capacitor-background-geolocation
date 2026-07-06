@@ -131,7 +131,7 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
     });
   }
 
-  async cancelCurrentLocation(): Promise<void> {
+  async cancelCurrentLocation(_options?: { requestId?: string }): Promise<void> {
     /* web one-shots settle on their own; there is no pending request to cancel */
   }
 

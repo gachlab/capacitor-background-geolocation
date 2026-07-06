@@ -47,24 +47,30 @@ class BGFacade(private val context: Context) {
 
     private var pluginListener: ((ServiceEvent) -> Unit)? = null
 
-    // In-flight getCurrentLocation() waiters — one callback per concurrent call. A fix (or
-    // cancel) drains them atomically, so overlapping one-shots don't clobber each other's slot.
+    // In-flight getCurrentLocation() waiters, keyed by requestId (facade-generated). A fix drains
+    // ALL; cancel targets ONE by id. `cancelledIds` records a cancel that arrived before its
+    // waiter registered, so the waiter aborts on registration — closes the cancel-before-register
+    // race with the id itself, no bridge-thread generation capture needed.
     private val pendingLock = Any()
-    private val pendingLocations = mutableListOf<(BGLocation?) -> Unit>()
-    // Bumped on cancel. A one-shot captures the generation on the bridge thread BEFORE its
-    // blocking wait is dispatched; if a cancel bumps it before the waiter registers, the
-    // waiter aborts immediately instead of parking — closes the cancel-before-register race.
-    private var cancelGeneration = 0
+    private val pending = LinkedHashMap<String, (BGLocation?) -> Unit>()
+    private val cancelledIds = HashSet<String>()
+    private var internalSeq = 0L
 
-    /** Read the cancel generation synchronously (call on the bridge thread before dispatching a wait). */
-    fun currentCancelGeneration(): Int = synchronized(pendingLock) { cancelGeneration }
-
-    private fun addPending(cb: (BGLocation?) -> Unit) = synchronized(pendingLock) { pendingLocations.add(cb) }
-    private fun removePending(cb: (BGLocation?) -> Unit) = synchronized(pendingLock) { pendingLocations.remove(cb) }
-    /** Atomically take and clear all waiters — each callback is handed to exactly one caller. */
-    private fun drainPending(): List<(BGLocation?) -> Unit> = synchronized(pendingLock) {
-        val copy = pendingLocations.toList(); pendingLocations.clear(); copy
+    /** Register a waiter; false if this id was already cancelled before it could register. */
+    private fun registerPending(id: String, cb: (BGLocation?) -> Unit): Boolean = synchronized(pendingLock) {
+        if (cancelledIds.remove(id)) return false
+        pending[id] = cb; true
     }
+    private fun removePending(id: String) = synchronized(pendingLock) { pending.remove(id) }
+    /** Cancel one waiter by id; if it hasn't registered yet, remember the id so it aborts on register. */
+    private fun takePending(id: String): ((BGLocation?) -> Unit)? = synchronized(pendingLock) {
+        val cb = pending.remove(id); if (cb == null) cancelledIds.add(id); cb
+    }
+    /** Atomically take and clear ALL waiters — each callback handed to exactly one drainer. */
+    private fun drainPending(): List<(BGLocation?) -> Unit> = synchronized(pendingLock) {
+        val copy = pending.values.toList(); pending.clear(); copy
+    }
+    private fun nextInternalId(): String = synchronized(pendingLock) { "internal-${++internalSeq}" }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -111,24 +117,22 @@ class BGFacade(private val context: Context) {
     }
 
     /**
-     * Block the calling thread (max [timeout] ms) until the next location fix arrives, or null.
+     * Block the calling thread (max [timeout] ms) until a location fix arrives, or null.
      * Must be called from a background thread — the plugin runs it on its oneShotExecutor.
-     * [sinceGeneration] is the cancel generation captured on the bridge thread before dispatch:
-     * if a cancel bumped it in the meantime, this returns null immediately instead of parking.
-     * Concurrent calls are safe (one waiter each).
+     * [requestId] correlates with cancelCurrentLocation(requestId); if that cancel already
+     * arrived (before this waiter could register), returns null immediately instead of parking.
+     * Concurrent calls are independent (keyed by id).
      */
     fun getCurrentLocation(
         timeout: Long = 20_000L,
         enableHighAccuracy: Boolean = false,
-        sinceGeneration: Int,
+        requestId: String? = null,
     ): BGLocation? {
+        val id = requestId ?: nextInternalId()
         val latch = CountDownLatch(1)
         val ref   = AtomicReference<BGLocation?>()
         val cb: (BGLocation?) -> Unit = { loc -> ref.set(loc); latch.countDown() }
-        synchronized(pendingLock) {
-            if (cancelGeneration != sinceGeneration) return null // cancelled before we could register
-            pendingLocations.add(cb)
-        }
+        if (!registerPending(id, cb)) return null // cancelled before we could register
         // Standalone one-shot via the fused client so this works even when tracking is NOT
         // running (parity with iOS/web); if tracking IS running, the service's next fix also
         // satisfies the same latch — whichever arrives first wins.
@@ -136,7 +140,7 @@ class BGFacade(private val context: Context) {
         try {
             latch.await(timeout, TimeUnit.MILLISECONDS)
         } finally {
-            removePending(cb) // no-op if a fix/cancel already drained it
+            removePending(id) // no-op if a fix/cancel already took it
             cts.cancel()      // stop the fused one-shot if it hasn't delivered
         }
         return ref.get()
@@ -159,16 +163,16 @@ class BGFacade(private val context: Context) {
     }
 
     /**
-     * Cancel every in-flight [getCurrentLocation] one-shot — wakes the waiters with no fix so
-     * the plugin resolves the pending calls immediately (the JS caller already aborted). Also
-     * bumps the cancel generation so a one-shot still dispatching (not yet registered) aborts.
+     * Cancel an in-flight [getCurrentLocation] one-shot — wakes the waiter(s) with no fix so the
+     * plugin resolves immediately (the JS caller already aborted). With [requestId] cancels just
+     * that one (and remembers it if it hasn't registered yet); with null cancels all.
      */
-    fun cancelCurrentLocation() {
-        val cbs = synchronized(pendingLock) {
-            cancelGeneration++
-            val copy = pendingLocations.toList(); pendingLocations.clear(); copy
+    fun cancelCurrentLocation(requestId: String? = null) {
+        if (requestId != null) {
+            takePending(requestId)?.invoke(null)
+        } else {
+            drainPending().forEach { it(null) }
         }
-        cbs.forEach { it(null) }
     }
 
     // ── Location reads ────────────────────────────────────────────────────────
