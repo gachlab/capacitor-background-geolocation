@@ -25,7 +25,11 @@ await build({
   bundle: true,
   format: 'iife',
   platform: 'browser',
-  target: 'es2022',
+  // The API-30 e2e emulator ships Android System WebView 83 (Chromium 83). Logical
+  // assignment (`??=`/`||=`/`&&=`, ES2021) landed in Chromium 85, so an es2022 bundle
+  // throws "Unexpected token '='" at load and the plugin global never registers. Target
+  // chrome83 so esbuild transpiles those down while keeping `?.`/`??` (Chromium 80).
+  target: 'chrome83',
   outfile: 'www/bg-plugin.js',
   sourcemap: true,
   logLevel: 'info',
