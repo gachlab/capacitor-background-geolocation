@@ -148,7 +148,8 @@ export interface Safety {
  * intersection of the role interfaces. This is what `registerPlugin` is typed with.
  */
 export interface BackgroundGeolocationNative
-  extends Trackable,
+  extends
+    Trackable,
     LocationStore,
     RecordingStore,
     SyncQueue,
