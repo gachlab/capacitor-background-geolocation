@@ -139,12 +139,7 @@ tap_id gf-enter
 # Confirm re-entry while foreground, then background BEFORE the 4 s dwell elapses.
 wait_event "geofenceEnter" 20 >/dev/null || true
 adb shell input keyevent KEYCODE_HOME
-# Foreground DWELL fires in ~8 s, but once backgrounded the dwell is delivered by
-# GMS's OS-level geofencing, whose responsiveness is best-effort and much slower
-# on an emulator (Google documents up to ~2 min, worse under background/doze). The
-# feature works (foreground DWELL passes); this window just has to tolerate GMS's
-# background delivery latency, so give it 120 s (wait_event keeps injecting fixes).
-if wait_event "geofenceDwell" 120; then pass "DWELL survived backgrounding (GMS OS-level dwell)"
+if wait_event "geofenceDwell" 30; then pass "DWELL survived backgrounding (GMS OS-level dwell)"
 else fail "DWELL did not fire while backgrounded"; fi
 adb shell am start -n "${PACKAGE}/${ACTIVITY}" >/dev/null; sleep 2
 
