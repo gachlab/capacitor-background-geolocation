@@ -18,7 +18,10 @@ describe('Subscription disposal', () => {
   it('[Symbol.dispose]() removes the subscription (equals remove())', async () => {
     let removed = false;
     const handle = { remove: async (): Promise<void> => void (removed = true) };
-    const sub = subscribe(async () => handle, () => {});
+    const sub = subscribe(
+      async () => handle,
+      () => {},
+    );
     await tick();
     sub[Symbol.dispose]();
     assert.equal(removed, true);
@@ -28,7 +31,10 @@ describe('Subscription disposal', () => {
     let removed = false;
     const handle = { remove: async (): Promise<void> => void (removed = true) };
     {
-      using sub = subscribe(async () => handle, () => {});
+      using sub = subscribe(
+        async () => handle,
+        () => {},
+      );
       await tick();
       assert.equal(removed, false, 'still live inside the block');
       void sub;

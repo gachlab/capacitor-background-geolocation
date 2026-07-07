@@ -19,7 +19,8 @@ function fakeNative(stored: Record<string, unknown>[] = []): {
 } {
   const added: Record<string, unknown>[][] = [];
   const native = {
-    addGeofences: async (o: { geofences: Geofence[] }): Promise<void> => void added.push(o.geofences as unknown as Record<string, unknown>[]),
+    addGeofences: async (o: { geofences: Geofence[] }): Promise<void> =>
+      void added.push(o.geofences as unknown as Record<string, unknown>[]),
     getGeofences: async (): Promise<{ geofences: Geofence[] }> => ({ geofences: stored as unknown as Geofence[] }),
   } as unknown as BackgroundGeolocationNative;
   return { native, added };
