@@ -43,7 +43,7 @@
     "lint": "prettier --check \"**/*.{css,html,ts,js}\"",
     "fmt": "prettier --write \"**/*.{css,html,ts,js}\"",
     "docgen": "docgen --api BackgroundGeolocationPlugin --output-readme README.md --output-json dist/docs.json",
-    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
+    "build": "npm run clean && tsc && node build.mjs",
     "clean": "rimraf ./dist",
     "watch": "tsc --watch",
     "prepare": "npm run build",
@@ -75,9 +75,8 @@
     "eslint": "^8.57.1",
     "prettier": "^3.3.3",
     "rimraf": "^6.0.1",
-    "rollup": "^4.22.0",
     "tsx": "^4.22.3",
-    "typescript": "7.0.1-rc"
+    "typescript": "^7.0.2"
   },
   "peerDependencies": {
     "@capacitor/core": ">=8.0.0"
