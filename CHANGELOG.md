@@ -6,6 +6,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-08-03
+
 ### Fixed
 
 - **The body template survived only in memory: every config read from disk lost
