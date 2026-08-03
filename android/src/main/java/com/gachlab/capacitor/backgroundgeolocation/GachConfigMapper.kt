@@ -195,12 +195,7 @@ object GachConfigMapper {
         json.put("showDistance",               config.showDistance == true)
 
         // Template serialization
-        val tplObj: Any = when (val t = config.template) {
-            is HashMapLocationTemplate   -> t.toDefinitionJson() ?: JSONObject.NULL
-            is ArrayListLocationTemplate -> t.toDefinitionJson() ?: JSONObject.NULL
-            else                         -> JSONObject.NULL
-        }
-        json.put("postTemplate", tplObj)
+        json.put("postTemplate", templateToJSON(config) ?: JSONObject.NULL)
 
         json.put("httpMethod",      config.httpMethod ?: BGConfig.DEFAULT_HTTP_METHOD)
         json.put("syncHttpMethod",  config.syncHttpMethod ?: BGConfig.DEFAULT_SYNC_HTTP_METHOD)
@@ -288,10 +283,33 @@ object GachConfigMapper {
         config.prioritySyncUrl?.let    { j.put("prioritySyncUrl", it) }
         config.prioritySyncRetries?.let { j.put("prioritySyncRetries", it) }
         config.prioritySyncRetryDelays?.let { j.put("prioritySyncRetryDelays", JSONArray(it)) }
+        // Without this the template was lost on every trip through storage:
+        // `ConfigDAO` persists whatever comes out of here, so on rehydration
+        // `config.template` was null and `PostLocationTask`/`BackgroundSync`
+        // fell back to the empty template, POSTing the flat payload instead of
+        // the configured shape. The key is omitted when there is no template so
+        // the round trip preserves an absent template as absent, rather than
+        // turning it into an empty one.
+        templateToJSON(config)?.let { j.put("postTemplate", it) }
         return j
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Serializes the body template back to its JSON definition, or null when the
+     * config carries no template.
+     *
+     * Shared by both serializers on purpose. They used to write the config
+     * separately and only [toJSObject] included the template, so every config
+     * that travelled through [toJSONObject] — the one `ConfigDAO` persists —
+     * came back without it. One helper, one behaviour: the two cannot drift again.
+     */
+    private fun templateToJSON(config: BGConfig): Any? = when (val t = config.template) {
+        is HashMapLocationTemplate   -> t.toDefinitionJson()
+        is ArrayListLocationTemplate -> t.toDefinitionJson()
+        else                         -> null
+    }
 
     private fun has(j: JSONObject, key: String): Boolean = j.has(key) && !j.isNull(key)
 
