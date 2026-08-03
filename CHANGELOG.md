@@ -6,6 +6,21 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- **The body template survived only in memory: every config read from disk lost
+  it.** Of the two config serializers, `toJSObject` (config → JavaScript) wrote
+  the template and `toJSONObject` (config → SQLite, the one `ConfigDAO`
+  persists) did not. Any consumer that re-read the config from storage got
+  `template = null`, fell through to `LocationTemplateFactory.empty()` in
+  `PostLocationTask`/`BackgroundSync`, and POSTed the flat default payload
+  instead of the configured shape — silently, since the plugin cannot tell that
+  the server rejected it. It hit the three storage readers: service
+  start/reconfigure, every sync flush, and boot. Both serializers now share a
+  single `templateToJSON` helper so they cannot drift apart again. ([#50])
+
+[#50]: https://github.com/gachlab/capacitor-background-geolocation/issues/50
+
 ## [3.0.0] - 2026-07-06
 
 ### v3 API redesign (BREAKING)

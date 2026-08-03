@@ -98,6 +98,42 @@ class ConfigMapperTest {
             assertEquals(true, result.syncEnabled)
         }
 
+        @Test @DisplayName("bodyTemplate survives round-trip and still expands")
+        fun bodyTemplateRoundTrip() {
+            // Regression: `toJSONObject` — the serializer ConfigDAO persists with —
+            // skipped the template while its twin `toJSObject` wrote it. Every
+            // consumer that re-read the config from disk (service start, sync
+            // flush, boot) therefore lost it, fell back to an empty template and
+            // POSTed the flat default payload instead of the configured shape.
+            val definition = JSONObject(
+                """{"location":{"coords":{"latitude":"@latitude","longitude":"@longitude"},"timestamp":"@time"}}"""
+            )
+            val original = BGConfig.getDefault().apply {
+                template = LocationTemplateFactory.fromJSON(definition)
+            }
+
+            val result = GachConfigMapper.fromJSONObject(GachConfigMapper.toJSONObject(original))
+
+            val template = result.template
+            assertTrue(template is LocationTemplate, "template lost on round-trip")
+            // Non-null is not enough: surviving as an EMPTY template is the bug.
+            val body = (template as LocationTemplate).locationToJson(
+                BGLocation().apply { latitude = 25.794585; longitude = -80.278061; time = 1_785_768_313_000 }
+            ) as JSONObject
+            val coords = body.getJSONObject("location").getJSONObject("coords")
+            assertEquals(25.794585, coords.getDouble("latitude"))
+            assertEquals(-80.278061, coords.getDouble("longitude"))
+            assertEquals(1_785_768_313_000L, body.getJSONObject("location").getLong("timestamp"))
+        }
+
+        @Test @DisplayName("a config with no template comes back with none, not an empty one")
+        fun absentTemplateStaysAbsent() {
+            val result = GachConfigMapper.fromJSONObject(
+                GachConfigMapper.toJSONObject(BGConfig.getDefault().apply { template = null })
+            )
+            assertNull(result.template)
+        }
+
         @Test @DisplayName("drivingEvents v1.6 fields survive round-trip")
         fun drivingEventsV16RoundTrip() {
             val original = BGConfig().apply {

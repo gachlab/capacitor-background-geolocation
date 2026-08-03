@@ -7,6 +7,9 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.gachlab.geolocation.BGConfig
+import com.gachlab.geolocation.BGLocation
+import com.gachlab.geolocation.LocationTemplate
+import com.gachlab.geolocation.LocationTemplateFactory
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -88,6 +91,49 @@ class LocationDbHelperTest {
         assertTrue("config not loaded", loaded != null)
         assertEquals("https://example.test/loc", loaded!!.url)
         assertEquals(42, loaded.distanceFilter)
+    }
+
+    /**
+     * The template MUST survive the round trip. It did not: `toJSONObject` — the
+     * serializer this DAO uses — skipped it while its twin `toJSObject` wrote it,
+     * so every consumer that re-read the config from disk (service start, sync
+     * flush, boot) POSTed the flat default payload instead of the configured
+     * shape. This test used to pass while that was broken because it only
+     * asserted `url` and `distanceFilter`.
+     */
+    @Test fun configRoundTripPreservesBodyTemplate() {
+        val definition = org.json.JSONObject(
+            """{"location":{"coords":{"latitude":"@latitude","longitude":"@longitude"},"timestamp":"@time"}}"""
+        )
+        val cfg = BGConfig.getDefault().apply {
+            template = LocationTemplateFactory.fromJSON(definition)
+        }
+        ConfigDAO(ctx).persistConfig(cfg)
+
+        val loaded = ConfigDAO(ctx).retrieveConfig()
+        assertTrue("config not loaded", loaded != null)
+        val template = loaded!!.template
+        assertTrue("template lost on round trip (was ${template ?: "null"})", template is LocationTemplate)
+
+        // Not just non-null: it has to be the SAME template, and it has to still
+        // expand. A template that survives as an empty one is the exact bug.
+        val location = BGLocation().apply {
+            latitude = 25.794585
+            longitude = -80.278061
+            time = 1_785_768_313_000
+        }
+        val body = (template as LocationTemplate).locationToJson(location) as org.json.JSONObject
+        val coords = body.getJSONObject("location").getJSONObject("coords")
+        assertEquals(25.794585, coords.getDouble("latitude"), 0.000001)
+        assertEquals(-80.278061, coords.getDouble("longitude"), 0.000001)
+        assertEquals(1_785_768_313_000L, body.getJSONObject("location").getLong("timestamp"))
+    }
+
+    /** A config with no template must come back with none — not with an empty one. */
+    @Test fun configRoundTripKeepsAbsentTemplateAbsent() {
+        ConfigDAO(ctx).persistConfig(BGConfig.getDefault().apply { template = null })
+
+        assertEquals(null, ConfigDAO(ctx).retrieveConfig()!!.template)
     }
 
     @Test fun retrieveBeforePersistReturnsNull() {
