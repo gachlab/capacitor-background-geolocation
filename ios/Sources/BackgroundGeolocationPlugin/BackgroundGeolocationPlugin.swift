@@ -972,8 +972,12 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
     @objc private func onFallbackActivatedN(_ note: Notification) {
         // Clean output: normalize to the camelCase contract ('significantChanges' | 'regionMonitoring').
-        let raw = ((note.userInfo?["strategy"] as? String) ?? "significantChanges").lowercased()
-        let strategy = raw == "regionmonitoring" ? "regionMonitoring" : "significantChanges"
+        // Through `publicFallback`, not a second inline ternary. The docstring on
+        // that helper claimed this site already used it and it did not — the very
+        // duplication this change set removed for the restart reason, left alive
+        // here. The old ternary also collapsed `none` into `significantChanges`.
+        let raw = (note.userInfo?["strategy"] as? String) ?? "significantChanges"
+        let strategy = BGConfig.publicFallback(raw)
         notifyListeners("iosFallbackActivated", data: ["strategy": strategy])
     }
 

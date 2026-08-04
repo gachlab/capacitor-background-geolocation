@@ -55,12 +55,14 @@ class LogLevelsTest {
     @Test
     @DisplayName("round trip: what we publish is what we can read back")
     fun roundTrip() {
-        // The asymmetry that hid the bug: `toInt` is case-insensitive, so
-        // querying by minLevel kept working while the values coming back were
-        // in the other spelling. Feeding our own output back in is the check
-        // that was missing.
+        // Two assertions, and only the second one has teeth. `toInt` uppercases,
+        // so the identity below held throughout the entire bug — it proves the
+        // pair is consistent, never which spelling leaves the plugin. The
+        // published spelling has to be asserted directly or nothing does.
         listOf(0, 1, 2, 3).forEach { ordinal ->
-            assertEquals(ordinal, LogLevels.toInt(LogLevels.toLevel(ordinal)))
+            val published = LogLevels.toLevel(ordinal)
+            assertEquals(ordinal, LogLevels.toInt(published))
+            assertEquals(published.lowercase(), published, "levels leave the plugin lowercase")
         }
     }
 }

@@ -73,18 +73,25 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   constant is `'polling'`, working only because it fell into an else branch. The
   mapper now translates, and the wire type is a union instead of a bare `string`.
 
-- **`stationary` dropped `radius`**, which the type declares required and
-  `getStationaryLocation()` did deliver — so whoever tested through the getter
-  saw it work.
+- **`stationary` dropped `radius` on Android**, which `getStationaryLocation()`
+  did deliver — so whoever tested through the getter saw it work. iOS still
+  cannot provide it at all: its `onStationaryChanged` delegate never receives a
+  radius, so neither its event nor its getter can carry one. Rather than leave a
+  required field unfulfilled on a whole platform, `StationaryLocation.radius` is
+  now **optional** and says so; closing it on iOS means changing the provider
+  delegate and is separate work.
 
 - **`phoneUsageWhileDriving` emitted the location flat** on both platforms while
   the type nests it under `location`, the lone outlier among the driving events.
   The two natives agreeing with each other is why cross-platform testing could
   not surface it.
 
-- **`sos` carried no position on Android.** The only caller hard-coded
-  `locationId` to null and no location travelled, while iOS and web both sent
-  one — an alert nobody can locate. `SosPayload`'s index signature meant
+- **`sos` carried no position in the JS event on Android.** The only caller
+  hard-coded `locationId` to null and no location travelled to listeners — the
+  priority-sync POST did carry one, so this was the event, not the alert. The
+  user payload is now flattened first with `location` skipped, so a caller
+  passing `sos({ location: 'Lobby A' })` cannot overwrite the coordinates, which
+  is what iOS already did and web achieves the other way round. `SosPayload`'s index signature meant
   TypeScript accepted `event.location` on every platform without complaint.
 
 ### Changed

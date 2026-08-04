@@ -52,7 +52,14 @@ internal class RawLocationProvider(context: Context) :
             // starts with location services off must not look healthy.
             Log.w(TAG, "Subscribed but every provider is currently disabled")
         }
-        isStarted = activeProviders.isNotEmpty()
+        // `isStarted` means SOME provider can actually deliver, not "we managed
+        // to register". Now that we subscribe through disabled providers, the two
+        // are different — and `LocationService.checkWatchdog` gates its restart on
+        // this flag, so reporting true with everything switched off turns the
+        // watchdog into an infinite restart loop: restart, still no fix, gate
+        // still open, restart. Once a minute, forever, each round overwriting the
+        // persisted kill reason and firing a `serviceRestarted` at JavaScript.
+        isStarted = pickProviders().isNotEmpty()
     }
 
     override fun onStop() {
@@ -91,9 +98,9 @@ internal class RawLocationProvider(context: Context) :
      * human opens the app hours later. EB Miami went 611 minutes exactly like
      * that on 2026-08-04.
      *
-     * `resubscribe()` is idempotent: it tears down the current registration and
-     * rebuilds it from the providers available NOW, so a duplicate callback
-     * cannot stack two subscriptions on the same provider.
+     * It registers only the provider that was missing — never a tear-down and
+     * rebuild, which from inside a callback re-enters. `subscribe()` is
+     * idempotent, so a duplicate callback cannot stack two registrations.
      */
     override fun onProviderEnabled(provider: String) {
         // Only when this provider is not already registered. Android calls
@@ -106,7 +113,14 @@ internal class RawLocationProvider(context: Context) :
         val cfg = mConfig ?: return
         Log.i(TAG, "$provider enabled — subscribing")
         subscribe(provider, cfg)
-        isStarted = activeProviders.isNotEmpty()
+        // `isStarted` means SOME provider can actually deliver, not "we managed
+        // to register". Now that we subscribe through disabled providers, the two
+        // are different — and `LocationService.checkWatchdog` gates its restart on
+        // this flag, so reporting true with everything switched off turns the
+        // watchdog into an infinite restart loop: restart, still no fix, gate
+        // still open, restart. Once a minute, forever, each round overwriting the
+        // persisted kill reason and firing a `serviceRestarted` at JavaScript.
+        isStarted = pickProviders().isNotEmpty()
     }
 
     override fun onProviderDisabled(provider: String) {
@@ -129,6 +143,12 @@ internal class RawLocationProvider(context: Context) :
      */
     private fun subscribe(provider: String, cfg: BGConfig) {
         if (provider in activeProviders) return
+        // Marked BEFORE the call, not after. `requestLocationUpdates` can deliver
+        // `onProviderEnabled` synchronously, and with the mark set afterwards the
+        // re-entrancy guard is not armed yet when that callback lands — which is
+        // the unbounded recursion this method's shape exists to prevent. Removed
+        // again in the catch blocks so a failed registration leaves no ghost.
+        activeProviders += provider
         try {
             locationManager.requestLocationUpdates(
                 provider,
@@ -136,10 +156,11 @@ internal class RawLocationProvider(context: Context) :
                 (cfg.distanceFilter ?: BGConfig.DEFAULT_DISTANCE_FILTER).toFloat(),
                 this
             )
-            activeProviders += provider
         } catch (e: SecurityException) {
+            activeProviders -= provider
             handleSecurityException(e)
         } catch (e: IllegalArgumentException) {
+            activeProviders -= provider
             Log.w(TAG, "requestLocationUpdates($provider) failed: ${e.message}")
         }
     }

@@ -31,42 +31,18 @@ import type { LogLevel } from '../definitions/values';
 import type { ServiceRestartReason } from '../definitions/events';
 
 describe('vocabularies that cross the bridge', () => {
-  // ── Restart reason ────────────────────────────────────────────────────────
+  // Three more vocabularies were asserted here and have been REMOVED: restart
+  // reasons, log levels and the iOS fallback strategy. Each compared a
+  // hand-written literal against another hand-written literal, so reverting the
+  // production fix left them green — verified by actually doing it. A test that
+  // cannot fail is worse than no test: it reports coverage that does not exist.
   //
-  // Mirrors `ServiceEvent.publicReason` in Kotlin. The Android unit test
-  // (`ServiceRestartReasonTest`) guards the native half; this guards that the
-  // published union is exactly the set that half produces. Both must be edited
-  // together, which is the point.
-  it('publishes exactly the four restart reasons the native can emit', () => {
-    const published: ServiceRestartReason[] = ['watchdog', 'systemKill', 'boot', 'appRemoved'];
-    // The internal spellings, as persisted in SharedPreferences.
-    const persisted: Record<string, ServiceRestartReason> = {
-      watchdog: 'watchdog',
-      system_kill: 'systemKill',
-      boot: 'boot',
-      app_removed: 'appRemoved',
-    };
-    assert.deepEqual(Object.values(persisted).sort(), [...published].sort());
-    // The two that differ are the whole reason the bug existed: `watchdog` and
-    // `boot` are identical on both sides and made three of four look correct.
-    const identical = Object.entries(persisted).filter(([k, v]) => k === v).map(([k]) => k);
-    assert.deepEqual(identical.sort(), ['boot', 'watchdog']);
-  });
-
-  // ── Log level ─────────────────────────────────────────────────────────────
-  it('publishes log levels in the lowercase the union declares', () => {
-    // What `LogDAO.toLevel` / `LogReader.levelString` return, by ordinal.
-    const byOrdinal: LogLevel[] = ['debug', 'info', 'warn', 'error'];
-    for (const level of byOrdinal) {
-      assert.equal(level, level.toLowerCase(),
-        'the write path lower-cases and the read path used not to: that asymmetry is the bug');
-    }
-    // `trace` is in the union and has no ordinal: storage collapses it into
-    // debug. Asserted so the gap is recorded rather than discovered again.
-    const declared: LogLevel[] = ['trace', 'debug', 'info', 'warn', 'error'];
-    const producible = byOrdinal;
-    assert.deepEqual(declared.filter(l => !producible.includes(l)), ['trace']);
-  });
+  // Their real subjects live in Kotlin and Swift and are unreachable from here,
+  // so they are guarded where they run: `ServiceRestartReasonTest` and
+  // `LogLevelsTest` on the Android side. iOS has no unit-test harness in this
+  // repo, so `BGConfig.publicFallback` and `LogReader.levelString` are genuinely
+  // unguarded — stated plainly rather than papered over with an assertion that
+  // never executes them.
 
   // ── Stationary exit mode ──────────────────────────────────────────────────
   it('translates the exit mode to the native spelling instead of passing it through', () => {

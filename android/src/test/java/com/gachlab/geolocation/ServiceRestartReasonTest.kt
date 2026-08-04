@@ -40,18 +40,26 @@ class ServiceRestartReasonTest {
 
     @Test
     fun `every persisted constant maps into the published union`() {
-        // The list of four is the contract in ServiceRestartedPayload. If a fifth
-        // reason is ever persisted, this fails until it is published too — which
-        // is the whole point, because the failure mode is silent otherwise.
+        // The constants are DISCOVERED, not listed here. An earlier version of
+        // this test hand-wrote the four and claimed a fifth would make it fail —
+        // it would not have: adding REASON_FOO to production leaves a literal in
+        // a test file untouched. Reflection over the companion is what makes the
+        // promise true, and it is the only shape that guards a vocabulary rather
+        // than guarding somebody's memory of it.
         val published = setOf("watchdog", "systemKill", "boot", "appRemoved")
-        val persisted = listOf(
-            ServiceEvent.REASON_WATCHDOG,
-            ServiceEvent.REASON_SYSTEM_KILL,
-            ServiceEvent.REASON_BOOT,
-            ServiceEvent.REASON_APP_REMOVED,
-        )
+        // On the OUTER class: a `const val` in a companion compiles to a static
+        // field of ServiceEvent, not of ServiceEvent.Companion. Getting that
+        // wrong made this return zero constants and the assertion below caught
+        // it — which is the first evidence that the check has teeth at all.
+        val persisted = ServiceEvent::class.java.declaredFields
+            .filter { it.name.startsWith("REASON_") }
+            .onEach { it.isAccessible = true }
+            .map { it.get(null) as String }
+
+        assertEquals(4, persisted.size, "a new REASON_ constant must be published too")
         persisted.forEach { reason ->
-            assertEquals(true, ServiceEvent.publicReason(reason) in published, reason)
+            assertEquals(true, ServiceEvent.publicReason(reason) in published,
+                "$reason maps to ${ServiceEvent.publicReason(reason)}, which is not in the published union")
         }
     }
 

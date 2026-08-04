@@ -88,7 +88,18 @@ export interface Location {
 
 /** Stationary location adds a `radius` (meters). */
 export interface StationaryLocation extends Location {
-  radius: number;
+  /**
+   * Radius in metres of the stationary region.
+   *
+   * OPTIONAL because only Android delivers it today: iOS's
+   * `onStationaryChanged` delegate does not receive the radius at all, so
+   * neither its event nor its getter can carry one. It was declared required
+   * and delivered by one of five exits, which is worse than admitting the gap —
+   * a consumer reading `e.radius` got `undefined` from a field the type
+   * guaranteed. Closing it on iOS means changing the provider delegate; until
+   * then this says what is actually true.
+   */
+  radius?: number;
 }
 
 /** Geolocation error shape. */

@@ -153,9 +153,18 @@ class BackgroundGeolocationPlugin : Plugin() {
             // complaint, so the gap only showed up on a real Android phone.
             is ServiceEvent.Sos               -> notifyListeners("sos",
                 JSObject().apply {
-                    event.loc?.let { put("location", it.toJSONObjectWithId()) }
+                    // The user payload is flattened FIRST and `location` is skipped
+                    // from it, so a caller passing `sos({ location: 'Lobby A' })`
+                    // cannot overwrite the coordinates. iOS already does exactly
+                    // this; web lets the real location win. Adding ours before the
+                    // spread made Android the one platform where a string could
+                    // replace the position — the same class of divergence this
+                    // change set exists to remove.
+                    event.payload?.let { p ->
+                        p.keys().forEach { k -> if (k != "location") put(k, p.get(k)) }
+                    }
                     event.locationId?.let { put("locationId", it) }
-                    event.payload?.let { p -> p.keys().forEach { k -> put(k, p.get(k)) } }
+                    event.loc?.let { put("location", it.toJSONObjectWithId()) }
                 })
             ServiceEvent.ServiceStarted       -> notifyListeners("start",              JSObject())
             ServiceEvent.ServiceStopped       -> notifyListeners("stop",               JSObject())
