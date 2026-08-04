@@ -45,6 +45,16 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   subscription that delivers nothing until it comes up — and `onProviderEnabled`
   registers the one that was missing.
 
+  The provider keeps TWO facts apart now: what it is registered for, and whether
+  any of that can currently deliver. Collapsing them into one flag — which the
+  first two attempts at this fix did — broke `onStop()` (it stopped
+  unregistering, leaving the system listener attached for the life of the
+  process), `onConfigure()` (it stopped applying), and made the "can deliver"
+  flag unable to climb back to true after a shift opened with location switched
+  off. `RawLocationProviderTest` now covers the state machine; it had none, which
+  is why the original defect shipped and why both repair attempts shipped a
+  regression past a green suite.
+
 - **`notificationChannel` was read by the config mapper and written by neither
   serializer** — the same `toJSObject`/`toJSONObject` pair that dropped the body
   template in #50, in the same file. The channel applied on the first

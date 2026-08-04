@@ -62,19 +62,25 @@ describe('vocabularies that cross the bridge', () => {
     const publicValues = ['automotiveNavigation', 'otherNavigation', 'fitness', 'other'] as const;
     const native: ActivityTypeHint[] = ['AutomotiveNavigation', 'OtherNavigation', 'Fitness', 'Other'];
     const sent = publicValues.map(v => toFlatConfig({ location: { activityType: v } } as BaseConfig).activityType);
-    assert.deepEqual(sent, native, 'a value the table misses must not travel in the public spelling');
+    assert.deepEqual(sent, native);
+    // The assertion that was missing: the message claimed to cover a value the
+    // table misses, and the test never passed one — so restoring the old
+    // `?? loc.activityType` fallback left it green. Every public value IS in the
+    // table, which is exactly why the gap was invisible.
+    const unmapped = toFlatConfig({ location: { activityType: 'walking' } } as unknown as BaseConfig);
+    assert.equal(unmapped.activityType, undefined,
+      'an unmapped value must not travel in the public spelling the native cannot read');
   });
 
-  // ── iOS background fallback ───────────────────────────────────────────────
-  it('keeps the iOS fallback strategy in one spelling across both exits', () => {
-    // Swift lower-cases on ingest for internal comparison; `getConfig()` and the
-    // `iosFallbackActivated` event must both hand back the published spelling.
-    // This is the JS-side statement of that contract — `BGConfig.publicFallback`
-    // is its implementation.
-    const published = ['significantChanges', 'regionMonitoring', 'none'];
-    const internal = published.map(v => v.toLowerCase());
-    assert.deepEqual(internal, ['significantchanges', 'regionmonitoring', 'none']);
-    assert.notDeepEqual(internal, published,
-      'two of the three differ once lower-cased, which is why echoing storage broke comparison');
-  });
+  // The iOS fallback strategy was asserted here and has been REMOVED, for the
+  // same reason as the other three: it compared `['significantChanges', …]
+  // .map(v => v.toLowerCase())` against a hand-written lowercase list, executing
+  // no production code at all. It is Swift, and unreachable from here.
+  //
+  // The comment that replaced the first three claimed iOS had no unit-test
+  // harness in this repo. That was wrong and unchecked: `Package.swift` declares
+  // a test target, `ios/Tests/BackgroundGeolocationPluginTests/` holds several
+  // XCTest files, and CI runs `xcodebuild test` on every PR. The fallback
+  // translation, its round trip and the `queryParams` coercion are guarded there
+  // now, in `VocabularyTests.swift`.
 });
