@@ -88,7 +88,18 @@ export interface Location {
 
 /** Stationary location adds a `radius` (meters). */
 export interface StationaryLocation extends Location {
-  radius: number;
+  /**
+   * Radius in metres of the stationary region.
+   *
+   * OPTIONAL because only Android delivers it today: iOS's
+   * `onStationaryChanged` delegate does not receive the radius at all, so
+   * neither its event nor its getter can carry one. It was declared required
+   * and delivered by one of five exits, which is worse than admitting the gap —
+   * a consumer reading `e.radius` got `undefined` from a field the type
+   * guaranteed. Closing it on iOS means changing the provider delegate; until
+   * then this says what is actually true.
+   */
+  radius?: number;
 }
 
 /** Geolocation error shape. */
@@ -129,6 +140,16 @@ export interface Capabilities {
    */
   contractVersion: number;
   backgroundTracking: boolean;
+  /**
+   * Motion-activity recognition is available AND surfaces the `activity` event.
+   *
+   * Android reports `false` today: the provider consumes `DetectedActivity`
+   * internally to drive the stationary machine, but nothing constructs
+   * `ServiceEvent.Activity`, so the event has no producer there. It used to
+   * report `true`, which meant an app could gate a feature on this flag, prompt
+   * the user for the runtime permission, subscribe — and never receive an event,
+   * with every observable signal saying the capability was present.
+   */
   activityRecognition: boolean;
   geofencing: boolean;
   /** Max simultaneous geofences. iOS 19 · Android 100 · web -1 (unbounded). */

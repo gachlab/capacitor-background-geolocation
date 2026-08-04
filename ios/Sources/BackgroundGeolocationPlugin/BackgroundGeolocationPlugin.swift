@@ -65,7 +65,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     ]
 
     // Keep in sync with package.json `version`. Enforced by version-sync.test.ts.
-    private static let pluginVersion = "3.0.1"
+    private static let pluginVersion = "4.0.0"
 
     private var facade: BGFacade?
     private var currentConfig: BGConfig?
@@ -959,8 +959,12 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
             }
             drivingDetector.recordExternalPhoneUsage(dl)
         }
+        // Nested under `location`, like every other driving event. Both natives
+        // used to emit it flat and both disagreed with the published type — the
+        // one shape cross-platform testing cannot catch, because the platforms
+        // agree with each other.
         if let loc = bgLoc {
-            notifyListeners("phoneUsageWhileDriving", data: loc.toDictionaryWithId())
+            notifyListeners("phoneUsageWhileDriving", data: ["location": loc.toDictionaryWithId()])
         } else {
             notifyListeners("phoneUsageWhileDriving", data: [:])
         }
@@ -968,8 +972,12 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
 
     @objc private func onFallbackActivatedN(_ note: Notification) {
         // Clean output: normalize to the camelCase contract ('significantChanges' | 'regionMonitoring').
-        let raw = ((note.userInfo?["strategy"] as? String) ?? "significantChanges").lowercased()
-        let strategy = raw == "regionmonitoring" ? "regionMonitoring" : "significantChanges"
+        // Through `publicFallback`, not a second inline ternary. The docstring on
+        // that helper claimed this site already used it and it did not — the very
+        // duplication this change set removed for the restart reason, left alive
+        // here. The old ternary also collapsed `none` into `significantChanges`.
+        let raw = (note.userInfo?["strategy"] as? String) ?? "significantChanges"
+        let strategy = BGConfig.publicFallback(raw)
         notifyListeners("iosFallbackActivated", data: ["strategy": strategy])
     }
 

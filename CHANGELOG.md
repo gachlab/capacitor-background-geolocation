@@ -6,6 +6,194 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-08-04
+
+### BREAKING
+
+Four of the corrections below change what a consumer observes, so this is a
+**major release**, not a patch. They are listed here rather than buried in
+"Fixed" because each one is a value someone may already be matching on.
+
+- **`LogEntry.level` now comes back lowercase** (`'error'`, not `'ERROR'`),
+  matching the `LogLevel` union it was always typed as. Anyone who worked around
+  the bug by comparing against `'ERROR'` breaks; anyone who trusted the type
+  starts working.
+- **`phoneUsageWhileDriving` nests its location** under `location`, like every
+  other driving event and like its published type. Consumers reading the fix
+  fields at the top level break.
+- **`capabilities.activityRecognition` reports `false` on Android**, where the
+  `activity` event has no producer. `bg.require('activityRecognition')` now
+  throws there instead of resolving.
+- **`StationaryLocation.radius` is optional.** It is source-breaking for
+  TypeScript consumers assigning it to a `number`; iOS never delivered one.
+
+### Fixed
+
+- **Nothing outside the process could revive a killed service.** Every recovery
+  path belonged to the service itself, which is a contradiction: START_STICKY
+  covers a memory kill and nothing else, the BootReceiver covers a reboot and
+  only with `startOnBoot`, `onTaskRemoved` covers nothing, and the in-service
+  watchdog cannot fire once the service is gone. That is the shape of the
+  611-minute blackout — it died and stayed dead until a human opened the app the
+  next morning, with `stopOnTerminate: false` and `startOnBoot: true` both set,
+  because both are instructions to a process that no longer exists. A
+  `PeriodicWorkRequest` outside the service now checks every fifteen minutes and
+  restarts it. Arming it can never throw: a safety net that prevents tracking
+  from starting turns a recoverable outage into a guaranteed one. ([#54])
+
+- **`startOnBoot` was standing in for a fact nobody recorded.** It answers
+  "should a reboot start tracking", not "was tracking running", and the
+  substitution failed both ways: a reboot after the driver stopped used to report
+  the location of someone off duty, and an active shift with `startOnBoot: false`
+  was silently lost. The service now records whether tracking is supposed to be
+  running, which is also what keeps the reviver from resurrecting a shift that
+  was ended on purpose. ([#54])
+
+- **Four defects in the watchdog.** It could not be enabled at runtime —
+  `scheduleWatchdog` was reachable only from `start()`, so `configure({
+  enableWatchdog: true })` was accepted, persisted, returned by `getConfig()` and
+  scheduled nothing — nor disabled, since the tick never re-read the flag. It was
+  blind in the worst case: the guard required a previous fix, and the buffer is
+  cleared on every service lifecycle, so a service that came back and never
+  received one never fired. And when it did fire it did not move the mark it
+  measures against, so it restarted the provider every interval indefinitely,
+  writing a kill reason and firing an event each round — the watchdog becoming
+  the outage it watched for. ([#54])
+
+- **Two paths that could kill the host process.** `LocationDAO` ran `VACUUM`
+  inside an open transaction — SQLite rejects that, `execSQL` throws, and nothing
+  catches it on the way up through the location callback, which runs on the main
+  looper. Reachable whenever `maxLocations` decreases. And `configure()` shut the
+  POST executor down before replacing it while `handleLocation()` read the same
+  reference unsynchronised from the main looper, so a fix landing in that window
+  hit `submit` on a terminated executor. Both are now ordered so the worst case
+  is harmless. ([#54])
+
+- **The offline queue enqueued one sync worker per fix.** `triggerSync` used
+  `WorkManager.enqueue` with no uniqueness and no network constraint, while
+  `PostLocationTask` crosses the sync threshold on every failed and every offline
+  POST — so with the backend down for forty minutes a driver reporting every
+  fifteen seconds enqueued ~160 workers, each of which read the same pending rows
+  into memory and POSTed the whole batch. It is `enqueueUniqueWork` with `KEEP`
+  and `NetworkType.CONNECTED` now. ([#54])
+
+- **`persistKillReason` recorded restarts, not deaths.** The timestamp was taken
+  at the moment of the restart rather than of the death — for a 611-minute gap
+  the two differ by 611 minutes and the wrong one was reported — and a service
+  that died and never returned wrote nothing at all, because every call site is
+  on the way back up. The service now stamps a last-alive time while running, so
+  a death with no exit path can still be dated; `appRemoved` is persisted as well
+  as fired, since firing it reaches a WebView that has just been destroyed with
+  the task and it was therefore one of four published reasons the query could
+  never return; and a clean start clears the previous reason, which nothing ever
+  did — a `boot` from three weeks ago used to be reported on every shift. ([#54])
+
+- **The same restart reason came out spelled two different ways.** The
+  `serviceRestarted` event mapped the persisted constants to the documented
+  camelCase union inline in the bridge, while `diagnostics.killReason()`
+  resolved the raw SharedPreferences string — so the same kill was reported as
+  `systemKill` through one door and `system_kill` through the other. Consumers
+  that validate against `ServiceRestartedPayload['reason']` dropped the
+  `killReason()` answer, and because the call still resolved successfully, they
+  dropped it silently.
+
+  What made it survive review is which values broke: `watchdog` and `boot` are
+  spelled identically internally and publicly, so three of the four looked
+  correct and the only one that fell through was `systemKill` — the reason
+  anyone calls this API for in the first place. `killReason()` is also the only
+  door for a service that died and never came back, since nothing is alive then
+  to emit an event, so this took out the case the API exists to cover.
+
+  The mapping now lives in one place, `ServiceEvent.publicReason()`, used by
+  both exits. The persisted constants are unchanged on purpose: they are written
+  to SharedPreferences and survive app upgrades, so renaming them would be a
+  data migration wearing a rename's clothes. `ServiceRestartReason` is exported
+  and `killReason()` is typed with it, so a future divergence is a compile
+  error rather than a silent drop. ([#56])
+
+- **A silent, permanent blackout in `RawLocationProvider`.** `pickProviders()`
+  filtered by `isProviderEnabled` and was evaluated ONCE, in `onStart()`, while
+  `onProviderEnabled` only wrote a log line. Anything switched off at that moment
+  — a shift opened with GPS disabled, a few seconds of airplane mode, the OS
+  dropping a provider — was never subscribed and nothing ever tried again; with
+  everything off, `activeProviders` came back empty and no listener existed at
+  all, so the callback that could have recovered it was never registered. From
+  the outside: a tracker that reports nothing and recovers only when the service
+  itself restarts, which for a background app means when a human opens it hours
+  later. It now subscribes to the providers the config WANTS and the device HAS,
+  regardless of their current state — a disabled-but-present provider is a legal
+  subscription that delivers nothing until it comes up — and `onProviderEnabled`
+  registers the one that was missing.
+
+  The provider keeps TWO facts apart now: what it is registered for, and whether
+  any of that can currently deliver. Collapsing them into one flag — which the
+  first two attempts at this fix did — broke `onStop()` (it stopped
+  unregistering, leaving the system listener attached for the life of the
+  process), `onConfigure()` (it stopped applying), and made the "can deliver"
+  flag unable to climb back to true after a shift opened with location switched
+  off. `RawLocationProviderTest` now covers the state machine; it had none, which
+  is why the original defect shipped and why both repair attempts shipped a
+  regression past a green suite.
+
+- **`notificationChannel` was read by the config mapper and written by neither
+  serializer** — the same `toJSObject`/`toJSONObject` pair that dropped the body
+  template in #50, in the same file. The channel applied on the first
+  `configure()` and was lost on every reload from disk (service restart, boot),
+  silently moving the foreground notification to the fallback channel, and
+  `getConfig()` could not reveal the drift because it reads through that same
+  serializer.
+
+- **`getLogEntries()` returned log levels in UPPERCASE** against the lowercase
+  `LogLevel` union. The write path normalised, so filtering by `minLevel` worked
+  and nothing looked broken — but `entries.filter(e => e.level === 'error')`
+  matched nothing, ever, on both platforms. The existing test locked the two
+  natives to each other and never to the type they both feed.
+
+- **`queryParams` with any numeric value was dropped entirely on iOS.** A
+  heterogeneous `as? [String: String]` cast is all-or-nothing, so one number lost
+  every key — leaving every `{placeholder}` in the URL and body template
+  unresolved — while Android coerced with `toString()`.
+
+- **`getConfig()` echoed `iosBackgroundFallback` in the internal lowercase**
+  (`regionmonitoring`) while the `iosFallbackActivated` event normalised to the
+  published spelling. Same asymmetry as the restart reason: one exit translates,
+  the other hands back storage.
+
+- **`stationaryExitMode` travelled as the public `'poll'`** where the native
+  constant is `'polling'`, working only because it fell into an else branch. The
+  mapper now translates, and the wire type is a union instead of a bare `string`.
+
+- **`stationary` dropped `radius` on Android**, which `getStationaryLocation()`
+  did deliver — so whoever tested through the getter saw it work. iOS still
+  cannot provide it at all: its `onStationaryChanged` delegate never receives a
+  radius, so neither its event nor its getter can carry one. Rather than leave a
+  required field unfulfilled on a whole platform, `StationaryLocation.radius` is
+  now **optional** and says so; closing it on iOS means changing the provider
+  delegate and is separate work.
+
+- **`phoneUsageWhileDriving` emitted the location flat** on both platforms while
+  the type nests it under `location`, the lone outlier among the driving events.
+  The two natives agreeing with each other is why cross-platform testing could
+  not surface it.
+
+- **`sos` carried no position in the JS event on Android.** The only caller
+  hard-coded `locationId` to null and no location travelled to listeners — the
+  priority-sync POST did carry one, so this was the event, not the alert. The
+  user payload is now flattened first with `location` skipped, so a caller
+  passing `sos({ location: 'Lobby A' })` cannot overwrite the coordinates, which
+  is what iOS already did and web achieves the other way round. `SosPayload`'s index signature meant
+  TypeScript accepted `event.location` on every platform without complaint.
+
+### Changed
+
+- **`capabilities.activityRecognition` now reports `false` on Android.** The
+  `activity` event has no producer there: the provider consumes `DetectedActivity`
+  internally for the stationary machine, but nothing constructs
+  `ServiceEvent.Activity`. Advertising the capability made an app prompt the user
+  for `ACTIVITY_RECOGNITION` and then wait forever for an event that cannot
+  arrive. Wiring the event is a separate change; this makes the contract honest
+  in the meantime.
+
 ## [3.0.1] - 2026-08-03
 
 ### Fixed
@@ -22,6 +210,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   single `templateToJSON` helper so they cannot drift apart again. ([#50])
 
 [#50]: https://github.com/gachlab/capacitor-background-geolocation/issues/50
+[4.0.0]: https://github.com/gachlab/capacitor-background-geolocation/releases/tag/v4.0.0
+[#54]: https://github.com/gachlab/capacitor-background-geolocation/issues/54
+[#56]: https://github.com/gachlab/capacitor-background-geolocation/issues/56
 
 ## [3.0.0] - 2026-07-06
 

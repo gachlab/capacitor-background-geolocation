@@ -92,7 +92,12 @@ class BackgroundGeolocationPlugin : Plugin() {
     private fun handleServiceEvent(event: ServiceEvent) {
         when (event) {
             is ServiceEvent.Location          -> notify("location",           event.loc.toJS())
-            is ServiceEvent.Stationary        -> notify("stationary",         event.loc.toJS())
+            // `radius` travels with the event and used to be dropped here, while
+            // `getStationaryLocation()` put it in — so the type declared it
+            // required, the getter delivered it, and the event did not. Whoever
+            // tested through the getter saw it work.
+            is ServiceEvent.Stationary        -> notify("stationary",
+                event.loc.toJS().apply { put("radius", event.radius) })
             is ServiceEvent.Moving            -> notify("moving",             event.loc.toJS())
             is ServiceEvent.Stopped           -> notify("stopped",            event.loc.toJS())
             is ServiceEvent.TripStart         -> notify("tripStart",          event.loc.toJS())
@@ -108,7 +113,12 @@ class BackgroundGeolocationPlugin : Plugin() {
             is ServiceEvent.PossibleCrash     -> notifyListeners("possibleCrash", JSObject().apply {
                 put("location", event.loc.toJSONObjectWithId()); put("value", event.value); put("source", event.source)
             })
-            is ServiceEvent.PhoneUsageWhileDriving -> notify("phoneUsageWhileDriving", event.loc.toJS())
+            // Nested under `location` like every other driving event. It was the
+            // lone outlier emitting the location flat, on BOTH platforms, so
+            // cross-platform testing could not reveal it — the two natives agreed
+            // with each other and disagreed with the published type.
+            is ServiceEvent.PhoneUsageWhileDriving -> notifyListeners("phoneUsageWhileDriving",
+                JSObject().apply { put("location", event.loc.toJSONObjectWithId()) })
             is ServiceEvent.TripEnd           -> notifyListeners("tripEnd", JSObject().apply {
                 put("location",   event.loc.toJSONObjectWithId())
                 put("distanceKm", event.journey.distanceMeters / 1000.0) // clean output: km, matches TripEndPayload
@@ -136,20 +146,34 @@ class BackgroundGeolocationPlugin : Plugin() {
                 event.data?.let { try { JSObject.fromJSONObject(it) } catch (_: Exception) { JSObject() } } ?: JSObject())
             is ServiceEvent.ProviderChange    -> notifyListeners("providerChange",
                 JSObject().apply { put("provider", event.provider) })
+            // `location` is what the payload is FOR: an SOS without coordinates
+            // is an alert nobody can act on. iOS and web both send it; Android
+            // sent a bare `locationId` — and `SosPayload`'s index signature meant
+            // TypeScript accepted `event.location` on every platform without
+            // complaint, so the gap only showed up on a real Android phone.
             is ServiceEvent.Sos               -> notifyListeners("sos",
                 JSObject().apply {
+                    // The user payload is flattened FIRST and `location` is skipped
+                    // from it, so a caller passing `sos({ location: 'Lobby A' })`
+                    // cannot overwrite the coordinates. iOS already does exactly
+                    // this; web lets the real location win. Adding ours before the
+                    // spread made Android the one platform where a string could
+                    // replace the position — the same class of divergence this
+                    // change set exists to remove.
+                    event.payload?.let { p ->
+                        p.keys().forEach { k -> if (k != "location") put(k, p.get(k)) }
+                    }
                     event.locationId?.let { put("locationId", it) }
-                    event.payload?.let { p -> p.keys().forEach { k -> put(k, p.get(k)) } }
+                    event.loc?.let { put("location", it.toJSONObjectWithId()) }
                 })
             ServiceEvent.ServiceStarted       -> notifyListeners("start",              JSObject())
             ServiceEvent.ServiceStopped       -> notifyListeners("stop",               JSObject())
             is ServiceEvent.ServiceRestarted  -> notifyListeners("serviceRestarted",
                 // Clean output: camelCase reason to match ServiceRestartedPayload.reason.
-                JSObject().apply { put("reason", when (event.reason) {
-                    ServiceEvent.REASON_SYSTEM_KILL -> "systemKill"
-                    ServiceEvent.REASON_APP_REMOVED -> "appRemoved"
-                    else -> event.reason // watchdog / boot already match
-                }) })
+                // The mapping lives in ServiceEvent because getBackgroundKillReason
+                // needs the same one — it used to be inline here, and the other
+                // exit returned the raw preference instead.
+                JSObject().apply { put("reason", ServiceEvent.publicReason(event.reason)) })
             is ServiceEvent.GeofenceEnter     -> notifyListeners("geofenceEnter",
                 JSObject().apply { put("id", event.geofenceId); put("action", "enter")
                     event.loc?.let { put("location", it.toJSONObjectWithId()) } })
@@ -412,7 +436,13 @@ class BackgroundGeolocationPlugin : Plugin() {
             put("platform",            "android")
             put("contractVersion",     3)
             put("backgroundTracking",  true)
-            put("activityRecognition", true)
+            // False until the `activity` event has a producer here. The
+            // provider uses DetectedActivity internally for the stationary
+            // machine, but nothing constructs ServiceEvent.Activity, so
+            // subscribing to `activity` on Android never fires. Advertising the
+            // capability made an app prompt for ACTIVITY_RECOGNITION and then
+            // wait forever for an event that cannot arrive.
+            put("activityRecognition", false)
             put("geofencing",          true)
             put("maxGeofences",        100)
             put("sensorFusion",        true)
@@ -573,6 +603,10 @@ class BackgroundGeolocationPlugin : Plugin() {
     fun getBackgroundKillReason(call: PluginCall) {
         val (reason, timestamp) = facade.getBackgroundKillReason()
         call.resolve(JSObject().apply {
+            // Already public: the facade normalises at the source, so this is a
+            // passthrough. Translating here too would restore the very shape that
+            // caused the bug — a mapping applied once per exit, which holds until
+            // somebody adds an exit and forgets.
             if (reason != null) put("reason", reason) else put("reason", JSObject.NULL)
             if (timestamp != null) put("timestamp", timestamp) else put("timestamp", JSObject.NULL)
         })
@@ -677,6 +711,6 @@ class BackgroundGeolocationPlugin : Plugin() {
 
     companion object {
         // Keep in sync with package.json `version`. Enforced by version-sync.test.ts.
-        private const val PLUGIN_VERSION = "3.0.1"
+        private const val PLUGIN_VERSION = "4.0.0"
     }
 }

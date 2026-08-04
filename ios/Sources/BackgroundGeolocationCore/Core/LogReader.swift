@@ -85,13 +85,20 @@ final class LogReader {
         }
     }
 
+    /// The spelling that leaves the plugin: lowercase, matching the `LogLevel`
+    /// union that types `LogEntry.level` and `getLogEntries({ minLevel })`.
+    ///
+    /// It returned UPPERCASE while the write path normalised with `.uppercased()`,
+    /// so filtering by `minLevel` worked and nothing looked broken — but
+    /// `entries.filter { $0.level == "error" }` on the JS side matched nothing,
+    /// ever, on both platforms.
     private func levelString(from int: Int) -> String {
         switch int {
-        case 0: return "DEBUG"
-        case 1: return "INFO"
-        case 2: return "WARN"
-        case 3: return "ERROR"
-        default: return "DEBUG"
+        case 0: return "debug"
+        case 1: return "info"
+        case 2: return "warn"
+        case 3: return "error"
+        default: return "debug"
         }
     }
 }

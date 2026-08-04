@@ -17,7 +17,13 @@ class BootReceiver : BroadcastReceiver() {
         Log.d(TAG, "Boot completed")
         try {
             val config = ConfigDAO(context).retrieveConfig() ?: return
-            if (config.startOnBoot != true) return
+            // Either the user asked for start-on-boot, or tracking was actually
+            // running when the device went down. The second case had no way to be
+            // known: an active shift with `startOnBoot: false` was silently lost
+            // across a reboot, and `startOnBoot: true` restarted tracking for a
+            // driver who had already ended theirs. They are different questions.
+            val wasRunning = com.gachlab.geolocation.service.ServiceReviver.wasSupposedToRun(context)
+            if (config.startOnBoot != true && !wasRunning) return
             Log.i(TAG, "startOnBoot=true — starting LocationService")
             val serviceIntent = Intent(context, LocationService::class.java)
                 .putExtra(LocationService.EXTRA_START_REASON, ServiceEvent.REASON_BOOT)

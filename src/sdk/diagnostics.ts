@@ -5,6 +5,7 @@
 
 import type { BackgroundGeolocationNative } from '../definitions/roles';
 import type { Capabilities, Diagnostics } from '../definitions/values';
+import type { ServiceRestartReason } from '../definitions/events';
 import { ensureCapability } from './errors';
 
 /** OEM battery / auto-start settings — gated behind `capabilities.oemSettings`. */
@@ -52,8 +53,19 @@ export interface DiagnosticsApi {
   report(): Promise<Diagnostics>;
   /** The native plugin version. */
   version(): Promise<string>;
-  /** Why/when the native service was last killed and auto-restarted (Android). */
-  killReason(): Promise<{ reason: string | null; timestamp: number | null }>;
+  /**
+   * Why/when the native service was last killed and auto-restarted (Android).
+   *
+   * Same vocabulary as the `serviceRestarted` event, which is the point: this is
+   * the door for the case that event cannot cover — a service that died and
+   * never came back, so nothing was alive to emit anything. iOS and web answer
+   * `null` for both fields.
+   *
+   * `timestamp` matters as much as `reason`: the value is persisted and never
+   * cleared, so without it a caller cannot tell a kill from ten minutes ago from
+   * one from three weeks ago, and ends up reporting the same old event forever.
+   */
+  killReason(): Promise<{ reason: ServiceRestartReason | null; timestamp: number | null }>;
 }
 
 export function DiagnosticsApi(deps: {

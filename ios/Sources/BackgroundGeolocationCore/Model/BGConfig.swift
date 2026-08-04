@@ -39,6 +39,18 @@ public final class BGConfig: NSObject, NSCopying {
      */
     public var iosBackgroundFallback:   String?
 
+    /// The spelling that leaves the plugin, matching the declared union. Kept
+    /// next to the property so the two cannot drift; the event path in the
+    /// bridge does the same translation for `iosFallbackActivated`.
+    public static func publicFallback(_ raw: String) -> String {
+        switch raw.lowercased() {
+        case "regionmonitoring": return "regionMonitoring"
+        case "significantchanges": return "significantChanges"
+        case "none": return "none"
+        default: return raw
+        }
+    }
+
     // MARK: – HTTP sync
     public var url:            String?
     public var syncUrl:        String?
@@ -159,7 +171,19 @@ public final class BGConfig: NSObject, NSCopying {
         if let v = (d["syncHttpMethod"] as? String)?.uppercased() { c.syncHttpMethod = v }
         if let v = (d["httpMode"]  as? String)?.lowercased() { c.httpMode  = v }
         if let v = (d["syncMode"]  as? String)?.lowercased() { c.syncMode  = v }
-        if let v = d["queryParams"] as? [String: String] { c.queryParams = v }
+        // A heterogeneous cast is all-or-nothing in Swift: ONE numeric value made
+        // the whole `[String: String]` cast fail and dropped every query param,
+        // not just that key. The declared type is `Record<string, string | number>`
+        // and Android coerces with `toString()`, so an iOS driver posted with
+        // every `{placeholder}` in the URL and body template unresolved.
+        if let raw = d["queryParams"] as? [String: Any] {
+            var coerced: [String: String] = [:]
+            for (k, v) in raw {
+                if let s = v as? String { coerced[k] = s }
+                else if let n = v as? NSNumber { coerced[k] = n.stringValue }
+            }
+            if !coerced.isEmpty { c.queryParams = coerced }
+        }
         setBool(\.debug, "debug")
         setInt(\.heartbeatInterval, "heartbeatInterval")
         if let v = (d["mockLocationPolicy"] as? String)?.lowercased() { c.mockLocationPolicy = v }
@@ -283,7 +307,14 @@ public final class BGConfig: NSObject, NSCopying {
         if let v = maxLocations      { d["maxLocations"]      = v }
         if let v = pauseLocationUpdates { d["pauseLocationUpdates"] = v }
         if let v = locationProvider  { d["locationProvider"]  = v }
-        if let v = iosBackgroundFallback { d["iosBackgroundFallback"] = v }
+        // Echoed in the PUBLIC spelling, not the internal one. Ingest lower-cases
+        // it so comparisons inside the provider are simple, but `getConfig()`
+        // resolves this dictionary straight to JavaScript — and returning
+        // 'regionmonitoring' against a union that says 'regionMonitoring' means
+        // `cfg.survival.iosBackgroundFallback === 'regionMonitoring'` is never
+        // true. Same asymmetry the `serviceRestarted` / `killReason` pair had:
+        // one exit normalises, the other hands back storage.
+        if let v = iosBackgroundFallback { d["iosBackgroundFallback"] = BGConfig.publicFallback(v) }
         d["postTemplate"] = resolvedTemplate
         return d
     }

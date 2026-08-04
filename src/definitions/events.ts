@@ -60,8 +60,16 @@ export interface IdleEndPayload {
 }
 
 /** Payload of `serviceRestarted`. */
+/**
+ * Why the native service came back. Exported on its own because
+ * `diagnostics.killReason()` answers the same question through a different door
+ * and has to answer it with the same words — the two used to disagree, and the
+ * one that was wrong was the one nobody could see in a type.
+ */
+export type ServiceRestartReason = 'watchdog' | 'systemKill' | 'boot' | 'appRemoved';
+
 export interface ServiceRestartedPayload {
-  reason: 'watchdog' | 'systemKill' | 'boot' | 'appRemoved';
+  reason: ServiceRestartReason;
 }
 
 /** Payload of `sos` — the flattened user payload plus the latest known location. */

@@ -35,12 +35,34 @@ class LogLevelsTest {
     }
 
     @Test
-    @DisplayName("int → string matches iOS levelString")
+    @DisplayName("int → string matches iOS levelString AND the published LogLevel union")
     fun toLevelMapping() {
-        assertEquals("DEBUG", LogLevels.toLevel(0))
-        assertEquals("INFO", LogLevels.toLevel(1))
-        assertEquals("WARN", LogLevels.toLevel(2))
-        assertEquals("ERROR", LogLevels.toLevel(3))
-        assertEquals("DEBUG", LogLevels.toLevel(99))
+        // Lowercase, because that is what `LogLevel` in values.ts declares and
+        // what `LogEntry.level` is typed as.
+        //
+        // This test used to assert UPPERCASE and passed: it locked the two
+        // natives to each other and never to the type they both feed. Both
+        // platforms agreed, both were wrong, and `entries.filter { it.level ==
+        // "error" }` on the JS side matched nothing on either. Keeping the two
+        // natives identical is necessary and was never sufficient.
+        assertEquals("debug", LogLevels.toLevel(0))
+        assertEquals("info", LogLevels.toLevel(1))
+        assertEquals("warn", LogLevels.toLevel(2))
+        assertEquals("error", LogLevels.toLevel(3))
+        assertEquals("debug", LogLevels.toLevel(99))
+    }
+
+    @Test
+    @DisplayName("round trip: what we publish is what we can read back")
+    fun roundTrip() {
+        // Two assertions, and only the second one has teeth. `toInt` uppercases,
+        // so the identity below held throughout the entire bug — it proves the
+        // pair is consistent, never which spelling leaves the plugin. The
+        // published spelling has to be asserted directly or nothing does.
+        listOf(0, 1, 2, 3).forEach { ordinal ->
+            val published = LogLevels.toLevel(ordinal)
+            assertEquals(ordinal, LogLevels.toInt(published))
+            assertEquals(published.lowercase(), published, "levels leave the plugin lowercase")
+        }
     }
 }

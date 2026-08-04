@@ -333,6 +333,27 @@ class BGConfig() : Parcelable {
         // polling/significant-changes safety net before it can default on; until then
         // it is opt-in via stationaryExitMode = "geofence".
         const val DEFAULT_STATIONARY_EXIT_MODE         = STATIONARY_EXIT_POLLING
+
+        /**
+         * Accepts the public spelling as well as the native one.
+         *
+         * Three paths can deliver `"poll"` rather than `"polling"`: a config
+         * persisted by a build from before the mapper translated, the untyped
+         * `native` escape hatch (merged last, so it overrides the mapper), and any
+         * raw-proxy caller. Lower-casing alone left `"poll"` intact; it then
+         * behaved correctly only by falling into an else branch, and came back out
+         * of `getConfig()` outside its own declared union.
+         *
+         * Normalising at the single point of entry makes the mapper's translation
+         * a convenience instead of the only defence — which matters because the
+         * escape hatch is, by design, a second entrance nobody types.
+         */
+        @JvmStatic
+        fun normalizeExitMode(raw: String): String = when (raw.lowercase(Locale.US)) {
+            "poll", STATIONARY_EXIT_POLLING -> STATIONARY_EXIT_POLLING
+            STATIONARY_EXIT_GEOFENCE -> STATIONARY_EXIT_GEOFENCE
+            else -> raw.lowercase(Locale.US)
+        }
         const val DEFAULT_ACTIVITY_CONFIDENCE_THRESHOLD = 50
         const val DEFAULT_HTTP_METHOD                  = "POST"
         const val DEFAULT_SYNC_HTTP_METHOD             = "POST"
@@ -513,7 +534,7 @@ class BGConfig() : Parcelable {
             o.drivingEvents?.let               { result.drivingEvents               = it }
             o.includeBattery?.let              { result.includeBattery              = it }
             o.wakeLockMode?.let                { result.wakeLockMode                = it }
-            o.stationaryExitMode?.let          { result.stationaryExitMode          = it.lowercase(Locale.US) }
+            o.stationaryExitMode?.let          { result.stationaryExitMode          = normalizeExitMode(it) }
             o.stationaryTimeout?.let           { result.stationaryTimeout           = it }
             o.stationaryPollInterval?.let      { result.stationaryPollInterval      = it }
             o.stationaryPollFast?.let          { result.stationaryPollFast          = it }

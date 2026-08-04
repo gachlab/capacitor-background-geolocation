@@ -16,7 +16,10 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
+import androidx.work.Constraints
 import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.gachlab.geolocation.BGConfig
@@ -89,6 +92,9 @@ class LocationService : Service() {
         private const val PREFS_DIAG      = "bgloc_diagnostics"
         private const val KEY_KILL_REASON = "last_kill_reason"
         private const val KEY_KILL_AT     = "last_kill_at"
+        // Stamped while the service is alive, so a death that never reached a
+        // shutdown path can still be dated by the last moment we know it ran.
+        private const val KEY_ALIVE_AT    = "last_alive_at"
     }
 
     private var config: BGConfig? = null
@@ -129,10 +135,12 @@ class LocationService : Service() {
         when {
             intent == null -> {
                 // OS restarted us via START_STICKY after a kill.
+                restartedByOs = true
                 persistKillReason(ServiceEvent.REASON_SYSTEM_KILL)
                 fire(ServiceEvent.ServiceRestarted(ServiceEvent.REASON_SYSTEM_KILL))
             }
             intent.getStringExtra(EXTRA_START_REASON) == ServiceEvent.REASON_BOOT -> {
+                restartedByOs = true
                 persistKillReason(ServiceEvent.REASON_BOOT)
                 fire(ServiceEvent.ServiceRestarted(ServiceEvent.REASON_BOOT))
             }
@@ -153,10 +161,30 @@ class LocationService : Service() {
     override fun onTaskRemoved(rootIntent: Intent?) {
         val cfg = config
         if (cfg?.stopOnTerminate == true) { stop(); stopSelf() }
-        else fire(ServiceEvent.ServiceRestarted(ServiceEvent.REASON_APP_REMOVED))
+        else {
+            // Persisted as well as fired. The event goes to a WebView that has
+            // just been destroyed with the task, so nobody receives it — which
+            // meant `appRemoved` was one of four published reasons that
+            // `killReason()` could never return. The reason is only useful to
+            // whoever opens the app NEXT, and that is the door that reads
+            // preferences.
+            persistKillReason(ServiceEvent.REASON_APP_REMOVED)
+            fire(ServiceEvent.ServiceRestarted(ServiceEvent.REASON_APP_REMOVED))
+        }
     }
 
     // ── Public API ────────────────────────────────────────────────────────────
+
+    /** True while the current start came from a restart path that already
+     *  recorded why the previous run ended. */
+    private var restartedByOs = false
+
+    /**
+     * When this run began, used by the watchdog as the baseline before the first
+     * fix exists — and moved forward on every watchdog restart so the restart
+     * itself becomes what is being timed.
+     */
+    private var runStartedAtMs = 0L
 
     @Synchronized
     fun start() {
@@ -164,6 +192,21 @@ class LocationService : Service() {
         val cfg = configDAO.retrieveConfig() ?: BGConfig.getDefault()
         config = cfg
         isRunning = true
+        // Only on a CLEAN start. `onStartCommand` writes the reason and then calls
+        // start(), so clearing unconditionally here would wipe the very record it
+        // had just made — the death would be forgotten a millisecond after being
+        // observed. A restart path owns its reason; a user-initiated start is the
+        // moment the previous one stops being news.
+        runStartedAtMs = System.currentTimeMillis()
+        // Arm the out-of-process net and record that tracking is SUPPOSED to be
+        // on. That second fact never existed anywhere: `startOnBoot` was standing
+        // in for it, which is why a reboot after a driver stopped tracking used to
+        // start reporting the location of someone off duty.
+        ServiceReviver.setShouldBeRunning(applicationContext, true)
+        ServiceReviver.schedule(applicationContext)
+        if (!restartedByOs) clearKillReason()
+        restartedByOs = false
+        markAlive()
 
         if (cfg.startForeground == true) {
             startForeground(NOTIFICATION_ID,
@@ -190,6 +233,12 @@ class LocationService : Service() {
     fun stop() {
         if (!isRunning) return
         isRunning = false
+        // Stood down deliberately: the net must not resurrect a shift the driver
+        // ended. This is the difference between "it died" and "it was stopped",
+        // and it is the whole reason the reviver reads a state flag rather than a
+        // configuration preference.
+        ServiceReviver.setShouldBeRunning(applicationContext, false)
+        ServiceReviver.cancel(applicationContext)
 
         mainHandler.removeCallbacks(watchdogRunnable)
         mainHandler.removeCallbacks(heartbeatRunnable)
@@ -213,10 +262,21 @@ class LocationService : Service() {
         config = merged
         configDAO.persistConfig(merged)
         provider?.onConfigure(merged)
-        postTask?.shutdown()
+        // Swap FIRST, shut the old one down after. `configure()` runs on the
+        // Capacitor bridge thread while `handleLocation()` reads `postTask` on the
+        // main looper without synchronisation, so a fix landing between the
+        // shutdown and the reassignment used to hit `submit` on a terminated
+        // executor: `RejectedExecutionException`, uncaught, on the main looper —
+        // process dead. Reversing the order means the worst case is a fix handed
+        // to the outgoing task, which still has a live executor.
+        val previousTask = postTask
         postTask = makePostTask(merged)
+        previousTask?.shutdown()
         configurePrioritySync(merged)
         configureDrivingDetector(merged)
+        // Re-armed here, exactly like the heartbeat below. Without it the
+        // watchdog could only ever be turned on by a restart of the service.
+        scheduleWatchdog(merged)
 
         when (merged.wakeLockMode) {
             "always" -> { if (wakeLock?.isHeld != true) acquireWakeLock() }
@@ -232,11 +292,34 @@ class LocationService : Service() {
         val work = OneTimeWorkRequestBuilder<BackgroundSync>()
             .setInputData(Data.Builder().putBoolean(BackgroundSync.KEY_FORCED, forced).build())
             .addTag(BackgroundSync.WORK_TAG)
+            // Do not run a batch upload with no connectivity: without this every
+            // enqueued worker wakes, reads the whole pending table into memory and
+            // fails, which is the most expensive possible way to discover there is
+            // no network.
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .build()
-        WorkManager.getInstance(applicationContext).enqueue(work)
+        // UNIQUE, and existing work wins.
+        //
+        // `PostLocationTask` calls `checkSyncThreshold()` on every failed and every
+        // offline POST, so once `pending >= syncThreshold` the condition holds
+        // permanently: one worker enqueued PER FIX. With the backend down for
+        // forty minutes and a driver reporting every fifteen seconds that is ~160
+        // workers, and each one reads the same ~160 pending rows and POSTs the
+        // entire batch — the server receives the same batch dozens of times, and
+        // every worker hydrates up to `maxLocations` rows into memory to do it.
+        //
+        // KEEP rather than REPLACE: a flush already in flight is doing exactly the
+        // work we want, and cancelling it to start again is how a queue never
+        // drains.
+        WorkManager.getInstance(applicationContext)
+            .enqueueUniqueWork(BackgroundSync.WORK_TAG, ExistingWorkPolicy.KEEP, work)
     }
 
-    fun triggerSOS(locationId: Long?, payload: org.json.JSONObject? = null) { fire(ServiceEvent.Sos(locationId, payload)) }
+    // The last known fix rides along: the service is the only place that has it,
+    // and without it the alert reaches the dispatcher with no coordinates.
+    fun triggerSOS(locationId: Long?, payload: org.json.JSONObject? = null) {
+        fire(ServiceEvent.Sos(locationId, payload, buffer.lastFix))
+    }
 
     // ── Provider delegate ─────────────────────────────────────────────────────
 
@@ -391,7 +474,17 @@ class LocationService : Service() {
 
     // ── Watchdog ──────────────────────────────────────────────────────────────
 
+    /**
+     * (Re)arm the watchdog. Safe to call at any time, including from `configure()`.
+     *
+     * It used to be reachable only from `start()`, so `configure({ enableWatchdog:
+     * true })` on a running service was accepted, persisted and returned by
+     * `getConfig()` while scheduling nothing — for the life of that run. Turning
+     * it off at runtime did not work either, because `checkWatchdog` never re-read
+     * the flag.
+     */
     private fun scheduleWatchdog(cfg: BGConfig) {
+        mainHandler.removeCallbacks(watchdogRunnable)
         if (cfg.enableWatchdog != true) return
         mainHandler.postDelayed(watchdogRunnable, cfg.watchdogIntervalMs ?: 60_000L)
     }
@@ -399,16 +492,35 @@ class LocationService : Service() {
     private fun checkWatchdog() {
         val cfg = config ?: return
         if (!isRunning) return
+        // Re-read the flag every tick, so disabling it at runtime actually stops it.
+        if (cfg.enableWatchdog != true) return
         val interval = cfg.watchdogIntervalMs ?: 60_000L
+
+        // `since` is the last fix OR, when there has never been one, the moment
+        // this run began.
+        //
+        // The old guard was `ts > 0`, and `onCreate()` clears the buffer on every
+        // service lifecycle — including a START_STICKY restart. A service that
+        // came back and never received a single fix therefore had `ts == 0` and
+        // the watchdog never fired, which is precisely the situation that
+        // justifies having one. Blind in the worst case.
         val ts       = buffer.lastFixAtMs   // snapshot once: a concurrent record() between
-        val elapsed  = System.currentTimeMillis() - ts  // the two reads could pass a stale elapsed
-        if (ts > 0 && elapsed > interval) {
+        val since    = if (ts > 0) ts else runStartedAtMs
+        val elapsed  = System.currentTimeMillis() - since  // the two reads could pass a stale elapsed
+
+        if (since > 0 && elapsed > interval) {
             val p = provider
-            if (p != null && p.isStarted()) {
+            if (p != null) {
                 Log.i(TAG, "Watchdog: no update in ${elapsed / 1000}s — restarting provider")
                 p.onStop(); p.onStart()
                 persistKillReason(ServiceEvent.REASON_WATCHDOG)
                 fire(ServiceEvent.ServiceRestarted(ServiceEvent.REASON_WATCHDOG))
+                // The restart is now the thing being timed. Without moving this
+                // mark the next tick sees the same elapsed time and restarts the
+                // provider again — every interval, indefinitely, writing a kill
+                // reason and firing a `serviceRestarted` each round. The watchdog
+                // becomes the outage it was watching for.
+                runStartedAtMs = System.currentTimeMillis()
             }
         }
         mainHandler.postDelayed(watchdogRunnable, interval)
@@ -424,6 +536,7 @@ class LocationService : Service() {
     private fun fireHeartbeat() {
         val cfg = config ?: return
         val interval = cfg.heartbeatInterval?.toLong()?.takeIf { it > 0 } ?: return
+        markAlive()
         fire(ServiceEvent.Heartbeat(buffer.lastFix))
         mainHandler.postDelayed(heartbeatRunnable, interval)
     }
@@ -564,10 +677,50 @@ class LocationService : Service() {
 
     // ── Kill diagnostics ──────────────────────────────────────────────────────
 
-    private fun persistKillReason(reason: String) {
-        getSharedPreferences(PREFS_DIAG, MODE_PRIVATE).edit()
+    /**
+     * Record why the service went down, dated when it went down.
+     *
+     * Two things were wrong. The timestamp was `System.currentTimeMillis()` at
+     * the moment of the RESTART, not of the death — for a 611-minute gap the two
+     * differ by 611 minutes and the wrong one was reported. And a service that
+     * died and never came back wrote nothing at all, because every call site is
+     * on the way back up, so the one case the API exists for was the one it could
+     * not describe.
+     *
+     * `KEY_ALIVE_AT` closes that: the service stamps it while running, so the
+     * last heartbeat before silence dates the death even when nothing survived to
+     * report it. When a restart path knows the moment, it passes it; otherwise
+     * the last known alive time is the best honest answer.
+     */
+    private fun persistKillReason(reason: String, diedAt: Long? = null) {
+        val prefs = getSharedPreferences(PREFS_DIAG, MODE_PRIVATE)
+        val at = diedAt ?: prefs.getLong(KEY_ALIVE_AT, 0L).takeIf { it > 0L } ?: System.currentTimeMillis()
+        prefs.edit()
             .putString(KEY_KILL_REASON, reason)
-            .putLong(KEY_KILL_AT, System.currentTimeMillis())
+            .putLong(KEY_KILL_AT, at)
+            .apply()
+    }
+
+    /** Stamp "still alive" so a death with no exit path can still be dated. */
+    private fun markAlive() {
+        getSharedPreferences(PREFS_DIAG, MODE_PRIVATE).edit()
+            .putLong(KEY_ALIVE_AT, System.currentTimeMillis())
+            .apply()
+    }
+
+    /**
+     * Forget the previous death once we are cleanly up again.
+     *
+     * Nothing ever cleared this preference: three writes, one read, no removal.
+     * Once written it was returned for the life of the install, so a `boot` from
+     * three weeks ago was reported on every shift and every consumer had to
+     * deduplicate by timestamp to avoid acting on it. A clean start is exactly
+     * the moment the previous death stops being news.
+     */
+    private fun clearKillReason() {
+        getSharedPreferences(PREFS_DIAG, MODE_PRIVATE).edit()
+            .remove(KEY_KILL_REASON)
+            .remove(KEY_KILL_AT)
             .apply()
     }
 }

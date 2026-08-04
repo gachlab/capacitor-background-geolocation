@@ -13,11 +13,11 @@
 
 import type { BaseConfig, DrivingConfig, StartOverride } from '../definitions/config';
 import type { Accuracy, LocationProvider } from '../definitions/values';
-import type { NativeConfig, WireAccuracy, WireProvider } from '../definitions/wire';
+import type { ActivityTypeHint, NativeConfig, WireAccuracy, WireProvider } from '../definitions/wire';
 
 const ACCURACY_METERS: Record<Accuracy, WireAccuracy> = { high: 0, medium: 100, low: 1000, passive: 10000 };
 const PROVIDER_ID: Record<LocationProvider, WireProvider> = { distanceFilter: 0, activity: 1, raw: 2 };
-const ACTIVITY_TYPE: Record<string, string> = {
+const ACTIVITY_TYPE: Record<string, ActivityTypeHint> = {
   automotiveNavigation: 'AutomotiveNavigation',
   otherNavigation: 'OtherNavigation',
   fitness: 'Fitness',
@@ -88,7 +88,10 @@ export function toFlatConfig(cfg: BaseConfig): NativeConfig {
     if (loc.maxAcceptedAccuracy !== undefined) out.maxAcceptedAccuracy = loc.maxAcceptedAccuracy;
     if (loc.includeBattery !== undefined) out.includeBattery = loc.includeBattery;
     if (loc.mockPolicy !== undefined) out.mockLocationPolicy = loc.mockPolicy;
-    if (loc.activityType !== undefined) out.activityType = ACTIVITY_TYPE[loc.activityType] ?? loc.activityType;
+    // No `?? loc.activityType` fallback: an unmapped value used to travel in the
+    // public camelCase spelling, which the native does not know, so the hint was
+    // silently ignored instead of loudly absent.
+    if (loc.activityType !== undefined) out.activityType = ACTIVITY_TYPE[loc.activityType];
     if (loc.interval !== undefined) out.interval = loc.interval;
     if (loc.fastestInterval !== undefined) out.fastestInterval = loc.fastestInterval;
     if (loc.activityInterval !== undefined) out.activitiesInterval = loc.activityInterval;
@@ -102,7 +105,13 @@ export function toFlatConfig(cfg: BaseConfig): NativeConfig {
     if (st.timeout !== undefined) out.stationaryTimeout = st.timeout;
     if (st.pollInterval !== undefined) out.stationaryPollInterval = st.pollInterval;
     if (st.pollFast !== undefined) out.stationaryPollFast = st.pollFast;
-    if (st.exitMode !== undefined) out.stationaryExitMode = st.exitMode;
+    // Translate, do not pass through. The public vocabulary is `'poll'`; the
+    // native constant is `'polling'`. It used to travel verbatim and land in the
+    // else branch, which happens to be polling — right by accident, and only
+    // until someone adds a third mode.
+    if (st.exitMode !== undefined) {
+      out.stationaryExitMode = st.exitMode === 'geofence' ? 'geofence' : 'polling';
+    }
   }
 
   const t = cfg.transport;
