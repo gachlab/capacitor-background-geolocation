@@ -129,6 +129,16 @@ export interface Capabilities {
    */
   contractVersion: number;
   backgroundTracking: boolean;
+  /**
+   * Motion-activity recognition is available AND surfaces the `activity` event.
+   *
+   * Android reports `false` today: the provider consumes `DetectedActivity`
+   * internally to drive the stationary machine, but nothing constructs
+   * `ServiceEvent.Activity`, so the event has no producer there. It used to
+   * report `true`, which meant an app could gate a feature on this flag, prompt
+   * the user for the runtime permission, subscribe — and never receive an event,
+   * with every observable signal saying the capability was present.
+   */
   activityRecognition: boolean;
   geofencing: boolean;
   /** Max simultaneous geofences. iOS 19 · Android 100 · web -1 (unbounded). */

@@ -50,7 +50,11 @@ sealed class ServiceEvent {
     data class Error(val message: String, val code: String = "unavailable") : ServiceEvent()
     data class ProviderChange(val provider: String) : ServiceEvent()
     data class Activity(val data: JSONObject?) : ServiceEvent()
-    data class Sos(val locationId: Long?, val payload: JSONObject? = null) : ServiceEvent()
+    // `loc` carries the position the alert happened at. It used to be absent —
+    // only a `locationId` that the single caller hard-coded to null — so an SOS
+    // reached JavaScript on Android with no positional data at all, while iOS
+    // and web both sent one. An alert nobody can locate is not an alert.
+    data class Sos(val locationId: Long?, val payload: JSONObject? = null, val loc: BGLocation? = null) : ServiceEvent()
     object ServiceStarted : ServiceEvent()
     object ServiceStopped : ServiceEvent()
     data class ServiceRestarted(val reason: String) : ServiceEvent()
@@ -71,9 +75,38 @@ sealed class ServiceEvent {
     data class SyncError(val httpStatus: Int, val message: String) : ServiceEvent()
 
     companion object {
+        // Internal, persisted spelling. These strings are written to
+        // SharedPreferences by `persistKillReason`, so they survive upgrades and
+        // must not change: renaming them would make every reason recorded by an
+        // older build unreadable.
         const val REASON_WATCHDOG    = "watchdog"
         const val REASON_SYSTEM_KILL = "system_kill"
         const val REASON_BOOT        = "boot"
         const val REASON_APP_REMOVED = "app_removed"
+
+        /**
+         * The spelling that leaves the plugin, matching `ServiceRestartedPayload.reason`.
+         *
+         * It lives here, as one function, because there are TWO exits to
+         * JavaScript and they disagreed. The `serviceRestarted` event mapped
+         * `system_kill` to `systemKill` inline; `getBackgroundKillReason`
+         * returned the raw preference. Same fact, two spellings, and only one
+         * of them was the documented vocabulary — so a consumer validating
+         * against the published union silently dropped the startup path.
+         *
+         * `watchdog` and `boot` hid the bug: their internal and public spellings
+         * are identical, so three of the four values looked fine and the one
+         * that broke was `systemKill`, which is the reason anyone asks in the
+         * first place.
+         */
+        @JvmStatic
+        fun publicReason(reason: String): String = when (reason) {
+            REASON_SYSTEM_KILL -> "systemKill"
+            REASON_APP_REMOVED -> "appRemoved"
+            // watchdog / boot are already spelled the same on both sides. An
+            // unknown value passes through rather than being swallowed: a reason
+            // we did not anticipate is still more useful than none.
+            else -> reason
+        }
     }
 }

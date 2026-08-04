@@ -236,7 +236,11 @@ class LocationService : Service() {
         WorkManager.getInstance(applicationContext).enqueue(work)
     }
 
-    fun triggerSOS(locationId: Long?, payload: org.json.JSONObject? = null) { fire(ServiceEvent.Sos(locationId, payload)) }
+    // The last known fix rides along: the service is the only place that has it,
+    // and without it the alert reaches the dispatcher with no coordinates.
+    fun triggerSOS(locationId: Long?, payload: org.json.JSONObject? = null) {
+        fire(ServiceEvent.Sos(locationId, payload, buffer.lastFix))
+    }
 
     // ── Provider delegate ─────────────────────────────────────────────────────
 

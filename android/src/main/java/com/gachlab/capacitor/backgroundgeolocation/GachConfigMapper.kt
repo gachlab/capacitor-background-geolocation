@@ -165,6 +165,13 @@ object GachConfigMapper {
         json.put("desiredAccuracy",            config.desiredAccuracy)
         json.put("debug",                      config.debug)
         json.put("notificationsEnabled",       config.notificationsEnabled)
+        // Read since forever, written by NEITHER serializer until now — the same
+        // pair that dropped the body template in #50, in the same file. The
+        // channel applied on the first configure() and was lost on every reload
+        // from disk (service restart, boot), silently moving the foreground
+        // notification to the fallback channel; and getConfig() could not reveal
+        // the drift because it reads through this same serializer.
+        json.put("notificationChannel",        nullableString(config.notificationChannel))
         json.put("notificationTitle",          nullableString(config.notificationTitle))
         json.put("notificationText",           nullableString(config.notificationText))
         json.put("notificationSyncTitle",      config.notificationSyncTitle)
@@ -234,6 +241,7 @@ object GachConfigMapper {
         j.put("distanceFilter",             config.distanceFilter)
         j.put("desiredAccuracy",            config.desiredAccuracy)
         j.put("debug",                      config.debug)
+        j.put("notificationChannel",        nullableString(config.notificationChannel))
         j.put("notificationTitle",          nullableString(config.notificationTitle))
         j.put("notificationText",           nullableString(config.notificationText))
         j.put("notificationSyncTitle",      nullableString(config.notificationSyncTitle))

@@ -6,6 +6,97 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- **The same restart reason came out spelled two different ways.** The
+  `serviceRestarted` event mapped the persisted constants to the documented
+  camelCase union inline in the bridge, while `diagnostics.killReason()`
+  resolved the raw SharedPreferences string — so the same kill was reported as
+  `systemKill` through one door and `system_kill` through the other. Consumers
+  that validate against `ServiceRestartedPayload['reason']` dropped the
+  `killReason()` answer, and because the call still resolved successfully, they
+  dropped it silently.
+
+  What made it survive review is which values broke: `watchdog` and `boot` are
+  spelled identically internally and publicly, so three of the four looked
+  correct and the only one that fell through was `systemKill` — the reason
+  anyone calls this API for in the first place. `killReason()` is also the only
+  door for a service that died and never came back, since nothing is alive then
+  to emit an event, so this took out the case the API exists to cover.
+
+  The mapping now lives in one place, `ServiceEvent.publicReason()`, used by
+  both exits. The persisted constants are unchanged on purpose: they are written
+  to SharedPreferences and survive app upgrades, so renaming them would be a
+  data migration wearing a rename's clothes. `ServiceRestartReason` is exported
+  and `killReason()` is typed with it, so a future divergence is a compile
+  error rather than a silent drop.
+
+- **A silent, permanent blackout in `RawLocationProvider`.** `pickProviders()`
+  filtered by `isProviderEnabled` and was evaluated ONCE, in `onStart()`, while
+  `onProviderEnabled` only wrote a log line. Anything switched off at that moment
+  — a shift opened with GPS disabled, a few seconds of airplane mode, the OS
+  dropping a provider — was never subscribed and nothing ever tried again; with
+  everything off, `activeProviders` came back empty and no listener existed at
+  all, so the callback that could have recovered it was never registered. From
+  the outside: a tracker that reports nothing and recovers only when the service
+  itself restarts, which for a background app means when a human opens it hours
+  later. It now subscribes to the providers the config WANTS and the device HAS,
+  regardless of their current state — a disabled-but-present provider is a legal
+  subscription that delivers nothing until it comes up — and `onProviderEnabled`
+  registers the one that was missing.
+
+- **`notificationChannel` was read by the config mapper and written by neither
+  serializer** — the same `toJSObject`/`toJSONObject` pair that dropped the body
+  template in #50, in the same file. The channel applied on the first
+  `configure()` and was lost on every reload from disk (service restart, boot),
+  silently moving the foreground notification to the fallback channel, and
+  `getConfig()` could not reveal the drift because it reads through that same
+  serializer.
+
+- **`getLogEntries()` returned log levels in UPPERCASE** against the lowercase
+  `LogLevel` union. The write path normalised, so filtering by `minLevel` worked
+  and nothing looked broken — but `entries.filter(e => e.level === 'error')`
+  matched nothing, ever, on both platforms. The existing test locked the two
+  natives to each other and never to the type they both feed.
+
+- **`queryParams` with any numeric value was dropped entirely on iOS.** A
+  heterogeneous `as? [String: String]` cast is all-or-nothing, so one number lost
+  every key — leaving every `{placeholder}` in the URL and body template
+  unresolved — while Android coerced with `toString()`.
+
+- **`getConfig()` echoed `iosBackgroundFallback` in the internal lowercase**
+  (`regionmonitoring`) while the `iosFallbackActivated` event normalised to the
+  published spelling. Same asymmetry as the restart reason: one exit translates,
+  the other hands back storage.
+
+- **`stationaryExitMode` travelled as the public `'poll'`** where the native
+  constant is `'polling'`, working only because it fell into an else branch. The
+  mapper now translates, and the wire type is a union instead of a bare `string`.
+
+- **`stationary` dropped `radius`**, which the type declares required and
+  `getStationaryLocation()` did deliver — so whoever tested through the getter
+  saw it work.
+
+- **`phoneUsageWhileDriving` emitted the location flat** on both platforms while
+  the type nests it under `location`, the lone outlier among the driving events.
+  The two natives agreeing with each other is why cross-platform testing could
+  not surface it.
+
+- **`sos` carried no position on Android.** The only caller hard-coded
+  `locationId` to null and no location travelled, while iOS and web both sent
+  one — an alert nobody can locate. `SosPayload`'s index signature meant
+  TypeScript accepted `event.location` on every platform without complaint.
+
+### Changed
+
+- **`capabilities.activityRecognition` now reports `false` on Android.** The
+  `activity` event has no producer there: the provider consumes `DetectedActivity`
+  internally for the stationary machine, but nothing constructs
+  `ServiceEvent.Activity`. Advertising the capability made an app prompt the user
+  for `ACTIVITY_RECOGNITION` and then wait forever for an event that cannot
+  arrive. Wiring the event is a separate change; this makes the contract honest
+  in the meantime.
+
 ## [3.0.1] - 2026-08-03
 
 ### Fixed

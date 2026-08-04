@@ -959,8 +959,12 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
             }
             drivingDetector.recordExternalPhoneUsage(dl)
         }
+        // Nested under `location`, like every other driving event. Both natives
+        // used to emit it flat and both disagreed with the published type — the
+        // one shape cross-platform testing cannot catch, because the platforms
+        // agree with each other.
         if let loc = bgLoc {
-            notifyListeners("phoneUsageWhileDriving", data: loc.toDictionaryWithId())
+            notifyListeners("phoneUsageWhileDriving", data: ["location": loc.toDictionaryWithId()])
         } else {
             notifyListeners("phoneUsageWhileDriving", data: [:])
         }

@@ -25,6 +25,7 @@ import type {
   TripScore,
 } from '../definitions/values';
 import type { NativeConfig } from '../definitions/wire';
+import type { ServiceRestartReason } from '../definitions/events';
 import { GeoEvent } from './domain/geo-event';
 import { GeoPoint } from './domain/geo-point';
 import { GeofenceTransition } from './domain/geofence-transition';
@@ -250,7 +251,8 @@ export class BackgroundGeolocationWeb extends WebPlugin implements BackgroundGeo
 
   // ---------------- Diagnostics & OEMs ----------------
 
-  async getBackgroundKillReason(): Promise<{ reason: string | null; timestamp: number | null }> {
+  /** No native service on the web, so nothing ever killed one. */
+  async getBackgroundKillReason(): Promise<{ reason: ServiceRestartReason | null; timestamp: number | null }> {
     return { reason: null, timestamp: null };
   }
 

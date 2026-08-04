@@ -16,7 +16,7 @@
 // raw/clean type sets. Config INPUT stays the native wire (NativeConfig); the facade
 // translates the composed cascade to it (toFlatConfig).
 
-import type { GeolocationEvents } from './events';
+import type { GeolocationEvents, ServiceRestartReason } from './events';
 import type {
   Capabilities,
   Diagnostics,
@@ -114,7 +114,9 @@ export interface DiagnosticsProvider {
   getCapabilities(): Promise<Capabilities>;
   getConfig(): Promise<NativeConfig>;
   getLogEntries(options: { limit: number; fromId?: number; minLevel?: LogLevel }): Promise<{ entries: LogEntry[] }>;
-  getBackgroundKillReason(): Promise<{ reason: string | null; timestamp: number | null }>;
+  /** The native normalises `reason` to the public vocabulary before resolving,
+   *  so this is the same union `serviceRestarted` publishes. */
+  getBackgroundKillReason(): Promise<{ reason: ServiceRestartReason | null; timestamp: number | null }>;
 }
 
 /** Driver-intelligence (X-ext). Gated by capabilities.driverIntelligence. */

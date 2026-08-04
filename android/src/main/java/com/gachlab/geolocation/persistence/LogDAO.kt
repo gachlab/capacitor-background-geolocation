@@ -100,11 +100,25 @@ internal object LogLevels {
         else             -> 0
     }
 
+    /**
+     * The spelling that leaves the plugin: lowercase, matching the `LogLevel`
+     * union that types both `LogEntry.level` and `getLogEntries({ minLevel })`.
+     *
+     * It used to return the storage spelling in UPPERCASE while the write path
+     * normalised (`level.uppercase()`), so queries worked and nothing looked
+     * broken — but `entries.filter(e => e.level === 'error')` matched nothing,
+     * ever. A support engineer pulling error logs off a driver's phone got an
+     * empty list and read it as a healthy device.
+     *
+     * Note `trace` is in the published union and cannot be produced: `toValue`
+     * collapses it into 0 alongside `debug`. That is a separate gap, left as is
+     * rather than silently widening storage.
+     */
     fun toLevel(value: Int): String = when (value) {
-        0 -> "DEBUG"
-        1 -> "INFO"
-        2 -> "WARN"
-        3 -> "ERROR"
-        else -> "DEBUG"
+        0 -> "debug"
+        1 -> "info"
+        2 -> "warn"
+        3 -> "error"
+        else -> "debug"
     }
 }

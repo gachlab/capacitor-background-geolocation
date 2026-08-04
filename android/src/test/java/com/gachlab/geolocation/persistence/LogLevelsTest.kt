@@ -35,12 +35,32 @@ class LogLevelsTest {
     }
 
     @Test
-    @DisplayName("int → string matches iOS levelString")
+    @DisplayName("int → string matches iOS levelString AND the published LogLevel union")
     fun toLevelMapping() {
-        assertEquals("DEBUG", LogLevels.toLevel(0))
-        assertEquals("INFO", LogLevels.toLevel(1))
-        assertEquals("WARN", LogLevels.toLevel(2))
-        assertEquals("ERROR", LogLevels.toLevel(3))
-        assertEquals("DEBUG", LogLevels.toLevel(99))
+        // Lowercase, because that is what `LogLevel` in values.ts declares and
+        // what `LogEntry.level` is typed as.
+        //
+        // This test used to assert UPPERCASE and passed: it locked the two
+        // natives to each other and never to the type they both feed. Both
+        // platforms agreed, both were wrong, and `entries.filter { it.level ==
+        // "error" }` on the JS side matched nothing on either. Keeping the two
+        // natives identical is necessary and was never sufficient.
+        assertEquals("debug", LogLevels.toLevel(0))
+        assertEquals("info", LogLevels.toLevel(1))
+        assertEquals("warn", LogLevels.toLevel(2))
+        assertEquals("error", LogLevels.toLevel(3))
+        assertEquals("debug", LogLevels.toLevel(99))
+    }
+
+    @Test
+    @DisplayName("round trip: what we publish is what we can read back")
+    fun roundTrip() {
+        // The asymmetry that hid the bug: `toInt` is case-insensitive, so
+        // querying by minLevel kept working while the values coming back were
+        // in the other spelling. Feeding our own output back in is the check
+        // that was missing.
+        listOf(0, 1, 2, 3).forEach { ordinal ->
+            assertEquals(ordinal, LogLevels.toInt(LogLevels.toLevel(ordinal)))
+        }
     }
 }
