@@ -34,11 +34,7 @@ export type StationaryExitMode = 'polling' | 'geofence';
  * the mapper's `?? loc.activityType` fallback quietly let the camelCase value
  * through whenever the table missed.
  */
-export type ActivityTypeHint =
-  | 'AutomotiveNavigation'
-  | 'OtherNavigation'
-  | 'Fitness'
-  | 'Other';
+export type ActivityTypeHint = 'AutomotiveNavigation' | 'OtherNavigation' | 'Fitness' | 'Other';
 
 /**
  * Flat native configuration. Every field maps 1:1 to a key the native `configure`

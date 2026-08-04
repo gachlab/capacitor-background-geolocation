@@ -61,15 +61,18 @@ describe('vocabularies that cross the bridge', () => {
   it('sends every activity type in the native spelling, or nothing at all', () => {
     const publicValues = ['automotiveNavigation', 'otherNavigation', 'fitness', 'other'] as const;
     const native: ActivityTypeHint[] = ['AutomotiveNavigation', 'OtherNavigation', 'Fitness', 'Other'];
-    const sent = publicValues.map(v => toFlatConfig({ location: { activityType: v } } as BaseConfig).activityType);
+    const sent = publicValues.map((v) => toFlatConfig({ location: { activityType: v } } as BaseConfig).activityType);
     assert.deepEqual(sent, native);
     // The assertion that was missing: the message claimed to cover a value the
     // table misses, and the test never passed one — so restoring the old
     // `?? loc.activityType` fallback left it green. Every public value IS in the
     // table, which is exactly why the gap was invisible.
     const unmapped = toFlatConfig({ location: { activityType: 'walking' } } as unknown as BaseConfig);
-    assert.equal(unmapped.activityType, undefined,
-      'an unmapped value must not travel in the public spelling the native cannot read');
+    assert.equal(
+      unmapped.activityType,
+      undefined,
+      'an unmapped value must not travel in the public spelling the native cannot read',
+    );
   });
 
   // The iOS fallback strategy was asserted here and has been REMOVED, for the
