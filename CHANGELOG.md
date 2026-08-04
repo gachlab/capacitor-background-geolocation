@@ -6,6 +6,25 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### BREAKING
+
+Four of the corrections below change what a consumer observes, so this is a
+**major release**, not a patch. They are listed here rather than buried in
+"Fixed" because each one is a value someone may already be matching on.
+
+- **`LogEntry.level` now comes back lowercase** (`'error'`, not `'ERROR'`),
+  matching the `LogLevel` union it was always typed as. Anyone who worked around
+  the bug by comparing against `'ERROR'` breaks; anyone who trusted the type
+  starts working.
+- **`phoneUsageWhileDriving` nests its location** under `location`, like every
+  other driving event and like its published type. Consumers reading the fix
+  fields at the top level break.
+- **`capabilities.activityRecognition` reports `false` on Android**, where the
+  `activity` event has no producer. `bg.require('activityRecognition')` now
+  throws there instead of resolving.
+- **`StationaryLocation.radius` is optional.** It is source-breaking for
+  TypeScript consumers assigning it to a `number`; iOS never delivered one.
+
 ### Fixed
 
 - **The same restart reason came out spelled two different ways.** The

@@ -154,4 +154,29 @@ class ConfigMapperTest {
             assertEquals(90_000L, opts.phoneUsageCooldownMs)
         }
     }
+
+    @Test
+    @DisplayName("stationaryExitMode: the public spelling is accepted at every entrance")
+    fun exitModeNormalisation() {
+        // Three paths bypass the SDK mapper and can deliver "poll": a config
+        // persisted by an older build, the untyped `native` escape hatch (merged
+        // last, so it overrides the mapper) and any raw-proxy caller. Lower-casing
+        // alone left it intact, working only by falling into an else branch and
+        // echoing back out of getConfig() outside its own declared union.
+        assertEquals(BGConfig.STATIONARY_EXIT_POLLING, BGConfig.normalizeExitMode("poll"))
+        assertEquals(BGConfig.STATIONARY_EXIT_POLLING, BGConfig.normalizeExitMode("polling"))
+        assertEquals(BGConfig.STATIONARY_EXIT_POLLING, BGConfig.normalizeExitMode("Poll"))
+        assertEquals(BGConfig.STATIONARY_EXIT_GEOFENCE, BGConfig.normalizeExitMode("geofence"))
+    }
+
+    @Test
+    @DisplayName("stationaryExitMode survives a merge from the escape hatch")
+    fun exitModeThroughMerge() {
+        val base = BGConfig.getDefault()
+        val override = BGConfig().apply { stationaryExitMode = "poll" }
+        val merged = BGConfig.merge(base, override)
+        assertEquals(BGConfig.STATIONARY_EXIT_POLLING, merged.stationaryExitMode,
+            "what getConfig() echoes must stay inside the declared union")
+    }
+
 }

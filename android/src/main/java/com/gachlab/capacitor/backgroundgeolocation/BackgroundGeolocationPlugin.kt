@@ -603,11 +603,11 @@ class BackgroundGeolocationPlugin : Plugin() {
     fun getBackgroundKillReason(call: PluginCall) {
         val (reason, timestamp) = facade.getBackgroundKillReason()
         call.resolve(JSObject().apply {
-            // Same vocabulary the `serviceRestarted` event publishes. Without this
-            // the two ways of learning WHY the service died answered with
-            // different words for the same reason, and a caller validating
-            // against the documented union dropped this one on the floor.
-            if (reason != null) put("reason", ServiceEvent.publicReason(reason)) else put("reason", JSObject.NULL)
+            // Already public: the facade normalises at the source, so this is a
+            // passthrough. Translating here too would restore the very shape that
+            // caused the bug — a mapping applied once per exit, which holds until
+            // somebody adds an exit and forgets.
+            if (reason != null) put("reason", reason) else put("reason", JSObject.NULL)
             if (timestamp != null) put("timestamp", timestamp) else put("timestamp", JSObject.NULL)
         })
     }

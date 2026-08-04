@@ -124,7 +124,10 @@ object GachConfigMapper {
         if (j.has("restartOnKill")) c.restartOnKill = j.getBoolean("restartOnKill")
         if (j.has("includeBattery")) c.includeBattery = j.getBoolean("includeBattery")
         if (has(j, "wakeLockMode"))  c.wakeLockMode    = j.getString("wakeLockMode")
-        if (has(j, "stationaryExitMode")) c.stationaryExitMode = j.getString("stationaryExitMode")
+        // Normalised on ingest: the `native` escape hatch and any raw-proxy
+        // caller reach this without passing through the SDK mapper, and a config
+        // persisted by an older build still holds the public spelling.
+        if (has(j, "stationaryExitMode")) c.stationaryExitMode = BGConfig.normalizeExitMode(j.getString("stationaryExitMode"))
 
         if (j.has("stationaryTimeout") && !j.isNull("stationaryTimeout"))
             c.stationaryTimeout      = j.getInt("stationaryTimeout")

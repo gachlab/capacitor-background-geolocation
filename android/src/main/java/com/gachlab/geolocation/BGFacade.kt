@@ -260,10 +260,24 @@ class BGFacade(private val context: Context) {
 
     fun getGeofences(): List<BGGeofence> = GeofenceManager.getAll()
 
+    /**
+     * Why the service was last killed, in the PUBLIC spelling.
+     *
+     * Normalised here rather than at the bridge, and that placement is the fix
+     * for the defect that started this change set. There are two ways out to
+     * JavaScript — this query and the `serviceRestarted` event — and the bug was
+     * never that the mapping was wrong: it was that one exit did not use it.
+     * Fixing that by calling `publicReason` at each exit leaves the same shape
+     * that failed, one caller away from failing again.
+     *
+     * With the translation at the source, the bridge is a passthrough and there
+     * is no exit that can forget. It also makes the guarantee testable without a
+     * `PluginCall`, which is why it had no test before.
+     */
     fun getBackgroundKillReason(): Pair<String?, Long?> {
         val prefs = context.applicationContext
             .getSharedPreferences("bgloc_diagnostics", android.content.Context.MODE_PRIVATE)
-        val reason = prefs.getString("last_kill_reason", null)
+        val reason = prefs.getString("last_kill_reason", null)?.let { ServiceEvent.publicReason(it) }
         val at = if (prefs.contains("last_kill_at")) prefs.getLong("last_kill_at", 0L) else null
         return Pair(reason, at)
     }
