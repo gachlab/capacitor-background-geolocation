@@ -65,7 +65,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     ]
 
     // Keep in sync with package.json `version`. Enforced by version-sync.test.ts.
-    private static let pluginVersion = "3.0.1"
+    private static let pluginVersion = "4.0.0"
 
     private var facade: BGFacade?
     private var currentConfig: BGConfig?
