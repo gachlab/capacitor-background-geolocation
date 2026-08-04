@@ -48,7 +48,7 @@ Four of the corrections below change what a consumer observes, so this is a
   to SharedPreferences and survive app upgrades, so renaming them would be a
   data migration wearing a rename's clothes. `ServiceRestartReason` is exported
   and `killReason()` is typed with it, so a future divergence is a compile
-  error rather than a silent drop.
+  error rather than a silent drop. ([#56])
 
 - **A silent, permanent blackout in `RawLocationProvider`.** `pickProviders()`
   filtered by `isProviderEnabled` and was evaluated ONCE, in `onStart()`, while
@@ -149,6 +149,7 @@ Four of the corrections below change what a consumer observes, so this is a
   single `templateToJSON` helper so they cannot drift apart again. ([#50])
 
 [#50]: https://github.com/gachlab/capacitor-background-geolocation/issues/50
+[#56]: https://github.com/gachlab/capacitor-background-geolocation/issues/56
 
 ## [3.0.0] - 2026-07-06
 
