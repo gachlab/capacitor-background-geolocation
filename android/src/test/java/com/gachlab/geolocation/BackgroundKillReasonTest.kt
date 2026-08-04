@@ -86,4 +86,25 @@ class BackgroundKillReasonTest {
         assertEquals("systemKill", reason)
         assertEquals(1_785_800_000_000L, at)
     }
+
+    @Test
+    fun `a reason written by a restart survives the clean-start clear`() {
+        // The ordering trap: `onStartCommand` records why the previous run ended
+        // and then calls `start()`. Clearing unconditionally there would wipe the
+        // record a millisecond after making it — the death observed and forgotten
+        // in the same breath. Only a start that did NOT come from a restart path
+        // may clear.
+        val context = RuntimeEnvironment.getApplication()
+        val prefs = context.getSharedPreferences("bgloc_diagnostics", Context.MODE_PRIVATE)
+        prefs.edit().clear().apply()
+        prefs.edit()
+            .putString("last_kill_reason", ServiceEvent.REASON_SYSTEM_KILL)
+            .putLong("last_kill_at", 1_785_800_000_000L)
+            .apply()
+
+        val (reason, at) = BGFacade(context).getBackgroundKillReason()
+
+        assertEquals("systemKill", reason)
+        assertEquals(1_785_800_000_000L, at)
+    }
 }

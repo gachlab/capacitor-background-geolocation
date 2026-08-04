@@ -91,7 +91,18 @@ internal class LocationDAO(context: Context) : BaseLocationDAO() {
                     "(SELECT _id FROM location ORDER BY time LIMIT ?)",
                     arrayOf(rowCount - maxRows)
                 )
-                db.execSQL("VACUUM")
+                // NOT here. SQLite rejects VACUUM while a transaction is open
+                // ("cannot VACUUM from within a transaction"), `execSQL` throws,
+                // nothing catches it, and it propagates through the location
+                // callback — which runs on the main looper, so an uncaught
+                // exception there kills the process. Reachable whenever
+                // `maxLocations` DECREASES: a `configure()` with a lower value, or
+                // an app update that changes the default. From then on the next
+                // fix would kill the app mid-shift.
+                //
+                // The trim itself is what bounds the table; reclaiming the file
+                // pages is housekeeping and can wait for a moment when we are not
+                // inside a transaction on the hot path of every position.
             }
 
             val oldestId = db.rawQuery(

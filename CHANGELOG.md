@@ -27,6 +27,34 @@ Four of the corrections below change what a consumer observes, so this is a
 
 ### Fixed
 
+- **Two paths that could kill the host process.** `LocationDAO` ran `VACUUM`
+  inside an open transaction — SQLite rejects that, `execSQL` throws, and nothing
+  catches it on the way up through the location callback, which runs on the main
+  looper. Reachable whenever `maxLocations` decreases. And `configure()` shut the
+  POST executor down before replacing it while `handleLocation()` read the same
+  reference unsynchronised from the main looper, so a fix landing in that window
+  hit `submit` on a terminated executor. Both are now ordered so the worst case
+  is harmless. ([#54])
+
+- **The offline queue enqueued one sync worker per fix.** `triggerSync` used
+  `WorkManager.enqueue` with no uniqueness and no network constraint, while
+  `PostLocationTask` crosses the sync threshold on every failed and every offline
+  POST — so with the backend down for forty minutes a driver reporting every
+  fifteen seconds enqueued ~160 workers, each of which read the same pending rows
+  into memory and POSTed the whole batch. It is `enqueueUniqueWork` with `KEEP`
+  and `NetworkType.CONNECTED` now. ([#54])
+
+- **`persistKillReason` recorded restarts, not deaths.** The timestamp was taken
+  at the moment of the restart rather than of the death — for a 611-minute gap
+  the two differ by 611 minutes and the wrong one was reported — and a service
+  that died and never returned wrote nothing at all, because every call site is
+  on the way back up. The service now stamps a last-alive time while running, so
+  a death with no exit path can still be dated; `appRemoved` is persisted as well
+  as fired, since firing it reaches a WebView that has just been destroyed with
+  the task and it was therefore one of four published reasons the query could
+  never return; and a clean start clears the previous reason, which nothing ever
+  did — a `boot` from three weeks ago used to be reported on every shift. ([#54])
+
 - **The same restart reason came out spelled two different ways.** The
   `serviceRestarted` event mapped the persisted constants to the documented
   camelCase union inline in the bridge, while `diagnostics.killReason()`
@@ -149,6 +177,7 @@ Four of the corrections below change what a consumer observes, so this is a
   single `templateToJSON` helper so they cannot drift apart again. ([#50])
 
 [#50]: https://github.com/gachlab/capacitor-background-geolocation/issues/50
+[#54]: https://github.com/gachlab/capacitor-background-geolocation/issues/54
 [#56]: https://github.com/gachlab/capacitor-background-geolocation/issues/56
 
 ## [3.0.0] - 2026-07-06
