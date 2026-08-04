@@ -27,6 +27,37 @@ Four of the corrections below change what a consumer observes, so this is a
 
 ### Fixed
 
+- **Nothing outside the process could revive a killed service.** Every recovery
+  path belonged to the service itself, which is a contradiction: START_STICKY
+  covers a memory kill and nothing else, the BootReceiver covers a reboot and
+  only with `startOnBoot`, `onTaskRemoved` covers nothing, and the in-service
+  watchdog cannot fire once the service is gone. That is the shape of the
+  611-minute blackout — it died and stayed dead until a human opened the app the
+  next morning, with `stopOnTerminate: false` and `startOnBoot: true` both set,
+  because both are instructions to a process that no longer exists. A
+  `PeriodicWorkRequest` outside the service now checks every fifteen minutes and
+  restarts it. Arming it can never throw: a safety net that prevents tracking
+  from starting turns a recoverable outage into a guaranteed one. ([#54])
+
+- **`startOnBoot` was standing in for a fact nobody recorded.** It answers
+  "should a reboot start tracking", not "was tracking running", and the
+  substitution failed both ways: a reboot after the driver stopped used to report
+  the location of someone off duty, and an active shift with `startOnBoot: false`
+  was silently lost. The service now records whether tracking is supposed to be
+  running, which is also what keeps the reviver from resurrecting a shift that
+  was ended on purpose. ([#54])
+
+- **Four defects in the watchdog.** It could not be enabled at runtime —
+  `scheduleWatchdog` was reachable only from `start()`, so `configure({
+  enableWatchdog: true })` was accepted, persisted, returned by `getConfig()` and
+  scheduled nothing — nor disabled, since the tick never re-read the flag. It was
+  blind in the worst case: the guard required a previous fix, and the buffer is
+  cleared on every service lifecycle, so a service that came back and never
+  received one never fired. And when it did fire it did not move the mark it
+  measures against, so it restarted the provider every interval indefinitely,
+  writing a kill reason and firing an event each round — the watchdog becoming
+  the outage it watched for. ([#54])
+
 - **Two paths that could kill the host process.** `LocationDAO` ran `VACUUM`
   inside an open transaction — SQLite rejects that, `execSQL` throws, and nothing
   catches it on the way up through the location callback, which runs on the main

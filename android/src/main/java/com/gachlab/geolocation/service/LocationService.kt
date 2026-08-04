@@ -179,6 +179,13 @@ class LocationService : Service() {
      *  recorded why the previous run ended. */
     private var restartedByOs = false
 
+    /**
+     * When this run began, used by the watchdog as the baseline before the first
+     * fix exists — and moved forward on every watchdog restart so the restart
+     * itself becomes what is being timed.
+     */
+    private var runStartedAtMs = 0L
+
     @Synchronized
     fun start() {
         if (isRunning) return
@@ -190,6 +197,13 @@ class LocationService : Service() {
         // had just made — the death would be forgotten a millisecond after being
         // observed. A restart path owns its reason; a user-initiated start is the
         // moment the previous one stops being news.
+        runStartedAtMs = System.currentTimeMillis()
+        // Arm the out-of-process net and record that tracking is SUPPOSED to be
+        // on. That second fact never existed anywhere: `startOnBoot` was standing
+        // in for it, which is why a reboot after a driver stopped tracking used to
+        // start reporting the location of someone off duty.
+        ServiceReviver.setShouldBeRunning(applicationContext, true)
+        ServiceReviver.schedule(applicationContext)
         if (!restartedByOs) clearKillReason()
         restartedByOs = false
         markAlive()
@@ -219,6 +233,12 @@ class LocationService : Service() {
     fun stop() {
         if (!isRunning) return
         isRunning = false
+        // Stood down deliberately: the net must not resurrect a shift the driver
+        // ended. This is the difference between "it died" and "it was stopped",
+        // and it is the whole reason the reviver reads a state flag rather than a
+        // configuration preference.
+        ServiceReviver.setShouldBeRunning(applicationContext, false)
+        ServiceReviver.cancel(applicationContext)
 
         mainHandler.removeCallbacks(watchdogRunnable)
         mainHandler.removeCallbacks(heartbeatRunnable)
@@ -254,6 +274,9 @@ class LocationService : Service() {
         previousTask?.shutdown()
         configurePrioritySync(merged)
         configureDrivingDetector(merged)
+        // Re-armed here, exactly like the heartbeat below. Without it the
+        // watchdog could only ever be turned on by a restart of the service.
+        scheduleWatchdog(merged)
 
         when (merged.wakeLockMode) {
             "always" -> { if (wakeLock?.isHeld != true) acquireWakeLock() }
@@ -451,7 +474,17 @@ class LocationService : Service() {
 
     // ── Watchdog ──────────────────────────────────────────────────────────────
 
+    /**
+     * (Re)arm the watchdog. Safe to call at any time, including from `configure()`.
+     *
+     * It used to be reachable only from `start()`, so `configure({ enableWatchdog:
+     * true })` on a running service was accepted, persisted and returned by
+     * `getConfig()` while scheduling nothing — for the life of that run. Turning
+     * it off at runtime did not work either, because `checkWatchdog` never re-read
+     * the flag.
+     */
     private fun scheduleWatchdog(cfg: BGConfig) {
+        mainHandler.removeCallbacks(watchdogRunnable)
         if (cfg.enableWatchdog != true) return
         mainHandler.postDelayed(watchdogRunnable, cfg.watchdogIntervalMs ?: 60_000L)
     }
@@ -459,16 +492,35 @@ class LocationService : Service() {
     private fun checkWatchdog() {
         val cfg = config ?: return
         if (!isRunning) return
+        // Re-read the flag every tick, so disabling it at runtime actually stops it.
+        if (cfg.enableWatchdog != true) return
         val interval = cfg.watchdogIntervalMs ?: 60_000L
+
+        // `since` is the last fix OR, when there has never been one, the moment
+        // this run began.
+        //
+        // The old guard was `ts > 0`, and `onCreate()` clears the buffer on every
+        // service lifecycle — including a START_STICKY restart. A service that
+        // came back and never received a single fix therefore had `ts == 0` and
+        // the watchdog never fired, which is precisely the situation that
+        // justifies having one. Blind in the worst case.
         val ts       = buffer.lastFixAtMs   // snapshot once: a concurrent record() between
-        val elapsed  = System.currentTimeMillis() - ts  // the two reads could pass a stale elapsed
-        if (ts > 0 && elapsed > interval) {
+        val since    = if (ts > 0) ts else runStartedAtMs
+        val elapsed  = System.currentTimeMillis() - since  // the two reads could pass a stale elapsed
+
+        if (since > 0 && elapsed > interval) {
             val p = provider
-            if (p != null && p.isStarted()) {
+            if (p != null) {
                 Log.i(TAG, "Watchdog: no update in ${elapsed / 1000}s — restarting provider")
                 p.onStop(); p.onStart()
                 persistKillReason(ServiceEvent.REASON_WATCHDOG)
                 fire(ServiceEvent.ServiceRestarted(ServiceEvent.REASON_WATCHDOG))
+                // The restart is now the thing being timed. Without moving this
+                // mark the next tick sees the same elapsed time and restarts the
+                // provider again — every interval, indefinitely, writing a kill
+                // reason and firing a `serviceRestarted` each round. The watchdog
+                // becomes the outage it was watching for.
+                runStartedAtMs = System.currentTimeMillis()
             }
         }
         mainHandler.postDelayed(watchdogRunnable, interval)
