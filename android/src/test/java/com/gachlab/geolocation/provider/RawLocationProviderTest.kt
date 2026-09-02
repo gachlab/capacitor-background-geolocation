@@ -3,8 +3,15 @@
 
 package com.gachlab.geolocation.provider
 
+import android.location.Location
 import android.location.LocationManager
+import android.os.Handler
+import android.os.HandlerThread
+import android.os.Looper
 import com.gachlab.geolocation.BGConfig
+import com.gachlab.geolocation.BGLocation
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -188,5 +195,95 @@ class RawLocationProviderTest {
 
         assertEquals("a duplicate callback must not stack registrations",
             count, listenerCount())
+    }
+
+    // ── The subscription outliving the thread that made it ────────────────────
+
+    private fun collectDeliveries(): MutableList<BGLocation> {
+        val delivered = mutableListOf<BGLocation>()
+        provider.setDelegate(object : AbstractLocationProvider.Delegate {
+            override fun onLocation(location: BGLocation) { delivered += location }
+            override fun onStationary(location: BGLocation, radius: Float) {}
+            override fun onError(error: BGException) {}
+        })
+        return delivered
+    }
+
+    private fun fix(lat: Double, lon: Double) =
+        Location(LocationManager.GPS_PROVIDER).apply {
+            latitude = lat
+            longitude = lon
+            accuracy = 5f
+            time = System.currentTimeMillis()
+            elapsedRealtimeNanos = System.nanoTime()
+        }
+
+    /**
+     * Subscribe the way production does, then let that thread die.
+     *
+     * The host app calls `configure()` from JavaScript; Capacitor runs a
+     * `@PluginMethod` off the main thread, and `onConfigure()` re-subscribes —
+     * so the LIVE registration is the one made by that thread. This reproduces
+     * exactly that, with a `HandlerThread` standing in for the bridge.
+     */
+    private fun subscribeOn(thread: HandlerThread, block: () -> Unit) {
+        val done = CountDownLatch(1)
+        Handler(thread.looper).post { block(); done.countDown() }
+        assertTrue("the subscribing thread never ran", done.await(5, TimeUnit.SECONDS))
+    }
+
+    private fun kill(thread: HandlerThread) {
+        thread.quitSafely()
+        thread.join(5_000)
+        assertFalse("the subscribing thread must actually be gone", thread.isAlive)
+    }
+
+    @Test
+    fun `keeps delivering after the thread that subscribed is gone`() {
+        // The 120-second blackout. `requestLocationUpdates`'s four-argument
+        // overload binds delivery to the CALLING thread's Looper, so the whole
+        // subscription lived exactly as long as whoever happened to call it.
+        // Swiping the app out of recents took that thread down and every fix the
+        // system delivered was rejected at the executor boundary:
+        //
+        //   RejectedExecutionException: Handler {...} is shutting down
+        //     at android.os.HandlerExecutor.execute
+        //
+        // Nothing looked wrong: same PID, service still listed, notification
+        // still posted, zero log lines — and zero positions.
+        val delivered = collectDeliveries()
+        val bridge = HandlerThread("fake-capacitor-bridge").apply { start() }
+
+        subscribeOn(bridge) { provider.onStart() }
+        kill(bridge)
+
+        shadow.simulateLocation(LocationManager.GPS_PROVIDER, fix(25.77, -80.19))
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals("a fix delivered after the subscribing thread died must still arrive",
+            1, delivered.size)
+    }
+
+    @Test
+    fun `keeps delivering after a reconfiguration from a thread that then dies`() {
+        // The path that actually bit, and the reason the previous test is not
+        // enough on its own: `onStart()` may well have run on the main thread
+        // (boot receiver, sticky restart), and then `configure()` from JavaScript
+        // tore that subscription down and rebuilt it on the bridge thread. The
+        // healthy registration is REPLACED by a doomed one, which is why a
+        // production tablet could post for 38 days while an emulator went silent
+        // immediately — two start paths, two lifetimes, not two states of one.
+        val delivered = collectDeliveries()
+        provider.onStart()
+
+        val bridge = HandlerThread("fake-capacitor-bridge").apply { start() }
+        subscribeOn(bridge) { provider.onConfigure(config().apply { interval = 30_000 }) }
+        kill(bridge)
+
+        shadow.simulateLocation(LocationManager.GPS_PROVIDER, fix(25.78, -80.20))
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals("a reconfiguration must not bind the shift to the caller's lifetime",
+            1, delivered.size)
     }
 }

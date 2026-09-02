@@ -39,6 +39,26 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   and refusing on coarse alone would switch off a shift the system was willing
   to run. ([#59])
 
+- **The `raw` provider stopped delivering when the app's task was removed.** Not
+  a crash and not a kill: the process stayed alive, the service stayed listed,
+  the foreground notification kept saying the shift was on, and nothing was
+  measured. Swiping the app out of recents produced 0 positions in 120 s where
+  backgrounding it produced 9 in 90 s, with one
+  `RejectedExecutionException: Handler ... is shutting down` per interval and no
+  plugin log lines at all. `requestLocationUpdates`'s four-argument overload
+  binds delivery to the **calling thread's** Looper, and `onConfigure()`
+  re-subscribes — so the live subscription was the one made by the last
+  `configure()`, which host apps call from JavaScript, which Capacitor runs off
+  the main thread. The subscription lived exactly as long as whoever happened to
+  create it. That is also why a tablet could post for 38 days with the app closed
+  while an emulator went silent at once: `onStartCommand` paths (boot receiver,
+  `startOnBoot`, sticky restart) bound to the main Looper and survived — two
+  start paths with different lifetimes, not two states of one. The subscription
+  is now bound to a Looper the **service** owns, which is also what both GMS
+  providers already did, so all three finally behave the same way instead of one
+  inheriting the lifetime of an accident. ([#60])
+
+
 ## [4.0.0] - 2026-08-04
 
 ### BREAKING
@@ -247,6 +267,7 @@ Four of the corrections below change what a consumer observes, so this is a
 [#54]: https://github.com/gachlab/capacitor-background-geolocation/issues/54
 [#56]: https://github.com/gachlab/capacitor-background-geolocation/issues/56
 [#59]: https://github.com/gachlab/capacitor-background-geolocation/issues/59
+[#60]: https://github.com/gachlab/capacitor-background-geolocation/issues/60
 
 ## [3.0.0] - 2026-07-06
 
