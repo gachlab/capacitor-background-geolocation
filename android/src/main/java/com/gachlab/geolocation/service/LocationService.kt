@@ -107,6 +107,31 @@ class LocationService : Service() {
          * The reason is persisted BEFORE stopping, because `stop()` fires
          * `ServiceStopped` and a listener reading the reason must find it there.
          */
+        /**
+         * Record that a start was refused for want of the location permission.
+         *
+         * For the callers that never reach the service at all. The guard inside
+         * `start()` cannot help them: by the time it runs, `startForegroundService`
+         * has already been called and the app is committed to going foreground
+         * within a few seconds — a promise a service without the permission
+         * cannot keep either way (#59).
+         *
+         * `shouldBeRunning` is deliberately untouched. The shift is still a shift
+         * that should be running; what changed is that it cannot be right now, and
+         * clearing the flag would leave the driver with a shift nothing resumes
+         * when the permission comes back.
+         */
+        @JvmStatic
+        fun recordPermissionLost(context: Context) {
+            val app = context.applicationContext
+            app.getSharedPreferences(PREFS_DIAG, MODE_PRIVATE).edit()
+                .putString(KEY_KILL_REASON, ServiceEvent.REASON_PERMISSION_LOST)
+                .putLong(KEY_KILL_AT, System.currentTimeMillis())
+                .apply()
+            BGLog.w("location permission is gone — refusing to start the service")
+            eventListener?.invoke(ServiceEvent.ServiceRestarted(ServiceEvent.REASON_PERMISSION_LOST))
+        }
+
         @JvmStatic
         fun retireShiftGone(context: Context) {
             val app = context.applicationContext

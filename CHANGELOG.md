@@ -45,6 +45,24 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   and refusing on coarse alone would switch off a shift the system was willing
   to run. ([#59])
 
+- **The #59 guard traded one crash for another.** Placing it inside
+  `LocationService.start()` was too late: `startForegroundService` is a promise
+  that the service will call `startForeground` within a few seconds, and the
+  guard returned without calling it, so the platform killed the app with
+  `ForegroundServiceDidNotStartInTimeException` — traced on an Android 14
+  emulator 15 ms after the refusal. A service that has already been started has
+  no legal move here, because going foreground with `foregroundServiceType=
+  "location"` and no permission throws `SecurityException` all over again. The
+  only fix is not making the promise, so the guard now runs in the **callers**,
+  before `startForegroundService`. There are three, and #59 had guarded one:
+  `BGFacade.start()` — the path the host app takes when it reopens after Android
+  auto-revoked the permission for an unused app — `BootReceiver`, where a reboot
+  meets a permission revoked while the device was off, and `ServiceReviver`,
+  which already had it. The guard inside the service stays as a net for anything
+  that reaches it another way. `BGFacade.start()` now reports whether it started
+  anything, so a refusal reaches JavaScript as a rejection instead of resolving
+  as though tracking had begun. ([#59])
+
 - **The `raw` provider stopped delivering when the app's task was removed.** Not
   a crash and not a kill: the process stayed alive, the service stayed listed,
   the foreground notification kept saying the shift was on, and nothing was

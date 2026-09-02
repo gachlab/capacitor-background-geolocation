@@ -11,6 +11,7 @@ import android.util.Log
 import com.gachlab.geolocation.persistence.ConfigDAO
 import com.gachlab.geolocation.persistence.LocationDAO
 import com.gachlab.geolocation.persistence.SessionDAO
+import com.gachlab.geolocation.service.ForegroundLocationGate
 import com.gachlab.geolocation.service.LocationService
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
@@ -116,13 +117,40 @@ class BGFacade(private val context: Context) {
         startedService()?.configure(resolved)
     }
 
-    fun start() {
+    /**
+     * Start tracking. Returns false when the location permission is missing and
+     * nothing was started.
+     *
+     * The guard belongs HERE, before `startForegroundService`, and that is the
+     * whole point (#59). `startForegroundService` is a promise that the service
+     * will call `startForeground` within a few seconds, and a service declared
+     * `foregroundServiceType="location"` cannot keep that promise without the
+     * permission: going foreground throws SecurityException, and not going
+     * foreground gets the app killed with
+     * `ForegroundServiceDidNotStartInTimeException`. Traced on an Android 14
+     * emulator 15 ms after the service refused — one crash traded for another.
+     *
+     * So a service that has already been started cannot fix this, whatever it
+     * does. The only move that works is not making the promise. The guard inside
+     * `LocationService.start()` stays as a net for paths that reach the service
+     * some other way, but it can no longer be the only one.
+     *
+     * `shouldBeRunning` is deliberately left alone: the shift is still supposed
+     * to be running, it just cannot be, and re-granting the permission has to
+     * resume it with no extra bookkeeping.
+     */
+    fun start(): Boolean {
+        if (!ForegroundLocationGate.canStartLocationService(context.applicationContext)) {
+            LocationService.recordPermissionLost(context.applicationContext)
+            return false
+        }
         val intent = Intent(context.applicationContext, LocationService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.applicationContext.startForegroundService(intent)
         } else {
             context.applicationContext.startService(intent)
         }
+        return true
     }
 
     fun stop() {

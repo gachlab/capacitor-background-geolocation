@@ -233,7 +233,7 @@ class BackgroundGeolocationPlugin : Plugin() {
         if (getPermissionState("location") != PermissionState.GRANTED) {
             requestPermissionForAlias("location", call, "startAfterPermission"); return
         }
-        facade.start(); call.resolve()
+        startOrReject(call)
     }
 
     @PermissionCallback
@@ -242,7 +242,26 @@ class BackgroundGeolocationPlugin : Plugin() {
         if (getPermissionState("location") != PermissionState.GRANTED) {
             call.reject("Location permission denied", "403"); return
         }
-        facade.start(); call.resolve()
+        startOrReject(call)
+    }
+
+    /**
+     * The facade refuses to start without the location permission, and a refusal
+     * has to reach JavaScript (#59).
+     *
+     * `facade.start(); call.resolve()` told the host app that tracking had begun
+     * whenever the guard closed, which is the same unexplained silence the guard
+     * was written to end — worse here, because the app is awake and could have
+     * said something.
+     *
+     * The alias check above is not redundant with the facade's gate: Capacitor
+     * grants an alias only when EVERY permission in it is granted, so coarse-only
+     * lands here as "not granted" while the platform would have run the service.
+     * This second door is the one that reflects what Android actually allows.
+     */
+    private fun startOrReject(call: PluginCall) {
+        if (facade.start()) call.resolve()
+        else call.reject("Location permission is not granted", "403")
     }
 
     @PluginMethod
