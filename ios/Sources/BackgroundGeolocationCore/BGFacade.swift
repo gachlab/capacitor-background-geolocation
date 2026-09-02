@@ -54,6 +54,47 @@ public final class BGFacade: NSObject {
         GeofenceManager.shared.eventListener = { [weak self] event, location in
             self?.onGeofenceTransition(event, location: location)
         }
+        // `BackgroundSync` is a singleton with no way back to this object, so its
+        // retirement arrives as a notification (#67).
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(onShiftGoneNotification),
+            name: .BGShiftGone,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self, name: .BGShiftGone, object: nil)
+    }
+
+    @objc private func onShiftGoneNotification() {
+        retireShiftGone()
+    }
+
+    /// Stop tracking because the server says the shift no longer exists (#67).
+    ///
+    /// Stops unconditionally, which is the difference from the 285 abort path in
+    /// the `PostLocationTaskDelegate` extension below. An abort is the server
+    /// ASKING, so handing that to the host app when one is listening is
+    /// reasonable. A sustained minute of 404 is the server reporting a fact —
+    /// there is nothing left to track for — and the case that matters most is
+    /// exactly the one where no JavaScript is alive to be asked.
+    ///
+    /// The `_isStarted` guard makes the whole thing idempotent, not just the
+    /// stop. Both senders can reach here for the same run (the detector keeps
+    /// returning true while it continues), and without it the host app would get
+    /// a stream of duplicate events for one retirement.
+    ///
+    /// It reuses `onAbortRequested` because iOS has no `serviceRestarted`
+    /// emitter and no kill-reason store, so there is nowhere yet to say
+    /// `shiftGone` specifically. Tracking stops either way; reporting parity with
+    /// Android is tracked separately in #67.
+    public func retireShiftGone() {
+        guard _isStarted else { return }
+        BGLog.shared.w("server reports the shift no longer exists — retiring tracking")
+        try? stop()
+        delegate?.onAbortRequested()
     }
 
     // MARK: - Configure
@@ -145,6 +186,8 @@ public final class BGFacade: NSObject {
         scheduleHeartbeat()
         configureSensorFusion()
         sensorFusion?.start()
+        // A new shift must never inherit the previous one's run of 404s (#67).
+        ShiftGoneDetector.shared.reset()
         BGLog.shared.i("Service started")
     }
 
@@ -666,6 +709,10 @@ extension BGFacade: PostLocationTaskDelegate {
         } else {
             try? stop()
         }
+    }
+
+    public func postLocationTaskShiftGone(_ task: PostLocationTask) {
+        retireShiftGone()
     }
 
     public func postLocationTaskHttpAuthorizationUpdates(_ task: PostLocationTask) {

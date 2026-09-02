@@ -6,6 +6,29 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- **iOS: a deleted shift was retried forever too.** #63 shipped in 4.1.0 on
+  Android only; the iOS sync path had the same defect, because nothing there
+  treated 404 differently from any other failure and no retry ceiling existed.
+  `PostLocationTask` had arms for 285 and 401 and dropped everything else into
+  one bucket, and `BackgroundSync` restored the rows to pending on any non-2xx,
+  so they were re-sent forever. The same rule now applies on both platforms —
+  only 404, and only sustained for a minute, with a 2xx clearing the run and
+  5xx / no-network / 401 neither counting as evidence nor destroying it. The
+  Swift detector is a deliberate transcription of the Kotlin one rather than a
+  fresh design: the rule is a contract between the platforms, and two
+  implementations that drift on what "the shift is gone" means would be worse
+  than one platform not having it. On retirement `BGFacade` stops tracking.
+  ([#67])
+
+  Not at parity yet, and deliberately out of scope here: Android persists a
+  `shift_gone` reason so the next app open can explain the silence, and iOS has
+  no kill-reason store at all — nothing there emits `serviceRestarted`. iOS
+  reuses the existing abort event, so tracking stops but the cause is not
+  reported. `ServiceRestartReason`'s `shiftGone` stays documented as Android
+  only until that lands.
+
 ## [4.1.0] - 2026-09-02
 
 ### Added
@@ -310,6 +333,7 @@ Four of the corrections below change what a consumer observes, so this is a
   single `templateToJSON` helper so they cannot drift apart again. ([#50])
 
 [#50]: https://github.com/gachlab/capacitor-background-geolocation/issues/50
+[#67]: https://github.com/gachlab/capacitor-background-geolocation/issues/67
 [4.1.0]: https://github.com/gachlab/capacitor-background-geolocation/releases/tag/v4.1.0
 [4.0.0]: https://github.com/gachlab/capacitor-background-geolocation/releases/tag/v4.0.0
 [#54]: https://github.com/gachlab/capacitor-background-geolocation/issues/54

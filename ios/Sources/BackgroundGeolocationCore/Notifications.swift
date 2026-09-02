@@ -34,4 +34,6 @@ public extension Notification.Name {
     // Priority sync result events — userInfo: ["eventType": String, "attemptNumber": Int] / ["eventType": String, "httpStatus": Int, "attempts": Int]
     static let BGPrioritySyncSuccess       = Notification.Name("BGPrioritySyncSuccess")
     static let BGPrioritySyncFailed        = Notification.Name("BGPrioritySyncFailed")
+    /** The server reported 404 for a sustained minute: the shift is gone (#67). */
+    static let BGShiftGone                 = Notification.Name("BGShiftGone")
 }
