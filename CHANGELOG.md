@@ -6,6 +6,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [4.1.1] - 2026-09-02
+
 ### Fixed
 
 - **iOS: a deleted shift was retried forever too.** #63 shipped in 4.1.0 on
@@ -339,6 +341,7 @@ Four of the corrections below change what a consumer observes, so this is a
 
 [#50]: https://github.com/gachlab/capacitor-background-geolocation/issues/50
 [#67]: https://github.com/gachlab/capacitor-background-geolocation/issues/67
+[4.1.1]: https://github.com/gachlab/capacitor-background-geolocation/releases/tag/v4.1.1
 [4.1.0]: https://github.com/gachlab/capacitor-background-geolocation/releases/tag/v4.1.0
 [4.0.0]: https://github.com/gachlab/capacitor-background-geolocation/releases/tag/v4.0.0
 [#54]: https://github.com/gachlab/capacitor-background-geolocation/issues/54
