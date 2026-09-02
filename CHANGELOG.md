@@ -6,6 +6,39 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **`permissionLost`, a new `serviceRestarted` reason.** A shift that stops
+  because the permission went away used to be indistinguishable from a shift
+  that stopped because the driver drove into a tunnel: both are silence. The
+  reason is persisted at the moment the service stands down, so whoever opens
+  the app next can say what actually happened. ([#59])
+
+### Fixed
+
+- **A revoked location permission crash-looped the app on Android 14+.** The
+  platform kills the process on a runtime revoke — its own standard behaviour —
+  `START_STICKY` brings the service back, and the restart called
+  `startForeground` on a service declared `foregroundServiceType="location"`
+  without the permission that type requires. The `SecurityException` escapes
+  `onStartCommand`, so the platform turns it into a force-close dialog; it fired
+  twice per revoke, and again whenever the app was reopened after Android
+  auto-revoked the permission for being unused, which meant the app died before
+  any JavaScript could run and could not report why it had gone quiet. A shared
+  gate now answers "may a `location`-typed foreground service start at all" for
+  **both** doors into `startForeground` — the service and the out-of-process
+  reviver — because guarding only the service leaves the reviver asking every
+  fifteen minutes, and that is what turns a single crash into a loop. The check
+  runs *before* the service records that it should be running, which is the half
+  that matters: four lines later would stop the crash and keep the loop.
+  `onStartCommand` returns `START_NOT_STICKY` while the gate is closed so the
+  platform stops re-delivering, and `shouldBeRunning` is deliberately left
+  standing — the shift is still supposed to be running, it just cannot be, so
+  re-granting the permission resumes it with no extra bookkeeping. Coarse
+  location counts: the platform accepts either for the foreground-service type,
+  and refusing on coarse alone would switch off a shift the system was willing
+  to run. ([#59])
+
 ## [4.0.0] - 2026-08-04
 
 ### BREAKING
@@ -213,6 +246,7 @@ Four of the corrections below change what a consumer observes, so this is a
 [4.0.0]: https://github.com/gachlab/capacitor-background-geolocation/releases/tag/v4.0.0
 [#54]: https://github.com/gachlab/capacitor-background-geolocation/issues/54
 [#56]: https://github.com/gachlab/capacitor-background-geolocation/issues/56
+[#59]: https://github.com/gachlab/capacitor-background-geolocation/issues/59
 
 ## [3.0.0] - 2026-07-06
 

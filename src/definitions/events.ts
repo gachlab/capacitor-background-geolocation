@@ -66,7 +66,19 @@ export interface IdleEndPayload {
  * and has to answer it with the same words — the two used to disagree, and the
  * one that was wrong was the one nobody could see in a type.
  */
-export type ServiceRestartReason = 'watchdog' | 'systemKill' | 'boot' | 'appRemoved';
+export type ServiceRestartReason =
+  | 'watchdog'
+  | 'systemKill'
+  | 'boot'
+  | 'appRemoved'
+  /**
+   * Android only. The service refused to start because the app no longer holds
+   * the location permission, so a `location`-typed foreground service is not
+   * legal. Distinct from `systemKill`: nothing died unexpectedly — the platform
+   * took the permission away and the plugin stood down instead of crash-looping
+   * against `startForeground`.
+   */
+  | 'permissionLost';
 
 export interface ServiceRestartedPayload {
   reason: ServiceRestartReason;

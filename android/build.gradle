@@ -84,6 +84,11 @@ dependencies {
     // integration tests that require a Robolectric Android runtime.
     testRuntimeOnly "org.junit.vintage:junit-vintage-engine:$junitJupiterVersion"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher:1.10.2"
+    // Test-only. Lets `ForegroundLocationGateTest` run the reviver Worker for
+    // real instead of asserting that a guard exists by reading the source: the
+    // reviver is the SECOND door into `startForeground`, and the one that turns
+    // a single crash into a loop with a fifteen-minute heartbeat.
+    testImplementation "androidx.work:work-testing:$androidxWorkRuntimeVersion"
     testImplementation "org.robolectric:robolectric:$robolectricVersion"
     testImplementation "org.mockito:mockito-core:$mockitoVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"

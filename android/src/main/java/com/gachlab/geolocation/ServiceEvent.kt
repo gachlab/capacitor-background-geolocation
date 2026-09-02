@@ -85,6 +85,18 @@ sealed class ServiceEvent {
         const val REASON_APP_REMOVED = "app_removed"
 
         /**
+         * The location permission was gone when the service tried to go
+         * foreground (#59).
+         *
+         * It is the reason a shift goes quiet with nobody able to say why: the
+         * platform revokes, kills, and restarts, and the restart cannot legally
+         * start a `location`-typed foreground service. Recording it is what lets
+         * whoever opens the app next report "permission revoked" instead of the
+         * silence that looks identical to a tunnel.
+         */
+        const val REASON_PERMISSION_LOST = "permission_lost"
+
+        /**
          * The spelling that leaves the plugin, matching `ServiceRestartedPayload.reason`.
          *
          * It lives here, as one function, because there are TWO exits to
@@ -103,6 +115,7 @@ sealed class ServiceEvent {
         fun publicReason(reason: String): String = when (reason) {
             REASON_SYSTEM_KILL -> "systemKill"
             REASON_APP_REMOVED -> "appRemoved"
+            REASON_PERMISSION_LOST -> "permissionLost"
             // watchdog / boot are already spelled the same on both sides. An
             // unknown value passes through rather than being swallowed: a reason
             // we did not anticipate is still more useful than none.

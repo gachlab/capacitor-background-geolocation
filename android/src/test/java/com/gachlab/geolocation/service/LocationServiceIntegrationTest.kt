@@ -17,6 +17,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.android.controller.ServiceController
 import org.robolectric.annotation.Config
 
@@ -43,6 +44,18 @@ class LocationServiceIntegrationTest {
     @Before
     fun setUp() {
         events.clear()
+        // Every test in this file is about a service that CAN run. Since the
+        // location-permission gate (`ForegroundLocationGate`), a service without
+        // the permission refuses to start on purpose — so leaving it ungranted
+        // here would silently turn each of these into a test of the refusal, not
+        // of the behaviour it names. `systemKillRestartEmitsEventAndStaysSticky`
+        // is what caught it; `restartOnKillFalseReturnsNotSticky` stayed green
+        // while measuring the wrong thing, which is worse.
+        org.robolectric.Shadows.shadowOf(RuntimeEnvironment.getApplication())
+            .grantPermissions(
+                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                android.Manifest.permission.ACCESS_COARSE_LOCATION,
+            )
         controller = Robolectric.buildService(LocationService::class.java).create()
         service = controller.get()
         LocationService.eventListener = { events.add(it) }

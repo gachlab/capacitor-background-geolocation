@@ -52,6 +52,22 @@ internal class ServiceReviver(appContext: Context, params: WorkerParameters) :
             if (!wasSupposedToRun(applicationContext)) return Result.success()
             if (LocationService.instance != null) return Result.success()
 
+            // The other door into `startForeground` (#59). Without this the net
+            // is what keeps the crash loop alive: the service refuses to start
+            // without the location permission, `shouldBeRunning` stays true
+            // because the shift IS supposed to be running, and this worker would
+            // ask the platform to start it again every fifteen minutes — each
+            // attempt a fresh SecurityException in the driver's face.
+            //
+            // Returning success rather than retry, and leaving `shouldBeRunning`
+            // alone: nothing here failed. Tracking is impossible right now, and
+            // the moment the permission comes back this same net resumes the
+            // shift with no further bookkeeping.
+            if (!ForegroundLocationGate.canStartLocationService(applicationContext)) {
+                Log.w(TAG, "not reviving: the app has no location permission")
+                return Result.success()
+            }
+
             Log.w(TAG, "service is not running but should be — reviving")
             val intent = Intent(applicationContext, LocationService::class.java)
                 .putExtra(LocationService.EXTRA_START_REASON, REASON_REVIVED)
