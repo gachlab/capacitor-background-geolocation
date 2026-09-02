@@ -101,12 +101,22 @@ internal class BackgroundSync(appContext: Context, params: WorkerParameters) :
         val code = client.postJSON(array)
         Log.d(TAG, "Sync POST(batch) $resolvedUrl → HTTP $code (${locations.size} locations)")
 
+        val retire = ShiftGoneDetector.observe(code)
+
         return if (code in 200..299) {
             locations.forEach { loc -> loc.locationId?.let { locationDAO.deleteById(it) } }
             // A single batched POST is atomic, so progress is coarse (0→100 in one step).
             emit(ServiceEvent.SyncProgress(100))
             emit(ServiceEvent.SyncSuccess(locations.size))
             BGLog.i("Sync success: ${locations.size} sent")
+            Result.success()
+        } else if (retire) {
+            // Success, not retry — and the distinction is the entire fix (#63).
+            // Nothing here failed: the server answered, and the answer was that
+            // this shift is gone. Asking WorkManager to try again would keep the
+            // backoff chain alive against a shift that no longer exists.
+            emit(ServiceEvent.SyncError(code, ""))
+            LocationService.retireShiftGone(applicationContext)
             Result.success()
         } else {
             emit(ServiceEvent.SyncError(code, ""))
@@ -125,6 +135,7 @@ internal class BackgroundSync(appContext: Context, params: WorkerParameters) :
         val total   = locations.size
         var sent    = 0
         var firstFailCode = 0
+        var retire  = false
 
         locations.forEachIndexed { i, loc ->
             val body: Any = try {
@@ -153,12 +164,19 @@ internal class BackgroundSync(appContext: Context, params: WorkerParameters) :
             } else if (firstFailCode == 0) {
                 firstFailCode = code
             }
+            // Per response, not per batch: this loop can run for a while, and a
+            // 2xx anywhere in it is proof the shift is alive (#63).
+            if (ShiftGoneDetector.observe(code)) retire = true
             emit(ServiceEvent.SyncProgress(((i + 1) * 100) / total))
         }
 
         if (sent > 0) { emit(ServiceEvent.SyncSuccess(sent)); BGLog.i("Sync success: $sent sent") }
 
         return if (firstFailCode == 0) {
+            Result.success()
+        } else if (retire) {
+            emit(ServiceEvent.SyncError(firstFailCode, ""))
+            LocationService.retireShiftGone(applicationContext)
             Result.success()
         } else {
             emit(ServiceEvent.SyncError(firstFailCode, ""))

@@ -14,6 +14,7 @@ import com.gachlab.geolocation.LocationTemplate
 import com.gachlab.geolocation.LocationTemplateFactory
 import com.gachlab.geolocation.persistence.LocationDAO
 import com.gachlab.geolocation.persistence.SessionDAO
+import com.gachlab.geolocation.service.LocationService
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.ExecutorService
@@ -100,6 +101,13 @@ internal class PostLocationTask(
         }
 
         Log.d(TAG, "POST $resolvedUrl → HTTP $code")
+
+        // Fed EVERY code, including the successes: a 2xx is the only thing that
+        // can prove the shift still exists, so it is what clears the run (#63).
+        if (ShiftGoneDetector.observe(code)) {
+            LocationService.retireShiftGone(context)
+            return
+        }
 
         when {
             code in 200..284 -> locationDAO.deleteById(location.locationId ?: return)
