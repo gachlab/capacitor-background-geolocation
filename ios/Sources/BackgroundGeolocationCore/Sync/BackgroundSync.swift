@@ -161,6 +161,15 @@ final class BackgroundSync: NSObject, URLSessionDelegate, URLSessionTaskDelegate
             LocationDAO.shared.restoreLocations(ids)
         }
 
+        // Fed every status, successes included (#63/#67). This class is a
+        // singleton with no reference to the facade, so the retirement travels
+        // as a notification — the same way every other outcome in this file
+        // leaves it. `BGFacade` observes it and stops tracking, which is what
+        // stops new rows being produced for a shift that no longer exists.
+        if ShiftGoneDetector.shared.observe(status) {
+            NotificationCenter.default.post(name: .BGShiftGone, object: nil)
+        }
+
         guard let batch = meta?.batch else { return }
 
         // Aggregate the batch under the lock: granular progress on every task,

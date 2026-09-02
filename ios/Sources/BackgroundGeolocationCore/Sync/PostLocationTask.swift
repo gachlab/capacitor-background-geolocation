@@ -6,7 +6,16 @@ import Network
 
 public protocol PostLocationTaskDelegate: AnyObject {
     func postLocationTaskRequestedAbortUpdates(_ task: PostLocationTask)
+    /// The server has said 404 for a sustained minute: the shift is gone (#67).
+    func postLocationTaskShiftGone(_ task: PostLocationTask)
     func postLocationTaskHttpAuthorizationUpdates(_ task: PostLocationTask)
+}
+
+public extension PostLocationTaskDelegate {
+    /// Default no-op so adding this requirement is not source-breaking for a
+    /// host app that already conforms to the protocol (#67). `BGFacade`, the
+    /// conformer the plugin actually uses, overrides it.
+    func postLocationTaskShiftGone(_ task: PostLocationTask) {}
 }
 
 public final class PostLocationTask: LocationPublisher {
@@ -209,6 +218,13 @@ public final class PostLocationTask: LocationPublisher {
         }.resume()
 
         semaphore.wait()
+
+        // Fed EVERY status, successes included: a 2xx is the only thing that can
+        // prove the shift still exists, so it is what clears the run (#63/#67).
+        if ShiftGoneDetector.shared.observe(resultStatus) {
+            delegate?.postLocationTaskShiftGone(self)
+            return false
+        }
 
         switch resultStatus {
         case 285:
