@@ -97,6 +97,20 @@ sealed class ServiceEvent {
         const val REASON_PERMISSION_LOST = "permission_lost"
 
         /**
+         * The server said 404 for a solid minute, so the shift it was posting
+         * for does not exist any more (#63).
+         *
+         * Deliberately distinct from every other reason here: the others mean
+         * "tracking should be running and something interrupted it". This one
+         * means tracking should NOT be running — there is nothing left to track
+         * for. It is the only reason that stands the reviver down rather than
+         * leaving it armed, and recording it is what lets the next app open say
+         * "that shift was deleted" instead of showing a driver a shift the
+         * server has forgotten.
+         */
+        const val REASON_SHIFT_GONE = "shift_gone"
+
+        /**
          * The spelling that leaves the plugin, matching `ServiceRestartedPayload.reason`.
          *
          * It lives here, as one function, because there are TWO exits to
@@ -116,6 +130,7 @@ sealed class ServiceEvent {
             REASON_SYSTEM_KILL -> "systemKill"
             REASON_APP_REMOVED -> "appRemoved"
             REASON_PERMISSION_LOST -> "permissionLost"
+            REASON_SHIFT_GONE -> "shiftGone"
             // watchdog / boot are already spelled the same on both sides. An
             // unknown value passes through rather than being swallowed: a reason
             // we did not anticipate is still more useful than none.

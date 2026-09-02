@@ -78,7 +78,14 @@ export type ServiceRestartReason =
    * took the permission away and the plugin stood down instead of crash-looping
    * against `startForeground`.
    */
-  | 'permissionLost';
+  | 'permissionLost'
+  /**
+   * Android only. The server answered 404 for a sustained minute, so the shift
+   * being posted for no longer exists and tracking retired itself. Unlike every
+   * other reason here, this one is terminal by design: nothing will bring the
+   * service back on its own, because there is nothing left to track for.
+   */
+  | 'shiftGone';
 
 export interface ServiceRestartedPayload {
   reason: ServiceRestartReason;

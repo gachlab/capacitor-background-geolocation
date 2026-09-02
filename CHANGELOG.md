@@ -14,6 +14,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   reason is persisted at the moment the service stands down, so whoever opens
   the app next can say what actually happened. ([#59])
 
+- **`shiftGone`, a new `serviceRestarted` reason.** Terminal by design, unlike
+  every other reason in the union: nothing brings the service back on its own,
+  because there is nothing left to track for. It is what lets the next app open
+  say "that shift was deleted" instead of showing a driver a shift the server
+  has forgotten. ([#63])
+
 ### Fixed
 
 - **A revoked location permission crash-looped the app on Android 14+.** The
@@ -58,6 +64,27 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   providers already did, so all three finally behave the same way instead of one
   inheriting the lifetime of an accident. ([#60])
 
+- **A deleted shift was retried forever with the app closed.** The device kept
+  taking fixes and POSTing them, the server answered 404 to every one, and
+  nothing stopped: no retry ceiling existed anywhere in the plugin — no
+  `runAttemptCount`, no `Result.failure()`, no `maxAttempts` — and both senders
+  answered *any* non-2xx with `Result.retry()`. A tablet with the app closed
+  spent 38 days posting for a shift deleted on 6-jul-2026, at 276 POSTs per 90
+  seconds; that is a personal phone tracking somebody who believes it is
+  switched off, and `startOnBoot: true` means a reboot did not cure it. The
+  server-driven stop signal that already existed was no help: HTTP 285 only
+  fires an event, and events reach a listener that does not exist once the
+  WebView is gone, so every stop signal was advisory and evaporated in exactly
+  the situation that needed it. A sustained minute of 404 — and only 404, the
+  one code where the server answered that this shift does not exist — now
+  retires tracking, stands the reviver down and retires the notification. The
+  rule is deliberately narrow: 5xx is a backend having a bad time, `-1` is a
+  tunnel, 401 is a token to refresh, and none of them says the shift is gone, so
+  none of them can stop a shift. Failures that say nothing neither count as
+  evidence nor destroy it, so a driver moving in and out of coverage still
+  accumulates the minute. This is the one stop that clears `shouldBeRunning`
+  rather than leaving it armed — the opposite of the permission stand-down
+  above, and for the opposite reason. ([#63])
 
 ## [4.0.0] - 2026-08-04
 
@@ -268,6 +295,7 @@ Four of the corrections below change what a consumer observes, so this is a
 [#56]: https://github.com/gachlab/capacitor-background-geolocation/issues/56
 [#59]: https://github.com/gachlab/capacitor-background-geolocation/issues/59
 [#60]: https://github.com/gachlab/capacitor-background-geolocation/issues/60
+[#63]: https://github.com/gachlab/capacitor-background-geolocation/issues/63
 
 ## [3.0.0] - 2026-07-06
 

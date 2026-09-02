@@ -6,6 +6,7 @@ package com.gachlab.geolocation.service
 import com.gachlab.geolocation.domain.TripConfig
 
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
@@ -38,6 +39,7 @@ import com.gachlab.geolocation.network.PostLocationTask
 import com.gachlab.geolocation.ports.ConfigRepository
 import com.gachlab.geolocation.ports.LocationPublisher
 import com.gachlab.geolocation.network.PrioritySyncManager
+import com.gachlab.geolocation.network.ShiftGoneDetector
 import com.gachlab.geolocation.provider.AbstractLocationProvider
 import com.gachlab.geolocation.provider.ActivityLocationProvider
 import com.gachlab.geolocation.provider.BGException
@@ -85,6 +87,46 @@ class LocationService : Service() {
         @Volatile var instance: LocationService? = null
 
         const val EXTRA_START_REASON = "start_reason"
+
+        /**
+         * Retire a shift the server has forgotten (#63).
+         *
+         * Two callers, one of which has no service to talk to: `PostLocationTask`
+         * runs inside the service, while `BackgroundSync` is a WorkManager worker
+         * that may run when nothing is started. Both must produce the SAME end
+         * state, so it lives here rather than at either call site.
+         *
+         * `stop()` already does the right thing when there is an instance: it
+         * stands the reviver down, cancels its work, tears the provider down and
+         * retires the foreground notification. The branch below it is the one
+         * that matters — with no instance, clearing `shouldBeRunning` by hand is
+         * the only thing standing between us and the reviver starting the shift
+         * again in fifteen minutes to be 404ed some more. That is the same
+         * "second door" that made #59 a loop.
+         *
+         * The reason is persisted BEFORE stopping, because `stop()` fires
+         * `ServiceStopped` and a listener reading the reason must find it there.
+         */
+        @JvmStatic
+        fun retireShiftGone(context: Context) {
+            val app = context.applicationContext
+            app.getSharedPreferences(PREFS_DIAG, MODE_PRIVATE).edit()
+                .putString(KEY_KILL_REASON, ServiceEvent.REASON_SHIFT_GONE)
+                .putLong(KEY_KILL_AT, System.currentTimeMillis())
+                .apply()
+            BGLog.w("server reports the shift no longer exists — retiring tracking")
+            eventListener?.invoke(ServiceEvent.ServiceRestarted(ServiceEvent.REASON_SHIFT_GONE))
+
+            val live = instance
+            if (live != null) {
+                live.stop()
+            } else {
+                // No service to stop, but the net is still armed. Leaving it is
+                // what would turn "the shift is gone" into a fifteen-minute loop.
+                ServiceReviver.setShouldBeRunning(app, false)
+                ServiceReviver.cancel(app)
+            }
+        }
 
         private const val TAG             = "LocationService"
         private const val NOTIFICATION_ID = 1
@@ -223,6 +265,10 @@ class LocationService : Service() {
         val cfg = configDAO.retrieveConfig() ?: BGConfig.getDefault()
         config = cfg
         isRunning = true
+        // A new shift must never inherit the previous one's run of 404s (#63).
+        // The detector is in-memory and process-wide, so this is the one place
+        // that can honestly say "that evidence belonged to something else".
+        ShiftGoneDetector.reset()
         // Only on a CLEAN start. `onStartCommand` writes the reason and then calls
         // start(), so clearing unconditionally here would wipe the very record it
         // had just made — the death would be forgotten a millisecond after being
