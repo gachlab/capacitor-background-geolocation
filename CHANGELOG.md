@@ -22,6 +22,11 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   than one platform not having it. On retirement `BGFacade` stops tracking.
   ([#67])
 
+  Verified on an iPhone 17 Pro simulator (Xcode 26.6, arm64): 74 tests, 0
+  failures, including a wiring test that drives the real `PostLocationTask.add()`
+  path against a stubbed 404 transport. Disabling the wiring fails 3 of its 4
+  cases and leaves the two that assert non-firing green.
+
   Not at parity yet, and deliberately out of scope here: Android persists a
   `shift_gone` reason so the next app open can explain the silence, and iOS has
   no kill-reason store at all — nothing there emits `serviceRestarted`. iOS
