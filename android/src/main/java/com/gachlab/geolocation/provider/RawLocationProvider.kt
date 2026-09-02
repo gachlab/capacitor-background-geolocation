@@ -8,6 +8,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
+import android.os.Looper
 import android.util.Log
 import com.gachlab.geolocation.BGConfig
 
@@ -208,7 +209,23 @@ internal class RawLocationProvider(context: Context) :
                 provider,
                 cfg.interval?.toLong() ?: BGConfig.DEFAULT_INTERVAL.toLong(),
                 (cfg.distanceFilter ?: BGConfig.DEFAULT_DISTANCE_FILTER).toFloat(),
-                this
+                this,
+                // EXPLICIT, and the whole of #60. The four-argument overload binds
+                // delivery to `Looper.myLooper()` — the CALLING thread — so the
+                // subscription lived exactly as long as whoever happened to
+                // subscribe. `onConfigure()` re-subscribes, host apps call
+                // `configure()` from JavaScript, and Capacitor runs a
+                // `@PluginMethod` off the main thread: swiping the app out of
+                // recents took that thread down and every fix afterwards died at
+                // the executor boundary with `RejectedExecutionException` — a
+                // service that looked perfectly healthy and measured nothing.
+                //
+                // The MAIN looper because the service owns it, not the caller: it
+                // outlives every bridge thread, `LocationService` already runs its
+                // watchdog and heartbeat there, and both GMS providers already
+                // pass it explicitly. So this is also what stops one provider out
+                // of three from inheriting the lifetime of an accident.
+                Looper.getMainLooper(),
             )
         } catch (e: SecurityException) {
             activeProviders -= provider
