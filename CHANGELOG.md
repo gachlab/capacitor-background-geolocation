@@ -6,6 +6,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-09-02
+
 ### Added
 
 - **`permissionLost`, a new `serviceRestarted` reason.** A shift that stops
@@ -308,6 +310,7 @@ Four of the corrections below change what a consumer observes, so this is a
   single `templateToJSON` helper so they cannot drift apart again. ([#50])
 
 [#50]: https://github.com/gachlab/capacitor-background-geolocation/issues/50
+[4.1.0]: https://github.com/gachlab/capacitor-background-geolocation/releases/tag/v4.1.0
 [4.0.0]: https://github.com/gachlab/capacitor-background-geolocation/releases/tag/v4.0.0
 [#54]: https://github.com/gachlab/capacitor-background-geolocation/issues/54
 [#56]: https://github.com/gachlab/capacitor-background-geolocation/issues/56
