@@ -146,6 +146,11 @@ class LocationService : Service() {
             }
         }
         if (!isRunning) start()
+        // START_STICKY is what the platform honours, so returning it while the
+        // permission is gone asks to be restarted into the same SecurityException.
+        // `isRunning` is the reading that matters and not the gate again: start()
+        // has just run and left it false for exactly one reason.
+        if (!isRunning) return START_NOT_STICKY
         val cfg = config ?: configDAO.retrieveConfig() ?: BGConfig.getDefault()
         return if (cfg.restartOnKill != false) START_STICKY else START_NOT_STICKY
     }
@@ -189,6 +194,32 @@ class LocationService : Service() {
     @Synchronized
     fun start() {
         if (isRunning) return
+
+        // BEFORE anything else, and in particular before `setShouldBeRunning`
+        // below (#59). Going foreground with type `location` and no location
+        // permission throws SecurityException out of `onStartCommand`, which the
+        // platform turns into the driver's force-close dialog.
+        //
+        // Placing the check further down — say, just above `startForeground` —
+        // would stop the crash and leave the loop: by then the service has
+        // already told the reviver it SHOULD be running, so the out-of-process
+        // net would keep bringing it back every fifteen minutes to crash again.
+        // The order is the fix, not the condition.
+        //
+        // `shouldBeRunning` is deliberately left as it is rather than cleared:
+        // the shift was supposed to be running and still is. What changed is
+        // that it cannot be, and the reviver asks this same gate before acting,
+        // so nothing spins. Re-granting the permission puts the driver straight
+        // back to work.
+        if (!ForegroundLocationGate.canStartLocationService(applicationContext)) {
+            persistKillReason(ServiceEvent.REASON_PERMISSION_LOST)
+            fire(ServiceEvent.ServiceRestarted(ServiceEvent.REASON_PERMISSION_LOST))
+            BGLog.w("location permission is gone — not starting the foreground service")
+            Log.w(TAG, "start() refused: no location permission")
+            stopSelf()
+            return
+        }
+
         val cfg = configDAO.retrieveConfig() ?: BGConfig.getDefault()
         config = cfg
         isRunning = true

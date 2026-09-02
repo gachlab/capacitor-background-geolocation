@@ -29,6 +29,7 @@ class ServiceRestartReasonTest {
     fun `translates the persisted spellings to the published union`() {
         assertEquals("systemKill", ServiceEvent.publicReason(ServiceEvent.REASON_SYSTEM_KILL))
         assertEquals("appRemoved", ServiceEvent.publicReason(ServiceEvent.REASON_APP_REMOVED))
+        assertEquals("permissionLost", ServiceEvent.publicReason(ServiceEvent.REASON_PERMISSION_LOST))
     }
 
     @Test
@@ -46,7 +47,7 @@ class ServiceRestartReasonTest {
         // a test file untouched. Reflection over the companion is what makes the
         // promise true, and it is the only shape that guards a vocabulary rather
         // than guarding somebody's memory of it.
-        val published = setOf("watchdog", "systemKill", "boot", "appRemoved")
+        val published = setOf("watchdog", "systemKill", "boot", "appRemoved", "permissionLost")
         // On the OUTER class: a `const val` in a companion compiles to a static
         // field of ServiceEvent, not of ServiceEvent.Companion. Getting that
         // wrong made this return zero constants and the assertion below caught
@@ -56,7 +57,7 @@ class ServiceRestartReasonTest {
             .onEach { it.isAccessible = true }
             .map { it.get(null) as String }
 
-        assertEquals(4, persisted.size, "a new REASON_ constant must be published too")
+        assertEquals(5, persisted.size, "a new REASON_ constant must be published too")
         persisted.forEach { reason ->
             assertEquals(true, ServiceEvent.publicReason(reason) in published,
                 "$reason maps to ${ServiceEvent.publicReason(reason)}, which is not in the published union")
@@ -79,5 +80,6 @@ class ServiceRestartReasonTest {
         assertEquals("system_kill", ServiceEvent.REASON_SYSTEM_KILL)
         assertEquals("boot", ServiceEvent.REASON_BOOT)
         assertEquals("app_removed", ServiceEvent.REASON_APP_REMOVED)
+        assertEquals("permission_lost", ServiceEvent.REASON_PERMISSION_LOST)
     }
 }
