@@ -46,6 +46,9 @@ final class ShiftGoneWiringTests: XCTestCase {
             set { lock.lock(); _status = newValue; lock.unlock() }
         }
 
+        /// Forget the warm-up request, so a test's first assertion still starts from zero.
+        func resetHits() { lock.lock(); _hits = 0; lock.unlock() }
+
         func start() throws {
             let params = NWParameters.tcp
             params.allowLocalEndpointReuse = true
@@ -156,6 +159,44 @@ final class ShiftGoneWiringTests: XCTestCase {
         PostLocationTask.shared.stop()
         PostLocationTask.shared.hasConnectivity = true
         PostLocationTask.shared.config = configPostingTo("http://127.0.0.1:\(server.port)/shift")
+
+        warmUpURLSessionOnce()
+    }
+
+    /// The third suspect, and the one that was actually doing it.
+    ///
+    /// `URLSession.shared`'s very first request pays for the session's own
+    /// start-up, and on a GitHub-hosted `macos-15` runner that cost measured
+    /// past the 15s this file allows a POST to arrive. That alone would fail one
+    /// test. It failed three, because `PostLocationTask.post` blocks its serial
+    /// executor on a semaphore with no timeout: the slow first request is still
+    /// sitting there when the next test calls `add()`, so that one never runs
+    /// either, and neither does the one after it.
+    ///
+    /// The signature is unmistakable in the run that caught this — three
+    /// failures at 18.6s, 15.0s and 23.3s, then `testASustained500NeverRetires`
+    /// passing in 3.7s once the queue had drained. Locally the whole suite is
+    /// under 5s and it never reproduced.
+    ///
+    /// So pay that cost once, here, before any test's clock is running. This is
+    /// not a `sleep`: it waits on a real request to the same loopback server the
+    /// tests use, and gives up after 60s rather than hanging the suite.
+    private static var didWarmUpURLSession = false
+
+    private func warmUpURLSessionOnce() {
+        guard !Self.didWarmUpURLSession else { return }
+        Self.didWarmUpURLSession = true
+
+        guard let url = URL(string: "http://127.0.0.1:\(server.port)/warm-up") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = Data("{}".utf8)
+
+        let done = DispatchSemaphore(value: 0)
+        URLSession.shared.dataTask(with: request) { _, _, _ in done.signal() }.resume()
+        _ = done.wait(timeout: .now() + 60)
+
+        server.resetHits()
     }
 
     override func tearDown() {
@@ -209,6 +250,12 @@ final class ShiftGoneWiringTests: XCTestCase {
             "the POST never reached the server — the wiring cannot be judged",
             file: file, line: line
         )
+
+        // A hit proves the request left; it does not prove the client is done with
+        // the reply. The detector and the delegate are fed after the server has
+        // answered, so without this the tail lands in the *next* test, against its
+        // spy and its freshly reset detector.
+        PostLocationTask.shared.drainForTesting()
     }
 
     // MARK: - It fires through the real path
