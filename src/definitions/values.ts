@@ -38,14 +38,7 @@ export type AuthorizationStatus = 'notAuthorized' | 'authorized' | 'authorizedFo
 
 /** Recognised motion-activity type. */
 export type ActivityType =
-  | 'inVehicle'
-  | 'onBicycle'
-  | 'onFoot'
-  | 'running'
-  | 'still'
-  | 'tilting'
-  | 'unknown'
-  | 'walking';
+  'inVehicle' | 'onBicycle' | 'onFoot' | 'running' | 'still' | 'tilting' | 'unknown' | 'walking';
 
 /** Severity for persisted log entries. */
 export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error';
@@ -241,12 +234,7 @@ export interface GeofenceErrorEvent {
 
 /** Driving-event category keys. */
 export type DrivingEventType =
-  | 'hardBrake'
-  | 'rapidAcceleration'
-  | 'sharpTurn'
-  | 'possibleCrash'
-  | 'speeding'
-  | 'phoneUsageWhileDriving';
+  'hardBrake' | 'rapidAcceleration' | 'sharpTurn' | 'possibleCrash' | 'speeding' | 'phoneUsageWhileDriving';
 
 /** Per-category score breakdown (0–100 each). */
 export interface TripScoreBreakdown {
