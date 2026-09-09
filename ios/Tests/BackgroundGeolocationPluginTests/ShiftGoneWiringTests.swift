@@ -250,6 +250,12 @@ final class ShiftGoneWiringTests: XCTestCase {
             "the POST never reached the server — the wiring cannot be judged",
             file: file, line: line
         )
+
+        // A hit proves the request left; it does not prove the client is done with
+        // the reply. The detector and the delegate are fed after the server has
+        // answered, so without this the tail lands in the *next* test, against its
+        // spy and its freshly reset detector.
+        PostLocationTask.shared.drainForTesting()
     }
 
     // MARK: - It fires through the real path

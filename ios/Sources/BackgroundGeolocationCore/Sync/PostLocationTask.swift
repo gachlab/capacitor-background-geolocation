@@ -87,6 +87,15 @@ public final class PostLocationTask: LocationPublisher {
         }
     }
 
+    /// Blocks until everything already queued on the posting executor has run.
+    ///
+    /// Test-only sync point. `post` reaches the detector and the delegate *after*
+    /// the server has answered, so a test that returns as soon as its loopback
+    /// server counted the hit still has that tail in flight. It then lands inside
+    /// the next test — against that test's spy and its freshly reset detector —
+    /// and fails an assertion in a test that did nothing wrong.
+    func drainForTesting() { executor.sync {} }
+
     private func processLocation(_ location: BGLocation) {
         var loc = location
 
