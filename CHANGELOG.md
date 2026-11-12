@@ -6,6 +6,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [4.1.2] - 2026-11-11
+
 ### Fixed
 
 - **iOS: a fresh install hung after the user granted location.** Core Location
@@ -361,6 +363,7 @@ Four of the corrections below change what a consumer observes, so this is a
 
 [#50]: https://github.com/gachlab/capacitor-background-geolocation/issues/50
 [#67]: https://github.com/gachlab/capacitor-background-geolocation/issues/67
+[4.1.2]: https://github.com/gachlab/capacitor-background-geolocation/releases/tag/v4.1.2
 [4.1.1]: https://github.com/gachlab/capacitor-background-geolocation/releases/tag/v4.1.1
 [4.1.0]: https://github.com/gachlab/capacitor-background-geolocation/releases/tag/v4.1.0
 [4.0.0]: https://github.com/gachlab/capacitor-background-geolocation/releases/tag/v4.0.0
