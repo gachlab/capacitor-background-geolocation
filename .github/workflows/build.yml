@@ -46,7 +46,7 @@ jobs:
     timeout-minutes: 20
     needs: web
     env:
-      JAVA_HOME: /Users/gcarrillo/.local/share/mise/installs/java/zulu-21.46.19.0
+      JAVA_HOME: /Users/gcarrillo/.local/share/mise/installs/java/temurin-21
       ANDROID_HOME: /Users/gcarrillo/Library/Android/sdk
       ANDROID_SDK_ROOT: /Users/gcarrillo/Library/Android/sdk
     steps:
