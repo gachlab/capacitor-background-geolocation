@@ -8,7 +8,7 @@ public final class DistanceFilterLocationProvider: AbstractLocationProvider, CLL
 
     // MARK: - Own CLLocationManager
 
-    private let locationManager = CLLocationManager()
+    private let locationManager = LocationManagerFactory.make()
 
     // MARK: - State
 

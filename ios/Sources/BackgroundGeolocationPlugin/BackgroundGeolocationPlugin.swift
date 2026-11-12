@@ -85,6 +85,12 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
     private var prioritySyncManager: PrioritySyncManager?
 
     override public func load() {
+        // Build the shared managers here, on main, before any plugin call can reach
+        // them from Capacitor's queue. A `static let` first touched off main would
+        // wait on main inside its one-time initializer; if main touched it at the
+        // same moment, both would wait forever. `BGFacade()` below covers
+        // `GeofenceManager.shared`.
+        _ = BGLocationManager.shared
         let f = BGFacade()
         f.delegate = self
         facade = f
@@ -370,8 +376,7 @@ public class BackgroundGeolocationPlugin: CAPPlugin, CAPBridgedPlugin, LocationP
         }
 
         if #available(iOS 14.0, *) {
-            let lm = CLLocationManager()
-            d["preciseLocationEnabled"] = (lm.accuracyAuthorization == .fullAccuracy)
+            d["preciseLocationEnabled"] = (CLLocationManager().accuracyAuthorization == .fullAccuracy)
         } else {
             d["preciseLocationEnabled"] = true
         }
@@ -1097,8 +1102,8 @@ extension BackgroundGeolocationPlugin {
 
 // MARK: - Permission helper
 
-private final class PermissionRequestHelper: NSObject, CLLocationManagerDelegate {
-    private let manager = CLLocationManager()
+final class PermissionRequestHelper: NSObject, CLLocationManagerDelegate {
+    private let manager = LocationManagerFactory.make()
     private let completion: (CLAuthorizationStatus) -> Void
     private var done = false
 

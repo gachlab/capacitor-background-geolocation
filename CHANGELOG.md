@@ -6,6 +6,26 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- **iOS: a fresh install hung after the user granted location.** Core Location
+  answers a delegate on the run loop of the thread that created the manager, and
+  `requestPermissions` built its `CLLocationManager` on Capacitor's plugin queue,
+  whose threads never run theirs. The prompt showed, the user tapped Allow, and
+  the authorization callback had nowhere to land, so the call never resolved. It
+  only bites when the status is still `notDetermined`, which is why reopening the
+  app got past it. The one-shot fix behind `getCurrentLocation` had the same
+  shape — `start()` had been moved to main, the construction had not — so it
+  could only end by its timeout. Every manager with a delegate is now built through
+  `LocationManagerFactory.make()`, on main; the shared `BGLocationManager` is
+  built in `load()` so a `static let` never initializes off main.
+
+  Verified on an iPhone 18 Pro simulator (iOS 27.2): the five new
+  `LocationManagerThreadTests` build each manager from a background queue and
+  assert the thread; without the fix four fail and the factory's own test stays
+  green by design, and a source guard lists every direct `CLLocationManager()`
+  that is not a read-only status check.
+
 ## [4.1.1] - 2026-09-02
 
 ### Fixed

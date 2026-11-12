@@ -720,11 +720,11 @@ extension BGFacade: PostLocationTaskDelegate {
     }
 }
 
-// MARK: - OneShotLocationHelper (private)
+// MARK: - OneShotLocationHelper (internal so the thread test can build it)
 
-private final class OneShotLocationHelper: NSObject, CLLocationManagerDelegate {
+final class OneShotLocationHelper: NSObject, CLLocationManagerDelegate {
 
-    private let manager = CLLocationManager()
+    private let manager = LocationManagerFactory.make()
     private let onResult: (CLLocation?, Error?) -> Void
     private var done = false
 

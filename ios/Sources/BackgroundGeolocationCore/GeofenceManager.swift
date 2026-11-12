@@ -34,7 +34,7 @@ public final class GeofenceManager: NSObject, CLLocationManagerDelegate {
     // Invoked with the domain GeoEvent + the triggering platform location on each transition.
     public var eventListener: ((GeoEvent, BGLocation?) -> Void)?
 
-    private let locationManager = CLLocationManager()
+    private let locationManager = LocationManagerFactory.make()
     private var geofences: [String: BGGeofence] = [:]
 
     /// Geofences we have actually handed to CLLocationManager (synchronous mirror

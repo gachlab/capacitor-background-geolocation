@@ -12,7 +12,7 @@ public final class BGLocationManager: NSObject {
 
     // MARK: - Private state
 
-    private let locationManager = CLLocationManager()
+    private let locationManager = LocationManagerFactory.make()
     private var lastAuthStatus: BGAuthorizationStatus?
 
     // MARK: - Public interface
